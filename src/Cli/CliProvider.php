@@ -9,6 +9,7 @@ use StellarWP\Foundation\Cli\Commands\Package\GitHubPackageRepositoryCreator;
 use StellarWP\Foundation\Cli\Commands\Package\PackageFilesValidator;
 use StellarWP\Foundation\Cli\Commands\Package\PackageRepositoryPlanFactory;
 use StellarWP\Foundation\Cli\Commands\Package\PackageResolver;
+use StellarWP\Foundation\Cli\Commands\Package\PackageScaffolder;
 use StellarWP\Foundation\Cli\Process\Contracts\ProcessRunner;
 use StellarWP\Foundation\Cli\Process\ShellProcessRunner;
 use StellarWP\Foundation\Container\Contracts\Provider;
@@ -30,6 +31,10 @@ final class CliProvider extends Provider
 			->needs('$rootPath')
 			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
 
+		$this->container->when(PackageScaffolder::class)
+			->needs('$rootPath')
+			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+
 		$this->container->when(Application::class)
 			->needs('$commands')
 			->give(static fn (Container $c): array => [
@@ -37,6 +42,7 @@ final class CliProvider extends Provider
 			]);
 
 		$this->container->singleton(PackageResolver::class);
+		$this->container->singleton(PackageScaffolder::class);
 		$this->container->singleton(PackageFilesValidator::class);
 		$this->container->singleton(PackageRepositoryPlanFactory::class);
 		$this->container->singleton(ShellProcessRunner::class);

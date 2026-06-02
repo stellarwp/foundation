@@ -89,20 +89,23 @@ run to access their CLI: `composer monorepo list` to see the available commands.
 
 #### Adding a New Package
 
-1. Copy the composer.json from one of the packages and modify the `name` and `psr-4` autoload namespace.
-2. Ensure you have the `close-pull-request.yml` GitHub workflow, a `.gitattributes`, `.gitignore` and `README.md` files.
-3. Once you've added the specific dependencies your package needs to its composer.json, run `composer monorepo merge` and then `composer update` and commit the changes. This will merge the dependencies into the root composer.json.
-4. Preview the split repository that will be created:
+1. Run the package creation command:
 
 ```bash
 composer run foundation -- package:create <Package>
 ```
 
-The package argument can be the package directory, short package name, or Composer package name, for example `Log`, `foundation-log`, or `stellarwp/foundation-log`.
+The package argument can be a new package component such as `WPCli`, an existing package directory, short package name, or Composer package name, for example `Log`, `foundation-log`, or `stellarwp/foundation-log`.
+
+If the package does not exist yet, the command asks whether to create the local scaffold in `src/<Package>` and asks for the Composer package name with a default such as `stellarwp/foundation-wpcli`. The scaffold includes the required `composer.json`, `README.md`, `.gitattributes`, `.gitignore`, and `close-pull-request.yml` files. After scaffolding, the command runs `composer monorepo merge` so the root `composer.json` includes the new package.
 
 The command runs as a dry run by default. It validates the required split package files, prints the target repository name and description, and shows the GitHub CLI commands it will run.
 
-5. Create and configure the read-only split repository:
+2. Add source code, tests, and any package-specific dependencies to the new package.
+
+3. Once you've added the specific dependencies your package needs to its composer.json, run `composer monorepo merge` again and then `composer update` and commit the changes. This will merge the dependency changes into the root composer.json.
+
+4. Create and configure the read-only split repository:
 
 ```bash
 composer run foundation -- package:create <Package> --apply

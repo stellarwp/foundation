@@ -11,6 +11,7 @@ use StellarWP\Foundation\Cli\Commands\Package\Contracts\PackageRepositoryCreator
 use StellarWP\Foundation\Cli\Commands\Package\CreateCommand;
 use StellarWP\Foundation\Cli\Commands\Package\GitHubPackageRepositoryCreator;
 use StellarWP\Foundation\Cli\Commands\Package\PackageResolver;
+use StellarWP\Foundation\Cli\Commands\Package\PackageScaffolder;
 use StellarWP\Foundation\Container\ContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Tests\TestCase;
@@ -27,6 +28,7 @@ final class CliProviderTest extends TestCase
 		$this->assertInstanceOf(Application::class, $container->get(Application::class));
 		$this->assertInstanceOf(CreateCommand::class, $container->get(CreateCommand::class));
 		$this->assertInstanceOf(PackageResolver::class, $container->get(PackageResolver::class));
+		$this->assertInstanceOf(PackageScaffolder::class, $container->get(PackageScaffolder::class));
 		$this->assertInstanceOf(GitHubPackageRepositoryCreator::class, $container->get(PackageRepositoryCreator::class));
 		$this->assertTrue($container->get(Application::class)->has('package:create'));
 	}

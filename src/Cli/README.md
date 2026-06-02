@@ -17,7 +17,9 @@ Create a split repository for a new package:
 composer run foundation -- package:create Log
 ```
 
-By default, commands that change external systems run as a dry run. Pass `--apply` to execute the generated actions.
+If the package does not exist yet, the command asks whether to create the local scaffold in `src/<Package>` and asks for the Composer package name. For example, `WPCli` defaults to `stellarwp/foundation-wpcli`. After scaffolding, it runs `composer monorepo merge` so the root package metadata includes the new split package.
+
+By default, commands that change external systems run as a dry run. Pass `--apply` to execute the generated repository actions.
 
 ## Custom Commands
 
