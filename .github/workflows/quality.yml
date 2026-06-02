@@ -1,0 +1,43 @@
+name: Code Quality
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    name: Code Quality
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: pcov
+
+      - name: Detect File Changes
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          list-files: shell
+          filters: |
+            php:
+              - added|modified: '**/*.php'
+
+      - name: Install Composer dependencies
+        uses: ramsey/composer-install@v4
+        with:
+          dependency-versions: highest
+
+      - name: Run code style checks
+        if: ${{ steps.filter.outputs.php == 'true' }}
+        run: composer lint ${{ steps.filter.outputs.php_files }}
+
+      - name: Run static analysis
+        run: composer analyze
+

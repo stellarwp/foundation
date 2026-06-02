@@ -1,0 +1,13 @@
+name: Close Pull Request
+
+on:
+  pull_request_target:
+    types: [opened]
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: superbrothers/close-pull-request@v3
+        with:
+          comment: "This is a read-only repository. Please submit your PR on the https://github.com/stellarwp/prophecy-monorepo repository.<br><br>Thanks!"

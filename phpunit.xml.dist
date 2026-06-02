@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         cacheDirectory=".phpunit.cache"
+         executionOrder="depends,defects"
+         requireCoverageMetadata="false"
+         beStrictAboutCoverageMetadata="false"
+         beStrictAboutOutputDuringTests="true"
+         displayDetailsOnPhpunitDeprecations="true"
+         failOnPhpunitDeprecation="true"
+         failOnRisky="true"
+         failOnWarning="true">
+    <testsuites>
+        <testsuite name="Feature">
+            <directory>./tests/Feature</directory>
+        </testsuite>
+        <testsuite name="Unit">
+            <directory>./tests/Unit</directory>
+        </testsuite>
+    </testsuites>
+
+    <source ignoreIndirectDeprecations="true" restrictNotices="true" restrictWarnings="true">
+        <include>
+            <directory>src</directory>
+        </include>
+    </source>
+    <php>
+        <env name="ENVIRONMENT" value="tests" force="true" />
+        <env name="TEST_LOG_CHANNEL" value="stack" force="true" />
+        <env name="TEST_LOG_LEVEL" value="debug" force="true" />
+        <server name="TEST_LOG_CHANNEL" value="stack" force="true" />
+        <server name="TEST_LOG_LEVEL" value="debug" force="true" />
+    </php>
+</phpunit>

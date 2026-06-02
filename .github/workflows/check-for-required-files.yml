@@ -1,0 +1,35 @@
+name: Check for Required Project Files
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  check-workflows:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Check for Required Project Files
+        working-directory: ./src
+        run: |
+          # Find all subdirectories in src/ and look for required files
+          for folder in */; do
+            file_paths=(
+              "$folder.github/workflows/close-pull-request.yml"
+              "$folder/.gitattributes"
+              "$folder/.gitignore"
+            )
+
+            for file in "${file_paths[@]}"; do
+              if [ ! -f "$file" ]; then
+                echo "Required file missing: $file. Commit it to your project and try again."
+                exit 1
+              fi
+            done
+          done
+        shell: bash

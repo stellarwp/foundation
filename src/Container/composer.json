@@ -1,0 +1,27 @@
+{
+    "name": "stellarwp/foundation-container",
+    "type": "library",
+    "description": "The Foundation DI container and its contracts.",
+    "license": "GPL-2.0-or-later",
+    "config": {
+        "vendor-dir": "vendor",
+        "preferred-install": "dist"
+    },
+    "require": {
+        "php": ">=8.3",
+        "adbario/php-dot-notation": ">=2.5",
+        "lucatume/di52": ">=3.0",
+        "stellarwp/container-contract": "^1.1",
+        "vlucas/phpdotenv": ">=4.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "StellarWP\\Foundation\\Container\\": ""
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.1.x-dev"
+        }
+    }
+}

@@ -1,0 +1,26 @@
+{
+    "name": "stellarwp/foundation-log",
+    "type": "library",
+    "description": "The Foundation Logger",
+    "license": "GPL-2.0-or-later",
+    "config": {
+        "vendor-dir": "vendor",
+        "preferred-install": "dist"
+    },
+    "require": {
+        "php": ">=8.3",
+        "monolog/monolog": "^2.11",
+        "stellarwp/foundation-container": "^1.0",
+        "psr/log": ">=1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "StellarWP\\Foundation\\Log\\": ""
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.1.x-dev"
+        }
+    }
+}

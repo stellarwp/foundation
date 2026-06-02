@@ -1,0 +1,37 @@
+name: Tests
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  ci:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ ubuntu-latest ]
+        php: [ '8.3', '8.4', '8.5' ]
+    name: Tests PHP${{ matrix.php }} - ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Install Composer dependencies
+        uses: ramsey/composer-install@v4
+        with:
+          dependency-versions: highest
+
+      - name: Run Unit Tests
+        run: vendor/bin/phpunit --configuration ./phpunit.xml.dist --colors=always --testsuite Unit
+
+      - name: Run Feature Tests
+        run: vendor/bin/phpunit --configuration ./phpunit.xml.dist --colors=always --testsuite Feature
