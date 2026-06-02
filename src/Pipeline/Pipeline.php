@@ -113,7 +113,7 @@ class Pipeline
 	 * Run the pipeline and return the result.
 	 */
 	public function thenReturn(): mixed {
-		return $this->then(fn ($passable) => $passable);
+		return $this->then(static fn ($passable) => $passable);
 	}
 
 	/**

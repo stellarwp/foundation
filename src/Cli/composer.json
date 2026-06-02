@@ -1,0 +1,28 @@
+{
+    "name": "stellarwp/foundation-cli",
+    "type": "library",
+    "description": "Foundation CLI tooling.",
+    "license": "GPL-2.0-or-later",
+    "config": {
+        "vendor-dir": "vendor",
+        "preferred-install": "dist"
+    },
+    "require": {
+        "php": ">=8.3",
+        "stellarwp/foundation-container": "^1.0",
+        "symfony/console": ">=5.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "StellarWP\\Foundation\\Cli\\": ""
+        }
+    },
+    "bin": [
+        "bin/foundation"
+    ],
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.1.x-dev"
+        }
+    }
+}

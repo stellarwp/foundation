@@ -22,13 +22,13 @@ For example, use:
 
 ```text
 Commands/
-  Subrepo/
+  Package/
     Contracts/
-      SubrepoCreator.php
+      PackageRepositoryCreator.php
     CreateCommand.php
     PackageResolver.php
     PackageFilesValidator.php
-    GitHubSubrepoCreator.php
+    GitHubPackageRepositoryCreator.php
 ```
 
 instead of splitting those private collaborators into broad technical folders too early.
@@ -37,9 +37,15 @@ If a collaborator is only useful for one command group, keep it under that comma
 
 When it is very clear that a class will be reused by many similar features, promote it immediately instead of burying it in the first feature slice. This is especially true for command/tooling infrastructure where many commands will need the same capability, such as shell command formatting, process execution, console IO helpers, package discovery, or GitHub API clients.
 
-Feature-local interfaces should live in a `Contracts/` folder inside the feature slice, for example `Commands/Subrepo/Contracts/SubrepoCreator.php`. Only promote contracts to a package-level `Contracts/` namespace when they are intended to be shared across multiple features or consumed as public extension points.
+Feature-local interfaces should live in a `Contracts/` folder inside the feature slice, for example `Commands/Package/Contracts/PackageRepositoryCreator.php`. Only promote contracts to a package-level `Contracts/` namespace when they are intended to be shared across multiple features or consumed as public extension points.
 
 Shared infrastructure interfaces should live under that shared namespace's `Contracts/` folder, for example `Process/Contracts/ProcessRunner.php`.
+
+## Container Providers
+
+When writing providers or container registration code, prefer container-driven construction over inline factories with explicit `new` calls. Bind classes and interfaces directly when the container can autowire them.
+
+Use contextual bindings with `$this->container->when()->needs()->give()` for scalar constructor arguments, command lists, or feature-specific substitutions. Use a factory closure only when the value must be computed or resolved from the container, and keep that closure focused on supplying the constructor dependency rather than constructing the full object.
 
 ## Split Packages
 
@@ -110,6 +116,8 @@ After adding or changing split package dependencies, run `composer monorepo merg
 Use `composer monorepo list` to inspect available Monorepo Builder commands.
 
 ## Verification
+
+When `composer lint` reports style-only issues, run `composer format` to let the project formatter fix them before making manual formatting edits.
 
 After completing a feature, run `composer test:coverage`, review `clover.xml` for missed source coverage, and add meaningful tests for uncovered behavior before considering the feature complete.
 

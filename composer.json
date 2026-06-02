@@ -17,6 +17,7 @@
         "monolog/monolog": "^2.11",
         "psr/log": ">=1.0",
         "stellarwp/container-contract": "^1.1",
+        "symfony/console": ">=5.4",
         "vlucas/phpdotenv": ">=4.3"
     },
     "require-dev": {
@@ -29,6 +30,7 @@
         "zenphp/pinte": "^1.2"
     },
     "replace": {
+        "stellarwp/foundation-cli": "self.version",
         "stellarwp/foundation-container": "self.version",
         "stellarwp/foundation-log": "self.version",
         "stellarwp/foundation-pipeline": "self.version"
@@ -37,6 +39,7 @@
     "prefer-stable": true,
     "autoload": {
         "psr-4": {
+            "StellarWP\\Foundation\\Cli\\": "src/Cli/",
             "StellarWP\\Foundation\\Container\\": "src/Container/",
             "StellarWP\\Foundation\\Log\\": "src/Log/",
             "StellarWP\\Foundation\\Pipeline\\": "src/Pipeline/"
@@ -56,6 +59,7 @@
         }
     },
     "scripts": {
+        "foundation": "@php src/Cli/bin/foundation",
         "monorepo": "@php vendor/bin/monorepo-builder",
         "test": "@php vendor/bin/phpunit -c phpunit.xml.dist --colors=always -d memory_limit=2G",
         "test:unit": "@test --testsuite Unit",
