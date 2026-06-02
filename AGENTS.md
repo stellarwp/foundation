@@ -35,6 +35,8 @@ instead of splitting those private collaborators into broad technical folders to
 
 If a collaborator is only useful for one command group, keep it under that command group's feature folder. If it becomes useful across multiple command groups, promote it to a broader domain or infrastructure namespace such as `Package/`, `GitHub/`, `Console/`, or `Process/`.
 
+When it is very clear that a class will be reused by many similar features, promote it immediately instead of burying it in the first feature slice. This is especially true for command/tooling infrastructure where many commands will need the same capability, such as shell command formatting, process execution, console IO helpers, package discovery, or GitHub API clients.
+
 Feature-local interfaces should live in a `Contracts/` folder inside the feature slice, for example `Commands/Subrepo/Contracts/SubrepoCreator.php`. Only promote contracts to a package-level `Contracts/` namespace when they are intended to be shared across multiple features or consumed as public extension points.
 
 ## Split Packages
@@ -107,6 +109,7 @@ Use `composer monorepo list` to inspect available Monorepo Builder commands.
 
 ## Releases
 
+- Adding a new split package is usually a minor SemVer release because it introduces new functionality without breaking existing packages. Use a major release only if the change also breaks an existing public API or package contract.
 - Run `composer monorepo bump-interdependency <version>` when planning a major version release so Foundation packages that depend on each other require the new major line. It may also be useful for a minor release when one package must require APIs added in that new minor.
 - Run `composer monorepo package-alias` when `dev-main` should move to a new development line, usually after a minor or major release. Do not run it for every patch release when the current branch alias is still correct.
 - The monorepo split workflow deploys package code to each sub-repository after a GitHub release is drafted.
