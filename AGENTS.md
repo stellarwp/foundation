@@ -10,6 +10,90 @@ Initial packages:
 - `stellarwp/foundation-log`
 - `stellarwp/foundation-pipeline`
 
+## Namespaces
+
 Use package namespaces under `StellarWP\Foundation\<Package>\`.
 
-TODO: finish this.
+## Code Organization
+
+Prefer feature-first organization, also known as vertical slice architecture or package-by-feature, when adding command/tooling features. Group a command and its private collaborators under the command feature namespace.
+
+For example, use:
+
+```text
+Commands/
+  Subrepo/
+    CreateCommand.php
+    PackageResolver.php
+    PackageFilesValidator.php
+    GitHubSubrepoCreator.php
+```
+
+instead of splitting those private collaborators into broad technical folders too early.
+
+If a collaborator is only useful for one command group, keep it under that command group's feature folder. If it becomes useful across multiple command groups, promote it to a broader domain or infrastructure namespace such as `Package/`, `GitHub/`, `Console/`, or `Process/`.
+
+## Split Packages
+
+Split packages live in `src/<Package>/` and are split to read-only repositories named `stellarwp/foundation-<package>`.
+
+When adding a new split package, set its package `composer.json` PHP constraint to `>=8.3` unless the user explicitly says otherwise. PHP 7.4 release compatibility will be handled later by an automated Rector downgrade workflow, not by lowering the package PHP constraint during development.
+
+When adding dependencies for split packages, choose version constraints whose package line supports PHP 7.4. Use `>=` constraints for those dependencies instead of caret constraints when preserving the PHP 7.4-compatible floor matters. For example, use a Symfony component version such as `>=5.4` rather than a newer line that requires PHP 8+.
+
+### Required Files
+
+Each split package should include:
+
+- `composer.json`
+- `README.md`
+- `.gitattributes`
+- `.gitignore`
+- `.github/workflows/close-pull-request.yml`
+
+### GitHub Repositories
+
+When creating a new split repository on GitHub, use the description `[READ ONLY] Subtree split of the Foundation <Component> component (see stellarwp/foundation)` and disable wikis, issues, projects, and pull requests.
+
+## PHP Feature Policy
+
+Allowed for current PHP 8.3 source:
+
+- constructor property promotion
+- union types
+- intersection types
+- readonly properties/classes
+- enums
+- nullsafe operator
+- match expressions
+- named arguments
+- first-class callables
+- typed class constants
+
+Avoid unless there is a clear reason:
+
+- enums in public APIs
+- reflection-heavy code
+- attributes that affect runtime behavior
+- DNF types
+- `never` in public APIs
+
+Banned while the project targets PHP 8.3:
+
+- PHP 8.4 property hooks
+- PHP 8.4 asymmetric visibility
+- PHP 8.4 lazy objects API
+- `#[Deprecated]`; use `@deprecated` PHPDoc instead
+- PHP 8.4-only functions/classes/constants
+
+## Monorepo Commands
+
+After adding or changing split package dependencies, run `composer monorepo merge` and then `composer update` so root `composer.json`/lock state includes package dependency changes.
+
+Use `composer monorepo list` to inspect available Monorepo Builder commands.
+
+## Releases
+
+- Run `composer monorepo bump-interdependency <version>` when planning a major version release so Foundation packages that depend on each other require the new major line. It may also be useful for a minor release when one package must require APIs added in that new minor.
+- Run `composer monorepo package-alias` when `dev-main` should move to a new development line, usually after a minor or major release. Do not run it for every patch release when the current branch alias is still correct.
+- The monorepo split workflow deploys package code to each sub-repository after a GitHub release is drafted.
