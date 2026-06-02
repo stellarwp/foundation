@@ -1,0 +1,26 @@
+#!/usr/bin/env php
+<?php declare(strict_types=1);
+
+use Adbar\Dot;
+use lucatume\DI52\Container as DI52Container;
+use StellarWP\ContainerContract\ContainerInterface;
+use StellarWP\Foundation\Cli\Application;
+use StellarWP\Foundation\Cli\CliProvider;
+use StellarWP\Foundation\Container\ContainerAdapter;
+use StellarWP\Foundation\Container\Contracts\Container;
+
+$autoload = dirname(__DIR__) . '/vendor/autoload.php';
+
+if (! file_exists($autoload)) {
+	$autoload = dirname(__DIR__, 3) . '/vendor/autoload.php';
+}
+
+require $autoload;
+
+$container = new ContainerAdapter(new DI52Container());
+$container->bind(Container::class, $container);
+$container->bind(ContainerInterface::class, $container);
+$container->singleton(Dot::class, new Dot());
+$container->register(CliProvider::class);
+
+exit($container->get(Application::class)->run());

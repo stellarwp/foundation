@@ -10,10 +10,12 @@ use StellarWP\Foundation\Container\ContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Container\Contracts\Providable;
 use StellarWP\Foundation\Log\LogProvider;
+use StellarWP\Foundation\Tests\Support\Traits\WithDataDir;
 
 class TestCase extends \PHPUnit\Framework\TestCase
 {
 	use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
+	use WithDataDir;
 
 	public const string TEST_DIR    = 'test_dir';
 	public const string DATA_DIR    = 'data_dir';
