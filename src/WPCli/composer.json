@@ -1,0 +1,30 @@
+{
+    "name": "stellarwp/foundation-wpcli",
+    "type": "library",
+    "description": "Foundation WP-CLI helpers.",
+    "license": "GPL-2.0-or-later",
+    "config": {
+        "vendor-dir": "vendor",
+        "preferred-install": "dist"
+    },
+    "require": {
+        "php": ">=8.3",
+        "stellarwp/foundation-container": "^1.0"
+    },
+    "require-dev": {
+        "wp-cli/wp-cli": ">=2.12"
+    },
+    "suggest": {
+        "wp-cli/wp-cli": "Install when developing or testing WP-CLI command integrations outside a WP-CLI runtime."
+    },
+    "autoload": {
+        "psr-4": {
+            "StellarWP\\Foundation\\WPCli\\": ""
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.1.x-dev"
+        }
+    }
+}

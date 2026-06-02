@@ -27,13 +27,15 @@
         "phpstan/extension-installer": "^1.4",
         "phpstan/phpstan": "^2.2",
         "phpunit/phpunit": "^12.5",
+        "wp-cli/wp-cli": ">=2.12",
         "zenphp/pinte": "^1.2"
     },
     "replace": {
         "stellarwp/foundation-cli": "self.version",
         "stellarwp/foundation-container": "self.version",
         "stellarwp/foundation-log": "self.version",
-        "stellarwp/foundation-pipeline": "self.version"
+        "stellarwp/foundation-pipeline": "self.version",
+        "stellarwp/foundation-wpcli": "self.version"
     },
     "minimum-stability": "dev",
     "prefer-stable": true,
@@ -42,7 +44,8 @@
             "StellarWP\\Foundation\\Cli\\": "src/Cli/",
             "StellarWP\\Foundation\\Container\\": "src/Container/",
             "StellarWP\\Foundation\\Log\\": "src/Log/",
-            "StellarWP\\Foundation\\Pipeline\\": "src/Pipeline/"
+            "StellarWP\\Foundation\\Pipeline\\": "src/Pipeline/",
+            "StellarWP\\Foundation\\WPCli\\": "src/WPCli/"
         }
     },
     "autoload-dev": {

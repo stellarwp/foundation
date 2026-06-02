@@ -119,6 +119,8 @@ Use `composer monorepo list` to inspect available Monorepo Builder commands.
 
 When `composer lint` reports style-only issues, run `composer format` to let the project formatter fix them before making manual formatting edits.
 
+Reusable test fixtures, sample classes, and test doubles should live under `tests/Support/Fixtures/<Namespace>/` instead of being declared inline in a test class file. Keep truly local one-off fakes inline only when they are not reusable and do not represent a domain/package fixture.
+
 After completing a feature, run `composer test:coverage`, review `clover.xml` for missed source coverage, and add meaningful tests for uncovered behavior before considering the feature complete.
 
 ## Releases
