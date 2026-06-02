@@ -23,6 +23,8 @@ For example, use:
 ```text
 Commands/
   Subrepo/
+    Contracts/
+      SubrepoCreator.php
     CreateCommand.php
     PackageResolver.php
     PackageFilesValidator.php
@@ -32,6 +34,8 @@ Commands/
 instead of splitting those private collaborators into broad technical folders too early.
 
 If a collaborator is only useful for one command group, keep it under that command group's feature folder. If it becomes useful across multiple command groups, promote it to a broader domain or infrastructure namespace such as `Package/`, `GitHub/`, `Console/`, or `Process/`.
+
+Feature-local interfaces should live in a `Contracts/` folder inside the feature slice, for example `Commands/Subrepo/Contracts/SubrepoCreator.php`. Only promote contracts to a package-level `Contracts/` namespace when they are intended to be shared across multiple features or consumed as public extension points.
 
 ## Split Packages
 
@@ -52,6 +56,13 @@ Each split package should include:
 - `.gitattributes`
 - `.gitignore`
 - `.github/workflows/close-pull-request.yml`
+
+Each split package `README.md` must include this warning immediately after the package heading:
+
+```markdown
+> [!WARNING]
+> **This is a read-only repository!** For pull requests or issues, see [stellarwp/foundation](https://github.com/stellarwp/foundation).
+```
 
 ### GitHub Repositories
 
