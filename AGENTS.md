@@ -39,6 +39,8 @@ When it is very clear that a class will be reused by many similar features, prom
 
 Feature-local interfaces should live in a `Contracts/` folder inside the feature slice, for example `Commands/Subrepo/Contracts/SubrepoCreator.php`. Only promote contracts to a package-level `Contracts/` namespace when they are intended to be shared across multiple features or consumed as public extension points.
 
+Shared infrastructure interfaces should live under that shared namespace's `Contracts/` folder, for example `Process/Contracts/ProcessRunner.php`.
+
 ## Split Packages
 
 Split packages live in `src/<Package>/` and are split to read-only repositories named `stellarwp/foundation-<package>`.
@@ -106,6 +108,10 @@ Banned while the project targets PHP 8.3:
 After adding or changing split package dependencies, run `composer monorepo merge` and then `composer update` so root `composer.json`/lock state includes package dependency changes.
 
 Use `composer monorepo list` to inspect available Monorepo Builder commands.
+
+## Verification
+
+After completing a feature, run `composer test:coverage`, review `clover.xml` for missed source coverage, and add meaningful tests for uncovered behavior before considering the feature complete.
 
 ## Releases
 
