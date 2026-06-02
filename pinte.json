@@ -1,6 +1,11 @@
 {
     "preset": "laravel",
     "indent": "\t",
+    "exclude": [
+        ".agents",
+        ".codex",
+        ".claude"
+    ],
     "rules": {
         "blank_line_after_opening_tag": false,
         "linebreak_after_opening_tag": false,
