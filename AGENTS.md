@@ -9,6 +9,7 @@ Initial packages:
 - `stellarwp/foundation-container`
 - `stellarwp/foundation-log`
 - `stellarwp/foundation-pipeline`
+- `stellarwp/foundation-wpcli`
 
 ## Namespaces
 
@@ -66,6 +67,8 @@ Each split package should include:
 - `.gitattributes`
 - `.gitignore`
 - `.github/workflows/close-pull-request.yml`
+
+When adding a new split package, add its `stellarwp/foundation-<package>` repository link to the root `README.md` repositories list.
 
 Each split package `README.md` must include this warning immediately after the package heading:
 
