@@ -17,6 +17,14 @@ WP-CLI is expected to provide the `WP_CLI` and `WP_CLI_Command` runtime classes.
 
 Extend `StellarWP\Foundation\WPCli\Command` for commands that should receive the Foundation container.
 
+If the project also installs `stellarwp/foundation-cli`, scaffold a command with:
+
+```bash
+composer run foundation -- make:wpcli-command Sync_Products_Command
+```
+
+Generated WP project command classes use Snake_Case names and WordPress formatting. The default command stub includes examples for positional, associative, and flag arguments.
+
 ```php
 <?php declare(strict_types=1);
 

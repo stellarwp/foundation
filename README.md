@@ -114,6 +114,22 @@ composer run foundation -- package:create <Package> --apply
 
 The command creates the `stellarwp/foundation-<package>` repository with the standard `[READ ONLY]` description, disables issues, wiki, and projects, and relies on the package's `close-pull-request.yml` workflow to close pull requests.
 
+#### Generating WP-CLI Commands
+
+In a consuming WordPress project that installs `stellarwp/foundation-cli` and `stellarwp/foundation-wpcli`, generate a starter WP-CLI command:
+
+```bash
+composer run foundation -- make:wpcli-command Sync_Products_Command
+```
+
+The command reads the project's PSR-4 Composer autoload namespace, writes a Snake_Case command class under `src/Cli/Commands`, and uses the default WP-CLI command stub from `foundation-wpcli`.
+
+To customize the generated command stub in a project, create:
+
+```text
+foundation/stubs/wpcli/command.stub
+```
+
 ## License
 
 Copyright © 2026 Nexcess Corp.
