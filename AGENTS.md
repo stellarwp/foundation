@@ -42,6 +42,14 @@ Feature-local interfaces should live in a `Contracts/` folder inside the feature
 
 Shared infrastructure interfaces should live under that shared namespace's `Contracts/` folder, for example `Process/Contracts/ProcessRunner.php`.
 
+Generator commands should be grouped by the `make:*` workflow under `src/Cli/Commands/Make/`, for example `src/Cli/Commands/Make/WPCliCommand.php`. Shared generation infrastructure that is not itself a console command should live under `src/Cli/Generation/`.
+
+Default stubs should live with the package that owns the generated class shape. For example, WP-CLI command stubs live in `src/WPCli/stubs/` because the WPCli package owns the base `Command` API. The CLI package owns resolving, rendering, and writing generated files.
+
+Project-level stub overrides should use `foundation/stubs/<feature>/`, for example `foundation/stubs/wpcli/command.stub`.
+
+When generating classes intended for WordPress projects, use Snake_Case class names and WordPress formatting in the generated stub output, even though Foundation source follows this repository's formatter.
+
 ## Container Providers
 
 When writing providers or container registration code, prefer container-driven construction over inline factories with explicit `new` calls. Bind classes and interfaces directly when the container can autowire them.
