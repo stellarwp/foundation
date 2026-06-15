@@ -45,6 +45,7 @@ final class WPCliCommandTest extends TestCase
 		$contents = (string) file_get_contents($path);
 
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Cli\\Commands;', $contents);
+		$this->assertStringContainsString('use StellarWP\\Foundation\\WPCli\\Command;', $contents);
 		$this->assertStringContainsString('final class Sync_Products_Command extends Command {', $contents);
 		$this->assertStringContainsString('public const string ARG_ITEM', $contents);
 		$this->assertStringContainsString('public function runCommand( array $args = [], array $assocArgs = [] ): int {', $contents);
@@ -71,6 +72,47 @@ final class WPCliCommandTest extends TestCase
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Admin\\Cli;', $contents);
 		$this->assertStringContainsString("return 'customers:import';", $contents);
 		$this->assertStringContainsString("return 'Import customers.';", $contents);
+	}
+
+	public function test_it_uses_strauss_namespace_prefix_for_foundation_imports(): void {
+		$root = $this->temporaryProject([
+			'extra' => [
+				'strauss' => [
+					'namespace_prefix' => 'Acme\\Product\\',
+				],
+			],
+		]);
+		$tester = new CommandTester($this->command($root));
+
+		$statusCode = $tester->execute([
+			'name' => 'Sync_Products',
+		]);
+
+		$contents = (string) file_get_contents($root . '/src/Cli/Commands/Sync_Products_Command.php');
+
+		$this->assertSame(Command::SUCCESS, $statusCode);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\WPCli\\Command;', $contents);
+		$this->assertStringNotContainsString('use StellarWP\\Foundation\\WPCli\\Command;', $contents);
+	}
+
+	public function test_it_uses_unprefixed_foundation_imports_when_strauss_namespace_prefix_is_blank(): void {
+		$root = $this->temporaryProject([
+			'extra' => [
+				'strauss' => [
+					'namespace_prefix' => '',
+				],
+			],
+		]);
+		$tester = new CommandTester($this->command($root));
+
+		$statusCode = $tester->execute([
+			'name' => 'Sync_Products',
+		]);
+
+		$contents = (string) file_get_contents($root . '/src/Cli/Commands/Sync_Products_Command.php');
+
+		$this->assertSame(Command::SUCCESS, $statusCode);
+		$this->assertStringContainsString('use StellarWP\\Foundation\\WPCli\\Command;', $contents);
 	}
 
 	public function test_it_accepts_an_absolute_output_path(): void {
@@ -162,16 +204,19 @@ final class WPCliCommandTest extends TestCase
 		);
 	}
 
-	private function temporaryProject(): string {
+	/**
+	 * @param array<string,mixed> $composer
+	 */
+	private function temporaryProject(array $composer = []): string {
 		$root = $this->temporaryRoot('foundation-make-wpcli-test-');
 
-		file_put_contents($root . '/composer.json', json_encode([
+		file_put_contents($root . '/composer.json', json_encode(array_replace_recursive([
 			'autoload' => [
 				'psr-4' => [
 					'Acme\\Plugin\\' => 'src',
 				],
 			],
-		], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+		], $composer), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
 		return $root;
 	}

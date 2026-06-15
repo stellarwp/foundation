@@ -51,6 +51,8 @@ Project-level stub overrides should use `foundation/stubs/<feature>/`, for examp
 
 When generating classes intended for WordPress projects, use Snake_Case class names and WordPress formatting in the generated stub output, even though Foundation source follows this repository's formatter.
 
+Generators that write references to Foundation classes should detect `extra.strauss.namespace_prefix` from the consuming project's `composer.json` and render those Foundation imports with the configured prefix.
+
 ## CLI Tooling Boundary
 
 `stellarwp/foundation-cli` is developer tooling and should normally be installed by consuming projects with `composer require --dev stellarwp/foundation-cli`. It should not be packaged into production WordPress plugin zips.

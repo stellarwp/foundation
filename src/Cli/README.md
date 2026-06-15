@@ -77,6 +77,8 @@ Acme\Plugin\Cli\Commands
 
 The generated class extends `StellarWP\Foundation\WPCli\Command` and includes example positional, associative, and flag arguments using constants.
 
+If the consuming project's `composer.json` contains `extra.strauss.namespace_prefix`, the generator uses that prefix for generated Foundation imports. For example, a prefix of `Acme\\Product\\` generates imports such as `Acme\Product\StellarWP\Foundation\WPCli\Command`.
+
 Available options:
 
 ```bash

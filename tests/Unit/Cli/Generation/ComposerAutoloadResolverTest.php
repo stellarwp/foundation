@@ -36,11 +36,54 @@ final class ComposerAutoloadResolverTest extends TestCase
 		$this->assertSame('src', $namespace->path);
 	}
 
+	public function test_it_skips_invalid_psr4_namespace_keys(): void {
+		$root = $this->temporaryRoot([
+			'autoload' => [
+				'psr-4' => [
+					123              => 'invalid',
+					'Acme\\Plugin\\' => 'src',
+				],
+			],
+		]);
+
+		$namespace = (new ComposerAutoloadResolver($root))->firstPsr4Namespace();
+
+		$this->assertSame('Acme\\Plugin\\', $namespace->namespace);
+		$this->assertSame('src', $namespace->path);
+	}
+
+	public function test_it_resolves_strauss_namespace_prefix(): void {
+		$root = $this->temporaryRoot([
+			'extra' => [
+				'strauss' => [
+					'namespace_prefix' => 'Acme\\Product\\',
+				],
+			],
+		]);
+
+		$this->assertSame('Acme\\Product\\', (new ComposerAutoloadResolver($root))->straussNamespacePrefix());
+	}
+
+	public function test_it_returns_null_when_strauss_namespace_prefix_is_missing(): void {
+		$this->assertNull((new ComposerAutoloadResolver($this->temporaryRoot([])))->straussNamespacePrefix());
+	}
+
 	public function test_it_fails_when_composer_json_is_missing(): void {
 		$this->expectException(RuntimeException::class);
 		$this->expectExceptionMessage('Could not find composer.json');
 
 		(new ComposerAutoloadResolver($this->temporaryRoot()))->firstPsr4Namespace();
+	}
+
+	public function test_it_fails_when_composer_json_root_is_not_an_object(): void {
+		$root = $this->temporaryRoot();
+
+		file_put_contents($root . '/composer.json', 'null');
+
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('Could not read composer.json');
+
+		(new ComposerAutoloadResolver($root))->firstPsr4Namespace();
 	}
 
 	public function test_it_fails_when_composer_json_has_no_psr4_autoload(): void {

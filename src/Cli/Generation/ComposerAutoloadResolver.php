@@ -18,13 +18,7 @@ final readonly class ComposerAutoloadResolver
 	}
 
 	public function firstPsr4Namespace(): AutoloadNamespace {
-		$composerPath = $this->rootPath . '/composer.json';
-
-		if (! file_exists($composerPath)) {
-			throw new RuntimeException(sprintf('Could not find composer.json at "%s".', $composerPath));
-		}
-
-		$composer = json_decode((string) file_get_contents($composerPath), true, 512, JSON_THROW_ON_ERROR);
+		$composer = $this->composer();
 		$psr4     = $composer['autoload']['psr-4'] ?? [];
 
 		if (! is_array($psr4) || $psr4 === []) {
@@ -49,5 +43,34 @@ final readonly class ComposerAutoloadResolver
 		}
 
 		throw new RuntimeException('Could not find a valid autoload.psr-4 namespace in composer.json.');
+	}
+
+	public function straussNamespacePrefix(): ?string {
+		$prefix = $this->composer()['extra']['strauss']['namespace_prefix'] ?? null;
+
+		if (! is_string($prefix) || trim($prefix, '\\') === '') {
+			return null;
+		}
+
+		return trim($prefix, '\\') . '\\';
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	private function composer(): array {
+		$composerPath = $this->rootPath . '/composer.json';
+
+		if (! file_exists($composerPath)) {
+			throw new RuntimeException(sprintf('Could not find composer.json at "%s".', $composerPath));
+		}
+
+		$composer = json_decode((string) file_get_contents($composerPath), true, 512, JSON_THROW_ON_ERROR);
+
+		if (! is_array($composer)) {
+			throw new RuntimeException(sprintf('Could not read composer.json at "%s".', $composerPath));
+		}
+
+		return $composer;
 	}
 }

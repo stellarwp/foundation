@@ -79,12 +79,17 @@ final class WPCliCommand extends Command
 			path: $path . '/' . $className . '.php',
 			relativePath: $relative,
 			contents: $this->stubRenderer->render($stub, [
-				'namespace'   => $namespace,
-				'class'       => $className,
-				'subcommand'  => $subcommand,
-				'description' => $description,
+				'namespace'                => $namespace,
+				'class'                    => $className,
+				'foundation_wpcli_command' => $this->foundationClass('StellarWP\\Foundation\\WPCli\\Command'),
+				'subcommand'               => $subcommand,
+				'description'              => $description,
 			])
 		);
+	}
+
+	private function foundationClass(string $class): string {
+		return ($this->autoloadResolver->straussNamespacePrefix() ?? '') . $class;
 	}
 
 	private function namespace(InputInterface $input, AutoloadNamespace $autoload): string {

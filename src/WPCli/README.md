@@ -27,6 +27,8 @@ composer run foundation -- make:wpcli-command Sync_Products_Command
 
 Generated WP project command classes use Snake_Case names and WordPress formatting. The default command stub includes examples for positional, associative, and flag arguments.
 
+When generated through `foundation-cli`, projects using Strauss with `extra.strauss.namespace_prefix` receive prefixed Foundation imports automatically.
+
 ```php
 <?php declare(strict_types=1);
 
