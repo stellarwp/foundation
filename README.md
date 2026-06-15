@@ -10,6 +10,7 @@ Foundation is a StellarWP Composer monorepo for reusable PHP packages intended f
 - [stellarwp/foundation-pipeline](https://github.com/stellarwp/foundation-pipeline)
 - [stellarwp/foundation-log](https://github.com/stellarwp/foundation-log)
 - [stellarwp/foundation-wpcli](https://github.com/stellarwp/foundation-wpcli)
+- [stellarwp/foundation-cli](https://github.com/stellarwp/foundation-cli)
 
 ## Installation
 
@@ -116,7 +117,19 @@ The command creates the `stellarwp/foundation-<package>` repository with the sta
 
 #### Generating WP-CLI Commands
 
-In a consuming WordPress project that installs `stellarwp/foundation-cli` and `stellarwp/foundation-wpcli`, generate a starter WP-CLI command:
+In a consuming WordPress project, install the generator as a development dependency:
+
+```bash
+composer require --dev stellarwp/foundation-cli
+```
+
+If the generated command will ship with the plugin, install the runtime WP-CLI package as a normal dependency:
+
+```bash
+composer require stellarwp/foundation-wpcli
+```
+
+Then generate a starter WP-CLI command:
 
 ```bash
 composer run foundation -- make:wpcli-command Sync_Products_Command
@@ -124,11 +137,15 @@ composer run foundation -- make:wpcli-command Sync_Products_Command
 
 The command reads the project's PSR-4 Composer autoload namespace, writes a Snake_Case command class under `src/Cli/Commands`, and uses the default WP-CLI command stub from `foundation-wpcli`.
 
+`stellarwp/foundation-cli` is build-time developer tooling. Do not register `StellarWP\Foundation\Cli\CliProvider` in a WordPress plugin application, and do not include the CLI package in production plugin zips. Production installs should normally run with Composer's `--no-dev` mode so the generator, Symfony Console, and other dev tooling are not packaged.
+
 To customize the generated command stub in a project, create:
 
 ```text
 foundation/stubs/wpcli/command.stub
 ```
+
+Project-level stubs are local scaffolding assets. Add them to the consuming project's production zip exclusions, such as `.gitattributes`, when they should not be included in release archives.
 
 ## License
 

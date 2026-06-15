@@ -13,11 +13,13 @@ composer require stellarwp/foundation-wpcli
 
 WP-CLI is expected to provide the `WP_CLI` and `WP_CLI_Command` runtime classes. This package includes `wp-cli/wp-cli` as a development dependency for tests and static analysis, but applications normally do not need to install it separately when running inside WP-CLI.
 
+Install `stellarwp/foundation-wpcli` as a normal dependency when the plugin ships WP-CLI commands. Install `stellarwp/foundation-cli` separately with `composer require --dev stellarwp/foundation-cli` only when developers need generators such as `make:wpcli-command`.
+
 ## Commands
 
 Extend `StellarWP\Foundation\WPCli\Command` for commands that should receive the Foundation container.
 
-If the project also installs `stellarwp/foundation-cli`, scaffold a command with:
+If the project also installs `stellarwp/foundation-cli` as a development dependency, scaffold a command with:
 
 ```bash
 composer run foundation -- make:wpcli-command Sync_Products_Command
@@ -34,7 +36,7 @@ use StellarWP\Foundation\WPCli\Command;
 
 final class SyncCommand extends Command
 {
-	public function runCommand(array $args = [], array $assocArgs = []): int {
+	public function runCommand( array $args = [], array $assocArgs = [] ): int {
 		// Run the command using services from $this->container.
 
 		return self::SUCCESS;
@@ -65,6 +67,8 @@ final class SyncCommand extends Command
 
 Applications should register their own provider so they control the command namespace and command list.
 
+Do not register `StellarWP\Foundation\Cli\CliProvider` in a WordPress plugin. That provider belongs to the developer-facing `foundation` console binary, not plugin runtime bootstrap.
+
 ```php
 <?php declare(strict_types=1);
 
@@ -88,37 +92,37 @@ final class WpCliProvider extends Provider
 	];
 
 	public function register(): void {
-		if (! defined('WP_CLI') || ! WP_CLI) {
+		if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) {
 			return;
 		}
 
 		$this->configureCommands();
 		$this->registerTimestampedLogger();
 
-		add_action('cli_init', function (): void {
-			foreach (self::COMMANDS as $commandClass) {
-				$command = $this->container->get($commandClass);
+		add_action( 'cli_init', function (): void {
+			foreach ( self::COMMANDS as $commandClass ) {
+				$command = $this->container->get( $commandClass );
 
-				if ($command instanceof Command) {
+				if ( $command instanceof Command ) {
 					$command->register();
 				}
 			}
-		}, 0, 0);
+		}, 0, 0 );
 	}
 
 	private function configureCommands(): void {
-		foreach (self::COMMANDS as $commandClass) {
-			$this->container->when($commandClass)
-				->needs('$commandPrefix')
-				->give(self::COMMAND_PREFIX);
+		foreach ( self::COMMANDS as $commandClass ) {
+			$this->container->when( $commandClass )
+				->needs( '$commandPrefix' )
+				->give( self::COMMAND_PREFIX );
 		}
 	}
 
 	private function registerTimestampedLogger(): void {
 		$wpCliLogger = WP_CLI::get_logger();
 
-		if ($wpCliLogger instanceof Regular) {
-			WP_CLI::set_logger(new TimestampedLogger($wpCliLogger));
+		if ( $wpCliLogger instanceof Regular ) {
+			WP_CLI::set_logger( new TimestampedLogger( $wpCliLogger ) );
 		}
 	}
 }

@@ -10,6 +10,7 @@ Initial packages:
 - `stellarwp/foundation-log`
 - `stellarwp/foundation-pipeline`
 - `stellarwp/foundation-wpcli`
+- `stellarwp/foundation-cli`
 
 ## Namespaces
 
@@ -49,6 +50,16 @@ Default stubs should live with the package that owns the generated class shape. 
 Project-level stub overrides should use `foundation/stubs/<feature>/`, for example `foundation/stubs/wpcli/command.stub`.
 
 When generating classes intended for WordPress projects, use Snake_Case class names and WordPress formatting in the generated stub output, even though Foundation source follows this repository's formatter.
+
+## CLI Tooling Boundary
+
+`stellarwp/foundation-cli` is developer tooling and should normally be installed by consuming projects with `composer require --dev stellarwp/foundation-cli`. It should not be packaged into production WordPress plugin zips.
+
+Do not instruct consuming WordPress plugins to register `StellarWP\Foundation\Cli\CliProvider` in their application providers. `CliProvider` boots the Foundation Symfony Console application for the `foundation` binary only.
+
+When generated code depends on runtime APIs, require the runtime package normally. For WP-CLI commands, install `stellarwp/foundation-wpcli` in `require` if the plugin ships those commands, and install `stellarwp/foundation-cli` in `require-dev` only for generation.
+
+If local scaffolding assets such as `foundation/stubs/` should not be included in a consuming project's release archive, add them to that project's `.gitattributes` production zip exclusions.
 
 ## Container Providers
 
