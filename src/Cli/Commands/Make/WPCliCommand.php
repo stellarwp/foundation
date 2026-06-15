@@ -10,7 +10,7 @@ use StellarWP\Foundation\Cli\Generation\GeneratedFile;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
-use StellarWP\Foundation\WPCli\WPCliStubs;
+use StellarWP\Foundation\WPCli\WPCliStubPath;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -70,7 +70,7 @@ final class WPCliCommand extends Command
 		$autoload    = $this->autoloadResolver->firstPsr4Namespace();
 		$namespace   = $this->namespace($input, $autoload);
 		$path        = $this->path($input, $namespace, $autoload);
-		$stub        = $this->stubResolver->resolve('wpcli', 'command', WPCliStubs::command());
+		$stub        = $this->stubResolver->resolve('wpcli', 'command', WPCliStubPath::command());
 		$relative    = $this->relativePath($path . '/' . $className . '.php');
 		$description = (string) ($input->getOption('description') ?: $this->classNameResolver->description($className));
 		$subcommand  = (string) ($input->getOption('subcommand') ?: $this->classNameResolver->subcommand($className));
