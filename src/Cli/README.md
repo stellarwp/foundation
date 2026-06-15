@@ -21,8 +21,6 @@ If a generated WP-CLI command ships with the plugin, install `stellarwp/foundati
 composer require stellarwp/foundation-wpcli
 ```
 
-The CLI package itself requires `foundation-wpcli` because its WP-CLI generator uses the default command stub owned by that runtime package.
-
 ## Usage
 
 List all available commands:
