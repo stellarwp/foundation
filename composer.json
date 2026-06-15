@@ -53,6 +53,9 @@
             "StellarWP\\Foundation\\Tests\\": "tests/"
         }
     },
+    "bin": [
+        "src/Cli/bin/foundation"
+    ],
     "config": {
         "optimize-autoloader": true,
         "preferred-install": "dist",
