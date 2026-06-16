@@ -25,12 +25,18 @@ composer require stellarwp/foundation-wpcli
 
 List all available commands:
 ```bash
-composer run foundation -- list
+vendor/bin/foundation list
 ```
 
 Create a split repository for a new package:
 ```bash
-composer run foundation -- package:create Log
+vendor/bin/foundation package:create Log
+```
+
+In the Foundation monorepo, the root Composer script can also be used:
+
+```bash
+composer run foundation -- list
 ```
 
 If the package does not exist yet, the command asks whether to create the local scaffold in `src/<Package>` and asks for the Composer package name. For example, `WPCli` defaults to `stellarwp/foundation-wpcli`. After scaffolding, it runs `composer monorepo merge` so the root package metadata includes the new split package.
@@ -42,7 +48,7 @@ By default, commands that change external systems run as a dry run. Pass `--appl
 Foundation CLI includes generators for packages that own generated class shapes. For example, the WPCli package provides a generator for command classes:
 
 ```bash
-composer run foundation -- make:wpcli-command Sync_Products_Command
+vendor/bin/foundation make:wpcli-command Sync_Products_Command
 ```
 
 Do not add `StellarWP\Foundation\Cli\CliProvider` to the consuming WordPress plugin's provider list. That provider only boots the Foundation Symfony Console application for the `foundation` binary. Register generated WP-CLI commands from the plugin's own WP-CLI provider using `stellarwp/foundation-wpcli`.

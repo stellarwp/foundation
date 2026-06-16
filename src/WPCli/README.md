@@ -24,10 +24,10 @@ Extend `StellarWP\Foundation\WPCli\Command` for commands that should receive the
 If the project also installs `stellarwp/foundation-cli` as a development dependency, scaffold a WP-CLI command class in a consuming WordPress project:
 
 ```bash
-composer run foundation -- make:wpcli-command Sync_Products_Command
+vendor/bin/foundation make:wpcli-command Sync_Products_Command
 ```
 
-This assumes the consuming project has a Composer script named `foundation` that points to the installed Foundation binary. Without a script, call `vendor/bin/foundation` directly.
+If the consuming project has a Composer script named `foundation` that points to the installed Foundation binary, it can also run `composer run foundation -- make:wpcli-command Sync_Products_Command`.
 
 The generator reads the project's first `autoload.psr-4` namespace from `composer.json` and writes a Snake_Case command class under `src/Cli/Commands` by default.
 
@@ -62,7 +62,7 @@ When generated through `foundation-cli`, projects using Strauss with `extra.stra
 Available options:
 
 ```bash
-composer run foundation -- make:wpcli-command Sync_Products_Command --namespace="Acme\\Plugin\\Cli" --path=src/Cli --subcommand=sync-products --description="Sync products." --force
+vendor/bin/foundation make:wpcli-command Sync_Products_Command --namespace="Acme\\Plugin\\Cli" --path=src/Cli --subcommand=sync-products --description="Sync products." --force
 ```
 
 Project stub overrides live under:
@@ -72,6 +72,8 @@ foundation/stubs/wpcli/command.stub
 ```
 
 When present, the override is used instead of the default stub from the `foundation-wpcli` package.
+
+Override stubs should use the same context-aware placeholders as the default stub when writing PHP literals. For example, use `{{ description_php }}` and `{{ subcommand_php }}` for values returned from PHP methods, and `{{ foundation_wpcli_command }}` for the Foundation command import so Strauss-prefixed projects keep working.
 
 ```php
 <?php declare(strict_types=1);

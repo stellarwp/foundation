@@ -14,9 +14,14 @@ Foundation is a StellarWP Composer monorepo for reusable PHP packages intended f
 
 ## Installation
 
+Install the aggregate package when you want the convenient all-in-one Foundation package:
+
 ```shell
 composer require stellarwp/foundation
 ```
+
+The aggregate package includes all Foundation components, including the CLI package and `vendor/bin/foundation`. For lean production WordPress plugin archives, require only the split packages your plugin needs and install `stellarwp/foundation-cli` as a development dependency.
+
 ## ‍💻 Developer / Contributing Documentation
 
 ### ✅ Development requirements
@@ -132,12 +137,14 @@ composer require stellarwp/foundation-wpcli
 Then generate a starter WP-CLI command:
 
 ```bash
-composer run foundation -- make:wpcli-command Sync_Products_Command
+vendor/bin/foundation make:wpcli-command Sync_Products_Command
 ```
 
 The command reads the project's PSR-4 Composer autoload namespace, writes a Snake_Case command class under `src/Cli/Commands`, and uses the default WP-CLI command stub from `foundation-wpcli`.
 
-`stellarwp/foundation-cli` is build-time developer tooling. Do not register `StellarWP\Foundation\Cli\CliProvider` in a WordPress plugin application, and do not include the CLI package in production plugin zips. Production installs should normally run with Composer's `--no-dev` mode so the generator, Symfony Console, and other dev tooling are not packaged.
+If your project adds a Composer script such as `"foundation": "@php vendor/bin/foundation"`, you may run the command as `composer run foundation -- make:wpcli-command Sync_Products_Command`.
+
+`stellarwp/foundation-cli` is build-time developer tooling when installed as a split package. Do not register `StellarWP\Foundation\Cli\CliProvider` in a WordPress plugin application, and do not include the CLI split package in production plugin zips. Production split-package installs should normally run with Composer's `--no-dev` mode so the generator, Symfony Console, and other dev tooling are not packaged.
 
 To customize the generated command stub in a project, create:
 

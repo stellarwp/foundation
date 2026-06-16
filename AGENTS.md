@@ -53,9 +53,13 @@ When generating classes intended for WordPress projects, use Snake_Case class na
 
 Generators that write references to Foundation classes should detect `extra.strauss.namespace_prefix` from the consuming project's `composer.json` and render those Foundation imports with the configured prefix.
 
+Generator stubs should use context-aware placeholders for PHP literals, such as `{{ description_php }}` instead of raw `{{ description }}` inside quoted PHP strings.
+
 ## CLI Tooling Boundary
 
-`stellarwp/foundation-cli` is developer tooling and should normally be installed by consuming projects with `composer require --dev stellarwp/foundation-cli`. It should not be packaged into production WordPress plugin zips.
+`stellarwp/foundation-cli` is developer tooling and should normally be installed by split-package consumers with `composer require --dev stellarwp/foundation-cli`. It should not be packaged into production WordPress plugin zips when installed as a split package.
+
+The aggregate `stellarwp/foundation` package is an all-in-one convenience package and includes the CLI code and binary. For lean production archives, consuming projects should require only the split packages they need.
 
 Do not instruct consuming WordPress plugins to register `StellarWP\Foundation\Cli\CliProvider` in their application providers. `CliProvider` boots the Foundation Symfony Console application for the `foundation` binary only.
 
