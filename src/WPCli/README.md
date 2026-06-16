@@ -19,15 +19,59 @@ Install `stellarwp/foundation-wpcli` as a normal dependency when the plugin ship
 
 Extend `StellarWP\Foundation\WPCli\Command` for commands that should receive the Foundation container.
 
-If the project also installs `stellarwp/foundation-cli` as a development dependency, scaffold a command with:
+## Generating Commands
+
+If the project also installs `stellarwp/foundation-cli` as a development dependency, scaffold a WP-CLI command class in a consuming WordPress project:
 
 ```bash
 composer run foundation -- make:wpcli-command Sync_Products_Command
 ```
 
-Generated WP project command classes use Snake_Case names and WordPress formatting. The default command stub includes examples for positional, associative, and flag arguments.
+This assumes the consuming project has a Composer script named `foundation` that points to the installed Foundation binary. Without a script, call `vendor/bin/foundation` directly.
+
+The generator reads the project's first `autoload.psr-4` namespace from `composer.json` and writes a Snake_Case command class under `src/Cli/Commands` by default.
+
+For example, a project with this Composer autoload entry:
+
+```json
+{
+    "autoload": {
+        "psr-4": {
+            "Acme\\Plugin\\": "src"
+        }
+    }
+}
+```
+
+will generate:
+
+```text
+src/Cli/Commands/Sync_Products_Command.php
+```
+
+with namespace:
+
+```php
+Acme\Plugin\Cli\Commands
+```
+
+The generated class extends `StellarWP\Foundation\WPCli\Command` and includes example positional, associative, and flag arguments using constants.
 
 When generated through `foundation-cli`, projects using Strauss with `extra.strauss.namespace_prefix` receive prefixed Foundation imports automatically.
+
+Available options:
+
+```bash
+composer run foundation -- make:wpcli-command Sync_Products_Command --namespace="Acme\\Plugin\\Cli" --path=src/Cli --subcommand=sync-products --description="Sync products." --force
+```
+
+Project stub overrides live under:
+
+```text
+foundation/stubs/wpcli/command.stub
+```
+
+When present, the override is used instead of the default stub from the `foundation-wpcli` package.
 
 ```php
 <?php declare(strict_types=1);

@@ -39,59 +39,15 @@ By default, commands that change external systems run as a dry run. Pass `--appl
 
 ## Generators
 
-Generate a WP-CLI command class in a consuming WordPress project:
+Foundation CLI includes generators for packages that own generated class shapes. For example, the WPCli package provides a generator for command classes:
 
 ```bash
 composer run foundation -- make:wpcli-command Sync_Products_Command
 ```
 
-This assumes the consuming project has a Composer script named `foundation` that points to the installed Foundation binary. Without a script, call `vendor/bin/foundation` directly.
-
-The generator reads the project's first `autoload.psr-4` namespace from `composer.json` and writes a Snake_Case command class under `src/Cli/Commands` by default.
-
 Do not add `StellarWP\Foundation\Cli\CliProvider` to the consuming WordPress plugin's provider list. That provider only boots the Foundation Symfony Console application for the `foundation` binary. Register generated WP-CLI commands from the plugin's own WP-CLI provider using `stellarwp/foundation-wpcli`.
 
-For example, a project with this Composer autoload entry:
-
-```json
-{
-    "autoload": {
-        "psr-4": {
-            "Acme\\Plugin\\": "src"
-        }
-    }
-}
-```
-
-will generate:
-
-```text
-src/Cli/Commands/Sync_Products_Command.php
-```
-
-with namespace:
-
-```php
-Acme\Plugin\Cli\Commands
-```
-
-The generated class extends `StellarWP\Foundation\WPCli\Command` and includes example positional, associative, and flag arguments using constants.
-
-If the consuming project's `composer.json` contains `extra.strauss.namespace_prefix`, the generator uses that prefix for generated Foundation imports. For example, a prefix of `Acme\\Product\\` generates imports such as `Acme\Product\StellarWP\Foundation\WPCli\Command`.
-
-Available options:
-
-```bash
-composer run foundation -- make:wpcli-command Sync_Products_Command --namespace="Acme\\Plugin\\Cli" --path=src/Cli --subcommand=sync-products --description="Sync products." --force
-```
-
-Project stub overrides live under:
-
-```text
-foundation/stubs/wpcli/command.stub
-```
-
-When present, the override is used instead of the default stub from the `foundation-wpcli` package.
+See the WPCli package README for WP-CLI generator behavior, options, and stub overrides.
 
 ## Custom Commands
 
