@@ -74,6 +74,39 @@ final class WPCliCommandTest extends TestCase
 		$this->assertStringContainsString("return 'Import customers.';", $contents);
 	}
 
+	public function test_it_escapes_php_string_values_in_generated_code(): void {
+		$root        = $this->temporaryProject();
+		$tester      = new CommandTester($this->command($root));
+		$description = "Don't sync \\ products.";
+		$subcommand  = "products:don't-sync";
+
+		$statusCode = $tester->execute([
+			'name'          => 'Sync_Products',
+			'--description' => $description,
+			'--subcommand'  => $subcommand,
+		]);
+
+		$contents = (string) file_get_contents($root . '/src/Cli/Commands/Sync_Products_Command.php');
+
+		$this->assertSame(Command::SUCCESS, $statusCode);
+		$this->assertStringContainsString('return ' . var_export($subcommand, true) . ';', $contents);
+		$this->assertStringContainsString('return ' . var_export($description, true) . ';', $contents);
+	}
+
+	public function test_it_reports_malformed_composer_json_errors(): void {
+		$root = $this->temporaryRoot('foundation-make-wpcli-malformed-composer-');
+
+		file_put_contents($root . '/composer.json', '{"autoload":');
+
+		$tester     = new CommandTester($this->command($root));
+		$statusCode = $tester->execute([
+			'name' => 'Sync_Products',
+		]);
+
+		$this->assertSame(Command::FAILURE, $statusCode);
+		$this->assertStringContainsString('Could not parse composer.json', $tester->getDisplay());
+	}
+
 	public function test_it_uses_strauss_namespace_prefix_for_foundation_imports(): void {
 		$root = $this->temporaryProject([
 			'extra' => [
@@ -128,6 +161,33 @@ final class WPCliCommandTest extends TestCase
 		$this->assertSame(Command::SUCCESS, $statusCode);
 		$this->assertFileExists($outputRoot . '/Export_Customers_Command.php');
 		$this->assertStringContainsString('Created: ' . $outputRoot . '/Export_Customers_Command.php', $tester->getDisplay());
+	}
+
+	public function test_it_rejects_namespace_without_path_when_namespace_is_outside_the_autoload_root(): void {
+		$root   = $this->temporaryProject();
+		$tester = new CommandTester($this->command($root));
+
+		$statusCode = $tester->execute([
+			'name'        => 'Sync_Products',
+			'--namespace' => 'Acme\\PluginTools\\Cli',
+		]);
+
+		$this->assertSame(Command::FAILURE, $statusCode);
+		$this->assertStringContainsString('Namespace "Acme\\PluginTools\\Cli" is outside Composer PSR-4 namespace "Acme\\Plugin\\".', $tester->getDisplay());
+		$this->assertFileDoesNotExist($root . '/src/Tools/Cli/Sync_Products_Command.php');
+	}
+
+	public function test_it_accepts_namespace_without_path_when_namespace_matches_the_autoload_root_boundary(): void {
+		$root   = $this->temporaryProject();
+		$tester = new CommandTester($this->command($root));
+
+		$statusCode = $tester->execute([
+			'name'        => 'Sync_Products',
+			'--namespace' => 'Acme\\Plugin\\Admin\\Cli',
+		]);
+
+		$this->assertSame(Command::SUCCESS, $statusCode);
+		$this->assertFileExists($root . '/src/Admin/Cli/Sync_Products_Command.php');
 	}
 
 	public function test_it_reports_autoload_resolution_errors(): void {

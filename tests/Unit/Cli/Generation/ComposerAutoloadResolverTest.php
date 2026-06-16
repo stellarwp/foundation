@@ -86,6 +86,17 @@ final class ComposerAutoloadResolverTest extends TestCase
 		(new ComposerAutoloadResolver($root))->firstPsr4Namespace();
 	}
 
+	public function test_it_fails_when_composer_json_is_malformed(): void {
+		$root = $this->temporaryRoot();
+
+		file_put_contents($root . '/composer.json', '{"autoload":');
+
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('Could not parse composer.json');
+
+		(new ComposerAutoloadResolver($root))->firstPsr4Namespace();
+	}
+
 	public function test_it_fails_when_composer_json_has_no_psr4_autoload(): void {
 		$this->expectException(RuntimeException::class);
 		$this->expectExceptionMessage('Could not find an autoload.psr-4 namespace in composer.json.');

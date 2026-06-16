@@ -2,6 +2,7 @@
 
 namespace StellarWP\Foundation\Cli\Generation;
 
+use JsonException;
 use RuntimeException;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\AutoloadNamespace;
 
@@ -66,7 +67,11 @@ final readonly class ComposerAutoloadResolver
 			throw new RuntimeException(sprintf('Could not find composer.json at "%s".', $composerPath));
 		}
 
-		$composer = json_decode((string) file_get_contents($composerPath), true, 512, JSON_THROW_ON_ERROR);
+		try {
+			$composer = json_decode((string) file_get_contents($composerPath), true, 512, JSON_THROW_ON_ERROR);
+		} catch (JsonException $exception) {
+			throw new RuntimeException(sprintf('Could not parse composer.json at "%s": %s', $composerPath, $exception->getMessage()), 0, $exception);
+		}
 
 		if (! is_array($composer)) {
 			throw new RuntimeException(sprintf('Could not read composer.json at "%s".', $composerPath));

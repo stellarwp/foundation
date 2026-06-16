@@ -32,11 +32,11 @@ final class {{ class }} extends Command {
 	}
 
 	protected function subcommand(): string {
-		return '{{ subcommand }}';
+		return {{ subcommand_php }};
 	}
 
 	protected function description(): string {
-		return '{{ description }}';
+		return {{ description_php }};
 	}
 
 	protected function arguments(): array {
