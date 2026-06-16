@@ -3,13 +3,13 @@
 namespace StellarWP\Foundation\Cli\Commands\Make;
 
 use RuntimeException;
-use StellarWP\Foundation\Cli\Generation\AutoloadNamespace;
 use StellarWP\Foundation\Cli\Generation\ClassNameResolver;
 use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
-use StellarWP\Foundation\Cli\Generation\GeneratedFile;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\AutoloadNamespace;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
 use StellarWP\Foundation\WPCli\WPCliStubPath;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;

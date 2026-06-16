@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Cli\Generation;
 
 use RuntimeException;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
 
 /**
  * Writes generated files to disk with overwrite protection.

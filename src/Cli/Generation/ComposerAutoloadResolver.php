@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Cli\Generation;
 
 use RuntimeException;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\AutoloadNamespace;
 
 /**
  * Reads a project's Composer autoload configuration for generator defaults.
