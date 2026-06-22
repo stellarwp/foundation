@@ -149,7 +149,7 @@ When `composer lint` reports style-only issues, run `composer format` to let the
 
 Reusable test fixtures, sample classes, and test doubles should live under `tests/Support/Fixtures/<Namespace>/` instead of being declared inline in a test class file. Keep truly local one-off fakes inline only when they are not reusable and do not represent a domain/package fixture.
 
-Tests that need writable temporary files or directories should use a test-specific subdirectory under `tests/_data/temp` instead of `sys_get_temp_dir()`. Use `$this->temp_dir('<name>')` when only the path is needed; it mirrors `codecept_data_dir()` and does not create the directory. Use `$this->prepare_temp_dir('<name>')` in `setUp()` to remove any previous contents, create a clean directory, and register it for automatic cleanup by the base test case. Only call `$this->remove_temp_dir('<name>')` manually when a test needs to remove the directory before teardown.
+Tests that need writable temporary files or directories should use a test-specific subdirectory under `tests/_data/temp` instead of `sys_get_temp_dir()`. Use `$this->temp_dir('<name>')` when only the path is needed; it mirrors `codecept_data_dir()` and does not create the directory. Use `$this->prepare_temp_dir('<name>')` in `setUp()` to create a unique clean directory under that name and register it for automatic cleanup by the base test case. Only call `$this->remove_temp_dir('<name>')` manually when a test needs to remove the prepared directories before teardown.
 
 After completing a feature, run `composer test:coverage`, review `clover.xml` for missed source coverage, and add meaningful tests for uncovered behavior before considering the feature complete.
 

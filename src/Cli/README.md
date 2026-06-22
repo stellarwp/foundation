@@ -74,7 +74,9 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 final class CacheClearCommand extends Command
 {
-	protected static $defaultName = 'cache:clear';
+	public function __construct() {
+		parent::__construct('cache:clear');
+	}
 
 	protected function execute(InputInterface $input, OutputInterface $output): int {
 		$output->writeln('Cache cleared.');

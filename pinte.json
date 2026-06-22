@@ -4,7 +4,8 @@
     "exclude": [
         ".agents",
         ".codex",
-        ".claude"
+        ".claude",
+        "tests/_data/temp"
     ],
     "rules": {
         "blank_line_after_opening_tag": false,
