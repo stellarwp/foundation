@@ -10,12 +10,18 @@ Foundation is a StellarWP Composer monorepo for reusable PHP packages intended f
 - [stellarwp/foundation-pipeline](https://github.com/stellarwp/foundation-pipeline)
 - [stellarwp/foundation-log](https://github.com/stellarwp/foundation-log)
 - [stellarwp/foundation-wpcli](https://github.com/stellarwp/foundation-wpcli)
+- [stellarwp/foundation-cli](https://github.com/stellarwp/foundation-cli)
 
 ## Installation
+
+Install the aggregate package when you want the convenient all-in-one Foundation package:
 
 ```shell
 composer require stellarwp/foundation
 ```
+
+The aggregate package includes all Foundation components, including the CLI package and `vendor/bin/foundation`. For lean production WordPress plugin archives, require only the split packages your plugin needs and install `stellarwp/foundation-cli` as a development dependency.
+
 ## ‍💻 Developer / Contributing Documentation
 
 ### ✅ Development requirements
@@ -112,7 +118,41 @@ The command runs as a dry run by default. It validates the required split packag
 composer run foundation -- package:create <Package> --apply
 ```
 
-The command creates the `stellarwp/foundation-<package>` repository with the standard `[READ ONLY]` description, disables issues, wiki, and projects, and relies on the package's `close-pull-request.yml` workflow to close pull requests.
+The command creates the `stellarwp/foundation-<package>` repository with the standard `[READ ONLY]` description and disables issues, wiki, projects, and pull requests. The package's `close-pull-request.yml` workflow is still included as a fallback guard for read-only split repositories.
+
+#### Generating WP-CLI Commands
+
+In a consuming WordPress project, install the generator as a development dependency:
+
+```bash
+composer require --dev stellarwp/foundation-cli
+```
+
+If the generated command will ship with the plugin, install the runtime WP-CLI package as a normal dependency:
+
+```bash
+composer require stellarwp/foundation-wpcli
+```
+
+Then generate a starter WP-CLI command:
+
+```bash
+vendor/bin/foundation make:wpcli-command Sync_Products_Command
+```
+
+The command reads the project's PSR-4 Composer autoload namespaces, writes a Snake_Case command class under `Cli/Commands` inside the selected PSR-4 root, and uses the default WP-CLI command stub from `foundation-wpcli`.
+
+If your project adds a Composer script such as `"foundation": "@php vendor/bin/foundation"`, you may run the command as `composer run foundation -- make:wpcli-command Sync_Products_Command`.
+
+`stellarwp/foundation-cli` is build-time developer tooling when installed as a split package. Do not register `StellarWP\Foundation\Cli\CliProvider` in a WordPress plugin application, and do not include the CLI split package in production plugin zips. Production split-package installs should normally run with Composer's `--no-dev` mode so the generator, Symfony Console, and other dev tooling are not packaged.
+
+To customize the generated command stub in a project, create:
+
+```text
+foundation/stubs/wpcli/command.stub
+```
+
+Project-level stubs are local scaffolding assets. Add them to the consuming project's production zip exclusions, such as `.gitattributes`, when they should not be included in release archives.
 
 ## License
 

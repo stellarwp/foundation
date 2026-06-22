@@ -55,5 +55,5 @@ vendor
 # Tests
 ###########
 /coverage/
-/tests/data/temp/*
-!/tests/data/temp/.gitkeep
+/tests/_data/temp/*
+!/tests/_data/temp/.gitkeep

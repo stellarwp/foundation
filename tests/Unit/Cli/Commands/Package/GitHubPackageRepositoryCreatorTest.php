@@ -32,6 +32,15 @@ final class GitHubPackageRepositoryCreatorTest extends TestCase
 				'stellarwp/foundation-log',
 				'--enable-projects=false',
 			],
+			[
+				'gh',
+				'api',
+				'repos/stellarwp/foundation-log',
+				'--method',
+				'PATCH',
+				'--field',
+				'has_pull_requests=false',
+			],
 		], $creator->commands($this->plan()));
 	}
 
@@ -41,7 +50,7 @@ final class GitHubPackageRepositoryCreatorTest extends TestCase
 
 		$creator->create($this->plan());
 
-		$this->assertCount(2, $processRunner->commands);
+		$this->assertCount(3, $processRunner->commands);
 	}
 
 	public function test_it_throws_when_a_github_cli_command_fails(): void {

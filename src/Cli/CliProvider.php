@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Cli;
 
 use lucatume\DI52\Container;
+use StellarWP\Foundation\Cli\Commands\Make\WPCliCommand;
 use StellarWP\Foundation\Cli\Commands\Package\Contracts\PackageRepositoryCreator;
 use StellarWP\Foundation\Cli\Commands\Package\CreateCommand;
 use StellarWP\Foundation\Cli\Commands\Package\GitHubPackageRepositoryCreator;
@@ -10,6 +11,11 @@ use StellarWP\Foundation\Cli\Commands\Package\PackageFilesValidator;
 use StellarWP\Foundation\Cli\Commands\Package\PackageRepositoryPlanFactory;
 use StellarWP\Foundation\Cli\Commands\Package\PackageResolver;
 use StellarWP\Foundation\Cli\Commands\Package\PackageScaffolder;
+use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
+use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
+use StellarWP\Foundation\Cli\Generation\StubRenderer;
+use StellarWP\Foundation\Cli\Generation\StubResolver;
+use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Cli\Process\Contracts\ProcessRunner;
 use StellarWP\Foundation\Cli\Process\ShellProcessRunner;
 use StellarWP\Foundation\Container\Contracts\Provider;
@@ -35,10 +41,23 @@ final class CliProvider extends Provider
 			->needs('$rootPath')
 			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
 
+		$this->container->when(ComposerAutoloadResolver::class)
+			->needs('$rootPath')
+			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+
+		$this->container->when(StubResolver::class)
+			->needs('$rootPath')
+			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+
+		$this->container->when(WPCliCommand::class)
+			->needs('$rootPath')
+			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+
 		$this->container->when(Application::class)
 			->needs('$commands')
 			->give(static fn (Container $c): array => [
 				$c->get(CreateCommand::class),
+				$c->get(WPCliCommand::class),
 			]);
 
 		$this->container->singleton(PackageResolver::class);
@@ -49,6 +68,12 @@ final class CliProvider extends Provider
 		$this->container->bind(ProcessRunner::class, ShellProcessRunner::class);
 		$this->container->bind(PackageRepositoryCreator::class, GitHubPackageRepositoryCreator::class);
 		$this->container->singleton(CreateCommand::class);
+		$this->container->singleton(WordPressClassNameResolver::class);
+		$this->container->singleton(ComposerAutoloadResolver::class);
+		$this->container->singleton(GeneratedFileWriter::class);
+		$this->container->singleton(StubRenderer::class);
+		$this->container->singleton(StubResolver::class);
+		$this->container->singleton(WPCliCommand::class);
 		$this->container->singleton(Application::class);
 	}
 }

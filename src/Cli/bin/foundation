@@ -9,18 +9,58 @@ use StellarWP\Foundation\Cli\CliProvider;
 use StellarWP\Foundation\Container\ContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Container;
 
-$autoload = dirname(__DIR__) . '/vendor/autoload.php';
-
-if (! file_exists($autoload)) {
-	$autoload = dirname(__DIR__, 3) . '/vendor/autoload.php';
+final class FoundationCliBootstrapException extends RuntimeException
+{
 }
 
-require $autoload;
+try {
+	$autoload = null;
 
-$container = new ContainerAdapter(new DI52Container());
-$container->bind(Container::class, $container);
-$container->bind(ContainerInterface::class, $container);
-$container->singleton(Dot::class, new Dot());
-$container->register(CliProvider::class);
+	if (isset($GLOBALS['_composer_autoload_path']) && is_string($GLOBALS['_composer_autoload_path'])) {
+		$autoload = $GLOBALS['_composer_autoload_path'];
+		unset($GLOBALS['_composer_autoload_path']);
+	}
 
-exit($container->get(Application::class)->run());
+	foreach ([
+		__DIR__ . '/../vendor/autoload.php',
+		dirname(__DIR__, 3) . '/vendor/autoload.php',
+		dirname(__DIR__, 3) . '/autoload.php',
+		dirname(__DIR__, 5) . '/autoload.php',
+	] as $file) {
+		if (is_string($autoload) && is_readable($autoload)) {
+			break;
+		}
+
+		if (is_readable($file)) {
+			$autoload = $file;
+
+			break;
+		}
+	}
+
+	unset($file);
+
+	if (! is_string($autoload) || ! is_readable($autoload)) {
+		throw new FoundationCliBootstrapException(
+			'Could not find Composer autoload.php. Run this command from a project with Composer dependencies installed, or run composer install first.'
+		);
+	}
+
+	require $autoload;
+
+	$container = new ContainerAdapter(new DI52Container());
+	$container->bind(Container::class, $container);
+	$container->bind(ContainerInterface::class, $container);
+	$container->singleton(Dot::class, new Dot());
+	$container->register(CliProvider::class);
+
+	exit($container->get(Application::class)->run());
+} catch (FoundationCliBootstrapException $e) {
+	fwrite(STDERR, 'Foundation CLI bootstrap failed: ' . $e->getMessage() . PHP_EOL);
+
+	exit(1);
+} catch (Throwable $e) {
+	fwrite(STDERR, 'Foundation CLI failed to start: ' . $e->getMessage() . PHP_EOL);
+
+	exit(1);
+}

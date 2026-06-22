@@ -10,6 +10,7 @@ Initial packages:
 - `stellarwp/foundation-log`
 - `stellarwp/foundation-pipeline`
 - `stellarwp/foundation-wpcli`
+- `stellarwp/foundation-cli`
 
 ## Namespaces
 
@@ -41,6 +42,30 @@ When it is very clear that a class will be reused by many similar features, prom
 Feature-local interfaces should live in a `Contracts/` folder inside the feature slice, for example `Commands/Package/Contracts/PackageRepositoryCreator.php`. Only promote contracts to a package-level `Contracts/` namespace when they are intended to be shared across multiple features or consumed as public extension points.
 
 Shared infrastructure interfaces should live under that shared namespace's `Contracts/` folder, for example `Process/Contracts/ProcessRunner.php`.
+
+Generator commands should be grouped by the `make:*` workflow under `src/Cli/Commands/Make/`, for example `src/Cli/Commands/Make/WPCliCommand.php`. Shared generation infrastructure that is not itself a console command should live under `src/Cli/Generation/`.
+
+Default stubs should live with the package that owns the generated class shape. For example, WP-CLI command stubs live in `src/WPCli/stubs/` because the WPCli package owns the base `Command` API. The CLI package owns resolving, rendering, and writing generated files.
+
+Project-level stub overrides should use `foundation/stubs/<feature>/`, for example `foundation/stubs/wpcli/command.stub`.
+
+When generating classes intended for WordPress projects, use Snake_Case class names and WordPress formatting in the generated stub output, even though Foundation source follows this repository's formatter.
+
+Generators that write references to Foundation classes should detect `extra.strauss.namespace_prefix` from the consuming project's `composer.json` and render those Foundation imports with the configured prefix.
+
+Generator stubs should use context-aware placeholders for PHP literals, such as `{{ description_php }}` instead of raw `{{ description }}` inside quoted PHP strings.
+
+## CLI Tooling Boundary
+
+`stellarwp/foundation-cli` is developer tooling and should normally be installed by split-package consumers with `composer require --dev stellarwp/foundation-cli`. It should not be packaged into production WordPress plugin zips when installed as a split package.
+
+The aggregate `stellarwp/foundation` package is an all-in-one convenience package and includes the CLI code and binary. For lean production archives, consuming projects should require only the split packages they need.
+
+Do not instruct consuming WordPress plugins to register `StellarWP\Foundation\Cli\CliProvider` in their application providers. `CliProvider` boots the Foundation Symfony Console application for the `foundation` binary only.
+
+When generated code depends on runtime APIs, require the runtime package normally. For WP-CLI commands, install `stellarwp/foundation-wpcli` in `require` if the plugin ships those commands, and install `stellarwp/foundation-cli` in `require-dev` only for generation.
+
+If local scaffolding assets such as `foundation/stubs/` should not be included in a consuming project's release archive, add them to that project's `.gitattributes` production zip exclusions.
 
 ## Container Providers
 
@@ -123,6 +148,8 @@ Use `composer monorepo list` to inspect available Monorepo Builder commands.
 When `composer lint` reports style-only issues, run `composer format` to let the project formatter fix them before making manual formatting edits.
 
 Reusable test fixtures, sample classes, and test doubles should live under `tests/Support/Fixtures/<Namespace>/` instead of being declared inline in a test class file. Keep truly local one-off fakes inline only when they are not reusable and do not represent a domain/package fixture.
+
+Tests that need writable temporary files or directories should use a test-specific subdirectory under `tests/_data/temp` instead of `sys_get_temp_dir()`. Use `$this->temp_dir('<name>')` when only the path is needed; it mirrors `codecept_data_dir()` and does not create the directory. Use `$this->prepare_temp_dir('<name>')` in `setUp()` to create a unique clean directory under that name and register it for automatic cleanup by the base test case. Only call `$this->remove_temp_dir('<name>')` manually when a test needs to remove the prepared directories before teardown.
 
 After completing a feature, run `composer test:coverage`, review `clover.xml` for missed source coverage, and add meaningful tests for uncovered behavior before considering the feature complete.
 

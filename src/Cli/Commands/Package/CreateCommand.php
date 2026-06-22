@@ -23,8 +23,7 @@ use Symfony\Component\Console\Question\Question;
  */
 final class CreateCommand extends Command
 {
-	private const string NAME              = 'package:create';
-	private const string PULL_REQUEST_NOTE = 'Manual step: GitHub CLI cannot disable pull requests. Confirm pull requests are disabled or restricted in GitHub settings; otherwise keep close-pull-request.yml in place to close incoming pull requests.';
+	private const string NAME = 'package:create';
 
 	public function __construct(
 		private readonly PackageResolver $packageResolver,
@@ -85,16 +84,12 @@ final class CreateCommand extends Command
 				$output->writeln(' - ' . ShellCommand::format($command));
 			}
 
-			$output->writeln('');
-			$output->writeln('<comment>' . self::PULL_REQUEST_NOTE . '</comment>');
-
 			return Command::SUCCESS;
 		}
 
 		$this->packageRepositoryCreator->create($plan);
 
 		$output->writeln('<info>Package repository created/configured.</info>');
-		$output->writeln('<comment>' . self::PULL_REQUEST_NOTE . '</comment>');
 
 		return Command::SUCCESS;
 	}
