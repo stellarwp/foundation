@@ -43,6 +43,15 @@ final readonly class GitHubPackageRepositoryCreator implements PackageRepository
 				$plan->fullName(),
 				'--enable-projects=false',
 			],
+			[
+				'gh',
+				'api',
+				'repos/' . $plan->fullName(),
+				'--method',
+				'PATCH',
+				'--field',
+				'has_pull_requests=false',
+			],
 		];
 	}
 

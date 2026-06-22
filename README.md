@@ -118,7 +118,7 @@ The command runs as a dry run by default. It validates the required split packag
 composer run foundation -- package:create <Package> --apply
 ```
 
-The command creates the `stellarwp/foundation-<package>` repository with the standard `[READ ONLY]` description, disables issues, wiki, and projects, and relies on the package's `close-pull-request.yml` workflow to close pull requests.
+The command creates the `stellarwp/foundation-<package>` repository with the standard `[READ ONLY]` description and disables issues, wiki, projects, and pull requests. The package's `close-pull-request.yml` workflow is still included as a fallback guard for read-only split repositories.
 
 #### Generating WP-CLI Commands
 

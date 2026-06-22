@@ -59,7 +59,6 @@ final class CreateCommandTest extends TestCase
 		$this->assertStringContainsString('Package: stellarwp/foundation-log', $tester->getDisplay());
 		$this->assertStringContainsString('Dry run. Run with --apply', $tester->getDisplay());
 		$this->assertStringContainsString("'gh' 'repo' 'create'", $tester->getDisplay());
-		$this->assertStringContainsString('Manual step: GitHub CLI cannot disable pull requests.', $tester->getDisplay());
 		$this->assertFalse($packageRepositoryCreator->created);
 	}
 
@@ -83,7 +82,6 @@ final class CreateCommandTest extends TestCase
 		$this->assertSame(Command::SUCCESS, $statusCode);
 		$this->assertTrue($packageRepositoryCreator->created);
 		$this->assertStringContainsString('Package repository created/configured.', $tester->getDisplay());
-		$this->assertStringContainsString('Manual step: GitHub CLI cannot disable pull requests.', $tester->getDisplay());
 	}
 
 	public function test_it_fails_when_the_package_cannot_be_resolved(): void {
