@@ -156,6 +156,6 @@ After completing a feature, run `composer test:coverage`, review `clover.xml` fo
 ## Releases
 
 - Adding a new split package is usually a minor SemVer release because it introduces new functionality without breaking existing packages. Use a major release only if the change also breaks an existing public API or package contract.
-- Run `composer monorepo bump-interdependency <version>` when planning a major version release so Foundation packages that depend on each other require the new major line. It may also be useful for a minor release when one package must require APIs added in that new minor.
+- Run `composer monorepo bump-interdependency <constraint>` when planning a major version release so Foundation packages that depend on each other require the new major line, for example `^3.0`. It may also be useful for a minor release when one package must require APIs added in that new minor, for example `^1.1`.
 - Run `composer monorepo package-alias` when `dev-main` should move to a new development line, usually after a minor or major release. Do not run it for every patch release when the current branch alias is still correct.
-- The monorepo split workflow deploys package code to each sub-repository after a GitHub release is drafted.
+- The monorepo split workflow deploys package code to each sub-repository on pushes to `main` and when release tags are pushed. Publishing a GitHub release creates the release tag and triggers the tagged split.
