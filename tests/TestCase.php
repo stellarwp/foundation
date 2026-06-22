@@ -48,6 +48,7 @@ class TestCase extends \PHPUnit\Framework\TestCase
 
 	protected function tearDown(): void {
 		$this->closeMockery();
+		$this->cleanup_temp_dirs();
 
 		parent::tearDown();
 	}
