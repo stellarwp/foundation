@@ -14,6 +14,14 @@ final class ComposerAutoloadResolverTest extends TestCase
 	 */
 	private array $temporaryRoots = [];
 
+	private string $tempDir;
+
+	protected function setUp(): void {
+		parent::setUp();
+
+		$this->tempDir = $this->prepare_temp_dir('composer-autoload-resolver');
+	}
+
 	protected function tearDown(): void {
 		foreach ($this->temporaryRoots as $temporaryRoot) {
 			$this->removeDirectory($temporaryRoot);
@@ -238,7 +246,7 @@ final class ComposerAutoloadResolverTest extends TestCase
 	 * @param array<string,mixed>|null $composer
 	 */
 	private function temporaryRoot(?array $composer = null): string {
-		$root = sys_get_temp_dir() . '/foundation-autoload-test-' . bin2hex(random_bytes(8));
+		$root = $this->tempDir . '/foundation-autoload-test-' . bin2hex(random_bytes(8));
 
 		if (! mkdir($root, 0777, true) && ! is_dir($root)) {
 			$this->fail(sprintf('Could not create temporary root "%s".', $root));

@@ -20,7 +20,17 @@ final class WordPressClassNameResolver
 			$words[] = 'command';
 		}
 
-		return implode('_', array_map($this->pascalWord(...), $words));
+		$className = implode('_', array_map($this->pascalWord(...), $words));
+
+		if ($className === 'Command') {
+			throw new RuntimeException(sprintf('Could not create a command class named "Command" from "%s" because it conflicts with the Foundation base command class.', $input));
+		}
+
+		if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $className)) {
+			throw new RuntimeException(sprintf('Could not create a valid PHP class name from "%s".', $input));
+		}
+
+		return $className;
 	}
 
 	public function subcommand(string $className): string {

@@ -63,6 +63,13 @@ final class WPCliCommand extends Command
 		$output->writeln('');
 		$output->writeln('<comment>Register this command from your WP-CLI provider and configure its $commandPrefix container argument.</comment>');
 
+		$runtimeDependencyWarning = $this->runtimeDependencyWarning();
+
+		if ($runtimeDependencyWarning !== null) {
+			$output->writeln('');
+			$output->writeln('<error>Runtime dependency missing:</error> ' . $runtimeDependencyWarning);
+		}
+
 		return Command::SUCCESS;
 	}
 
@@ -99,7 +106,7 @@ final class WPCliCommand extends Command
 		$namespace = $input->getOption('namespace');
 
 		if (is_string($namespace) && trim($namespace) !== '') {
-			return trim($namespace, '\\');
+			return $this->validNamespace(trim($namespace, '\\'));
 		}
 
 		return trim($autoload->namespace, '\\') . '\\Cli\\Commands';
@@ -142,5 +149,48 @@ final class WPCliCommand extends Command
 		}
 
 		return $path;
+	}
+
+	private function validNamespace(string $namespace): string {
+		if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\\\\[A-Za-z_][A-Za-z0-9_]*)*$/', $namespace)) {
+			throw new RuntimeException(sprintf('Namespace "%s" is not a valid PHP namespace.', $namespace));
+		}
+
+		return $namespace;
+	}
+
+	private function runtimeDependencyWarning(): ?string {
+		$composerPath = $this->rootPath . '/composer.json';
+
+		if (! is_readable($composerPath)) {
+			return null;
+		}
+
+		$composer = json_decode((string) file_get_contents($composerPath), true);
+
+		if (! is_array($composer)) {
+			return null;
+		}
+
+		$require    = is_array($composer['require'] ?? null) ? $composer['require'] : [];
+		$requireDev = is_array($composer['require-dev'] ?? null) ? $composer['require-dev'] : [];
+
+		if ($this->hasFoundationRuntimeDependency($require)) {
+			return null;
+		}
+
+		if ($this->hasFoundationRuntimeDependency($requireDev)) {
+			return 'this command extends Foundation WPCli classes, but the Foundation runtime package is only in require-dev. Move stellarwp/foundation-wpcli or stellarwp/foundation to require before shipping this command.';
+		}
+
+		return 'this command extends Foundation WPCli classes. Run composer require stellarwp/foundation-wpcli, or require stellarwp/foundation, before shipping this command.';
+	}
+
+	/**
+	 * @param array<string,mixed> $dependencies
+	 */
+	private function hasFoundationRuntimeDependency(array $dependencies): bool {
+		return array_key_exists('stellarwp/foundation-wpcli', $dependencies)
+			|| array_key_exists('stellarwp/foundation', $dependencies);
 	}
 }

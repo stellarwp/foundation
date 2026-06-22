@@ -57,6 +57,20 @@ final class WordPressClassNameResolverTest extends TestCase
 		(new WordPressClassNameResolver())->commandClass('@@@');
 	}
 
+	public function test_it_fails_when_the_generated_class_name_would_start_with_a_number(): void {
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('Could not create a valid PHP class name from "2fa-sync".');
+
+		(new WordPressClassNameResolver())->commandClass('2fa-sync');
+	}
+
+	public function test_it_fails_when_the_generated_class_name_would_conflict_with_the_base_command(): void {
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('Could not create a command class named "Command" from "Command"');
+
+		(new WordPressClassNameResolver())->commandClass('Command');
+	}
+
 	public function test_it_uses_a_default_description_when_the_class_has_no_words(): void {
 		$this->assertSame('Run the command.', (new WordPressClassNameResolver())->description('Command'));
 	}

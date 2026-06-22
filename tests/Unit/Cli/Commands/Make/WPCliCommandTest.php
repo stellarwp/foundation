@@ -19,6 +19,14 @@ final class WPCliCommandTest extends TestCase
 	 */
 	private array $temporaryRoots = [];
 
+	private string $tempDir;
+
+	protected function setUp(): void {
+		parent::setUp();
+
+		$this->tempDir = $this->prepare_temp_dir('make-wpcli-command');
+	}
+
 	protected function tearDown(): void {
 		foreach ($this->temporaryRoots as $temporaryRoot) {
 			$this->removeDirectory($temporaryRoot);
@@ -72,6 +80,21 @@ final class WPCliCommandTest extends TestCase
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Admin\\Cli;', $contents);
 		$this->assertStringContainsString("return 'customers:import';", $contents);
 		$this->assertStringContainsString("return 'Import customers.';", $contents);
+	}
+
+	public function test_it_rejects_invalid_namespaces_before_writing_the_file(): void {
+		$root   = $this->temporaryProject();
+		$tester = new CommandTester($this->command($root));
+
+		$statusCode = $tester->execute([
+			'name'        => 'Import_Customers',
+			'--namespace' => 'Acme Plugin\\Cli',
+			'--path'      => 'custom/commands',
+		]);
+
+		$this->assertSame(Command::FAILURE, $statusCode);
+		$this->assertStringContainsString('Namespace "Acme Plugin\\Cli" is not a valid PHP namespace.', $tester->getDisplay());
+		$this->assertFileDoesNotExist($root . '/custom/commands/Import_Customers_Command.php');
 	}
 
 	public function test_it_escapes_php_string_values_in_generated_code(): void {
@@ -305,6 +328,52 @@ final class WPCliCommandTest extends TestCase
 		$this->assertSame('existing', (string) file_get_contents($root . '/src/Cli/Commands/Sync_Products_Command.php'));
 	}
 
+	public function test_it_warns_when_the_runtime_dependency_is_missing_from_production_requirements(): void {
+		$root   = $this->temporaryProject();
+		$tester = new CommandTester($this->command($root));
+
+		$statusCode = $tester->execute([
+			'name' => 'Sync_Products',
+		]);
+
+		$this->assertSame(Command::SUCCESS, $statusCode);
+		$this->assertStringContainsString('Runtime dependency missing:', $tester->getDisplay());
+		$this->assertStringContainsString('composer require stellarwp/foundation-wpcli', $tester->getDisplay());
+	}
+
+	public function test_it_warns_when_the_runtime_dependency_is_only_a_development_dependency(): void {
+		$root = $this->temporaryProject([
+			'require-dev' => [
+				'stellarwp/foundation-wpcli' => '^1.0',
+			],
+		]);
+		$tester = new CommandTester($this->command($root));
+
+		$statusCode = $tester->execute([
+			'name' => 'Sync_Products',
+		]);
+
+		$this->assertSame(Command::SUCCESS, $statusCode);
+		$this->assertStringContainsString('Runtime dependency missing:', $tester->getDisplay());
+		$this->assertStringContainsString('only in require-dev', $tester->getDisplay());
+	}
+
+	public function test_it_does_not_warn_when_the_runtime_dependency_is_in_production_requirements(): void {
+		$root = $this->temporaryProject([
+			'require' => [
+				'stellarwp/foundation-wpcli' => '^1.0',
+			],
+		]);
+		$tester = new CommandTester($this->command($root));
+
+		$statusCode = $tester->execute([
+			'name' => 'Sync_Products',
+		]);
+
+		$this->assertSame(Command::SUCCESS, $statusCode);
+		$this->assertStringNotContainsString('Runtime dependency missing:', $tester->getDisplay());
+	}
+
 	public function test_it_overwrites_existing_files_with_force(): void {
 		$root = $this->temporaryProject();
 
@@ -350,7 +419,7 @@ final class WPCliCommandTest extends TestCase
 	}
 
 	private function temporaryRoot(string $prefix): string {
-		$root = sys_get_temp_dir() . '/' . $prefix . bin2hex(random_bytes(8));
+		$root = $this->tempDir . '/' . $prefix . bin2hex(random_bytes(8));
 
 		if (! mkdir($root, 0777, true) && ! is_dir($root)) {
 			$this->fail(sprintf('Could not create temporary root "%s".', $root));

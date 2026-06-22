@@ -117,6 +117,8 @@ Applications should register their own provider so they control the command name
 
 Do not register `StellarWP\Foundation\Cli\CliProvider` in a WordPress plugin. That provider belongs to the developer-facing `foundation` console binary, not plugin runtime bootstrap.
 
+Generated command classes use Strauss-prefixed Foundation imports automatically when `extra.strauss.namespace_prefix` is configured. Handwritten provider code is still application code, so projects using Strauss with `update_call_sites=false` may need to use their prefixed Foundation namespace in the imports below.
+
 ```php
 <?php declare(strict_types=1);
 
@@ -128,7 +130,7 @@ use StellarWP\Foundation\WPCli\TimestampedLogger;
 use WP_CLI;
 use WP_CLI\Loggers\Regular;
 
-final class WpCliProvider extends Provider
+final class Wp_Cli_Provider extends Provider
 {
 	private const string COMMAND_PREFIX = 'acme';
 
@@ -136,7 +138,7 @@ final class WpCliProvider extends Provider
 	 * @var list<class-string<Command>>
 	 */
 	private const array COMMANDS = [
-		SyncCommand::class,
+		Sync_Command::class,
 	];
 
 	public function register(): void {

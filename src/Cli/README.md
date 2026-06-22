@@ -3,7 +3,7 @@
 > [!WARNING]
 > **This is a read-only repository!** For pull requests or issues, see [stellarwp/foundation](https://github.com/stellarwp/foundation).
 
-Foundation CLI tooling for maintaining the Foundation monorepo and split repositories.
+Foundation CLI tooling for generating application code and maintaining the Foundation monorepo.
 
 ## Installation
 
@@ -21,29 +21,13 @@ If a generated WP-CLI command ships with the plugin, install `stellarwp/foundati
 composer require stellarwp/foundation-wpcli
 ```
 
-## Usage
+## Generators
 
 List all available commands:
+
 ```bash
 vendor/bin/foundation list
 ```
-
-Create a split repository for a new package:
-```bash
-vendor/bin/foundation package:create Log
-```
-
-In the Foundation monorepo, the root Composer script can also be used:
-
-```bash
-composer run foundation -- list
-```
-
-If the package does not exist yet, the command asks whether to create the local scaffold in `src/<Package>` and asks for the Composer package name. For example, `WPCli` defaults to `stellarwp/foundation-wpcli`. After scaffolding, it runs `composer monorepo merge` so the root package metadata includes the new split package.
-
-By default, commands that change external systems run as a dry run. Pass `--apply` to execute the generated repository actions.
-
-## Generators
 
 Foundation CLI includes generators for packages that own generated class shapes. For example, the WPCli package provides a generator for command classes:
 
@@ -54,6 +38,26 @@ vendor/bin/foundation make:wpcli-command Sync_Products_Command
 Do not add `StellarWP\Foundation\Cli\CliProvider` to the consuming WordPress plugin's provider list. That provider only boots the Foundation Symfony Console application for the `foundation` binary. Register generated WP-CLI commands from the plugin's own WP-CLI provider using `stellarwp/foundation-wpcli`.
 
 See the WPCli package README for WP-CLI generator behavior, options, and stub overrides.
+
+## Foundation Monorepo Maintenance
+
+The `package:create` command is for maintainers working inside the Foundation monorepo. It creates local split-package scaffolding and can create GitHub repositories for Foundation split packages.
+
+Create a split repository for a new Foundation package:
+
+```bash
+vendor/bin/foundation package:create Log
+```
+
+If the package does not exist yet, the command asks whether to create the local scaffold in `src/<Package>` and asks for the Composer package name. For example, `WPCli` defaults to `stellarwp/foundation-wpcli`. After scaffolding, it runs `composer monorepo merge` so the root package metadata includes the new split package.
+
+By default, commands that change external systems run as a dry run. Pass `--apply` to execute the generated repository actions.
+
+In the Foundation monorepo, the root Composer script can also be used:
+
+```bash
+composer run foundation -- package:create Log
+```
 
 ## Custom Commands
 
