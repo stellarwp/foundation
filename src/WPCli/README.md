@@ -29,7 +29,7 @@ vendor/bin/foundation make:wpcli-command Sync_Products_Command
 
 If the consuming project has a Composer script named `foundation` that points to the installed Foundation binary, it can also run `composer run foundation -- make:wpcli-command Sync_Products_Command`.
 
-The generator reads the project's first `autoload.psr-4` namespace from `composer.json` and writes a Snake_Case command class under `src/Cli/Commands` by default.
+The generator reads the project's `autoload.psr-4` namespaces from `composer.json` and writes a Snake_Case command class under `Cli/Commands` inside the default PSR-4 root. When `--namespace` is passed, the output path is resolved from the matching PSR-4 root unless `--path` is also passed.
 
 For example, a project with this Composer autoload entry:
 
@@ -78,11 +78,11 @@ Override stubs should use the same context-aware placeholders as the default stu
 ```php
 <?php declare(strict_types=1);
 
-namespace Acme\App\Cli;
+namespace {{ namespace }};
 
-use StellarWP\Foundation\WPCli\Command;
+use {{ foundation_wpcli_command }};
 
-final class SyncCommand extends Command
+final class {{ class }} extends Command
 {
 	public function runCommand( array $args = [], array $assocArgs = [] ): int {
 		// Run the command using services from $this->container.
@@ -91,11 +91,11 @@ final class SyncCommand extends Command
 	}
 
 	protected function subcommand(): string {
-		return 'sync';
+		return {{ subcommand_php }};
 	}
 
 	protected function description(): string {
-		return 'Sync Acme data.';
+		return {{ description_php }};
 	}
 
 	protected function arguments(): array {

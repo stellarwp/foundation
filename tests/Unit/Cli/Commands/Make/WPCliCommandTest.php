@@ -3,11 +3,11 @@
 namespace StellarWP\Foundation\Tests\Unit\Cli\Commands\Make;
 
 use StellarWP\Foundation\Cli\Commands\Make\WPCliCommand;
-use StellarWP\Foundation\Cli\Generation\ClassNameResolver;
 use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
+use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Tests\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -128,6 +128,74 @@ final class WPCliCommandTest extends TestCase
 		$this->assertStringNotContainsString('use StellarWP\\Foundation\\WPCli\\Command;', $contents);
 	}
 
+	public function test_it_uses_matching_psr4_root_for_custom_namespace_while_strauss_prefixes_foundation_imports(): void {
+		$root = $this->temporaryProject([
+			'autoload' => [
+				'psr-4' => [
+					'Acme\\Plugin\\' => 'src',
+					'Acme\\Shared\\' => 'shared',
+				],
+			],
+			'extra'    => [
+				'strauss' => [
+					'namespace_prefix' => 'Acme\\Product\\',
+				],
+			],
+		]);
+		$tester = new CommandTester($this->command($root));
+
+		$statusCode = $tester->execute([
+			'name'        => 'Sync_Products',
+			'--namespace' => 'Acme\\Shared\\Cli',
+		]);
+
+		$contents = (string) file_get_contents($root . '/shared/Cli/Sync_Products_Command.php');
+
+		$this->assertSame(Command::SUCCESS, $statusCode);
+		$this->assertFileExists($root . '/shared/Cli/Sync_Products_Command.php');
+		$this->assertStringContainsString('namespace Acme\\Shared\\Cli;', $contents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\WPCli\\Command;', $contents);
+	}
+
+	public function test_it_uses_most_specific_psr4_root_for_custom_namespace(): void {
+		$root = $this->temporaryProject([
+			'autoload' => [
+				'psr-4' => [
+					'Acme\\'         => 'src',
+					'Acme\\Plugin\\' => 'app',
+				],
+			],
+		]);
+		$tester = new CommandTester($this->command($root));
+
+		$statusCode = $tester->execute([
+			'name'        => 'Sync_Products',
+			'--namespace' => 'Acme\\Plugin\\Cli',
+		]);
+
+		$this->assertSame(Command::SUCCESS, $statusCode);
+		$this->assertFileExists($root . '/app/Cli/Sync_Products_Command.php');
+		$this->assertFileDoesNotExist($root . '/src/Plugin/Cli/Sync_Products_Command.php');
+	}
+
+	public function test_it_writes_to_project_root_when_psr4_path_is_empty(): void {
+		$root = $this->temporaryProject([
+			'autoload' => [
+				'psr-4' => [
+					'Acme\\Plugin\\' => '',
+				],
+			],
+		]);
+		$tester = new CommandTester($this->command($root));
+
+		$statusCode = $tester->execute([
+			'name' => 'Sync_Products',
+		]);
+
+		$this->assertSame(Command::SUCCESS, $statusCode);
+		$this->assertFileExists($root . '/Cli/Commands/Sync_Products_Command.php');
+	}
+
 	public function test_it_uses_unprefixed_foundation_imports_when_strauss_namespace_prefix_is_blank(): void {
 		$root = $this->temporaryProject([
 			'extra' => [
@@ -173,7 +241,7 @@ final class WPCliCommandTest extends TestCase
 		]);
 
 		$this->assertSame(Command::FAILURE, $statusCode);
-		$this->assertStringContainsString('Namespace "Acme\\PluginTools\\Cli" is outside Composer PSR-4 namespace "Acme\\Plugin\\".', $tester->getDisplay());
+		$this->assertStringContainsString('Namespace "Acme\\PluginTools\\Cli" is outside the Composer PSR-4 namespaces in composer.json.', $tester->getDisplay());
 		$this->assertFileDoesNotExist($root . '/src/Tools/Cli/Sync_Products_Command.php');
 	}
 
@@ -257,7 +325,7 @@ final class WPCliCommandTest extends TestCase
 		return new WPCliCommand(
 			rootPath: $root,
 			autoloadResolver: new ComposerAutoloadResolver($root),
-			classNameResolver: new ClassNameResolver(),
+			classNameResolver: new WordPressClassNameResolver(),
 			stubResolver: new StubResolver($root),
 			stubRenderer: new StubRenderer(),
 			fileWriter: new GeneratedFileWriter()

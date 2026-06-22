@@ -4,7 +4,9 @@ namespace StellarWP\Foundation\Cli\Generation;
 
 use JsonException;
 use RuntimeException;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\AutoloadNamespace;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\ComposerProject;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\Psr4Namespace;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\StraussConfig;
 
 /**
  * Reads a project's Composer autoload configuration for generator defaults.
@@ -19,7 +21,7 @@ final readonly class ComposerAutoloadResolver
 	) {
 	}
 
-	public function firstPsr4Namespace(): AutoloadNamespace {
+	public function project(): ComposerProject {
 		$composer = $this->composer();
 		$psr4     = $composer['autoload']['psr-4'] ?? [];
 
@@ -27,34 +29,55 @@ final readonly class ComposerAutoloadResolver
 			throw new RuntimeException('Could not find an autoload.psr-4 namespace in composer.json.');
 		}
 
+		$psr4Namespaces = [];
+
 		foreach ($psr4 as $namespace => $paths) {
-			if (! is_string($namespace)) {
+			if (! is_string($namespace) || $namespace === '') {
 				continue;
 			}
 
-			$path = is_array($paths) ? reset($paths) : $paths;
-
-			if (! is_string($path) || $path === '') {
-				continue;
+			foreach ($this->paths($paths) as $path) {
+				$psr4Namespaces[] = new Psr4Namespace(
+					namespace: trim($namespace, '\\') . '\\',
+					path: trim($path, '/')
+				);
 			}
-
-			return new AutoloadNamespace(
-				namespace: trim($namespace, '\\') . '\\',
-				path: trim($path, '/')
-			);
 		}
 
-		throw new RuntimeException('Could not find a valid autoload.psr-4 namespace in composer.json.');
+		return new ComposerProject(
+			psr4Namespaces: $psr4Namespaces,
+			strauss: $this->straussConfig($composer)
+		);
+	}
+
+	public function firstPsr4Namespace(): Psr4Namespace {
+		return $this->project()->defaultPsr4Namespace();
 	}
 
 	public function straussNamespacePrefix(): ?string {
-		$prefix = $this->composer()['extra']['strauss']['namespace_prefix'] ?? null;
+		return $this->straussConfig($this->composer())?->namespacePrefix;
+	}
+
+	/**
+	 * @return list<string>
+	 */
+	private function paths(mixed $paths): array {
+		$paths = is_array($paths) ? $paths : [$paths];
+
+		return array_values(array_filter($paths, static fn (mixed $path): bool => is_string($path)));
+	}
+
+	/**
+	 * @param array<string,mixed> $composer
+	 */
+	private function straussConfig(array $composer): ?StraussConfig {
+		$prefix = $composer['extra']['strauss']['namespace_prefix'] ?? null;
 
 		if (! is_string($prefix) || trim($prefix, '\\') === '') {
 			return null;
 		}
 
-		return trim($prefix, '\\') . '\\';
+		return new StraussConfig(trim($prefix, '\\') . '\\');
 	}
 
 	/**

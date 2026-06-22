@@ -5,9 +5,9 @@ namespace StellarWP\Foundation\Cli\Generation;
 use RuntimeException;
 
 /**
- * Normalizes generator input into WP-style class, command, and description names.
+ * Normalizes generator input into WordPress-style class, command, and description names.
  */
-final class ClassNameResolver
+final class WordPressClassNameResolver
 {
 	public function commandClass(string $input): string {
 		$words = $this->words($input);
