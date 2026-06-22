@@ -9,8 +9,8 @@
     },
     "require": {
         "php": ">=8.3",
-        "stellarwp/foundation-container": "^1.1",
-        "stellarwp/foundation-wpcli": "^1.1",
+        "stellarwp/foundation-container": "^1.2",
+        "stellarwp/foundation-wpcli": "^1.2",
         "symfony/console": ">=5.4"
     },
     "autoload": {
@@ -23,7 +23,7 @@
     ],
     "extra": {
         "branch-alias": {
-            "dev-main": "1.1.x-dev"
+            "dev-main": "1.2.x-dev"
         }
     }
 }
