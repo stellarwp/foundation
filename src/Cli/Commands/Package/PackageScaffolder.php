@@ -12,6 +12,8 @@ use RuntimeException;
  */
 final readonly class PackageScaffolder
 {
+	private const string DEFAULT_BRANCH_ALIAS = '1.0.x-dev';
+
 	public function __construct(
 		private string $rootPath
 	) {
@@ -132,12 +134,46 @@ final readonly class PackageScaffolder
 			],
 			'extra'       => [
 				'branch-alias' => [
-					'dev-main' => '1.1.x-dev',
+					'dev-main' => $this->branchAlias(),
 				],
 			],
 		];
 
 		return (string) json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL;
+	}
+
+	private function branchAlias(): string {
+		$aliases = [];
+
+		foreach (glob($this->rootPath . '/src/*/composer.json') ?: [] as $composerPath) {
+			$composer = json_decode((string) file_get_contents($composerPath), true);
+
+			if (! is_array($composer)) {
+				continue;
+			}
+
+			$alias = $composer['extra']['branch-alias']['dev-main'] ?? null;
+
+			if (! is_string($alias) || preg_match('/^\d+\.\d+\.x-dev$/', $alias) !== 1) {
+				continue;
+			}
+
+			$aliases[] = $alias;
+		}
+
+		if ($aliases === []) {
+			return self::DEFAULT_BRANCH_ALIAS;
+		}
+
+		usort(
+			$aliases,
+			static fn (string $a, string $b): int => version_compare(
+				str_replace('.x-dev', '.0', $b),
+				str_replace('.x-dev', '.0', $a)
+			)
+		);
+
+		return $aliases[0];
 	}
 
 	private function readme(Package $package): string {
