@@ -35,3 +35,67 @@ jobs:
 
       - name: Run Feature Tests
         run: vendor/bin/phpunit --configuration ./phpunit.xml.dist --colors=always --testsuite Feature
+
+  wpunit:
+    runs-on: ubuntu-latest
+    name: WordPress Tests
+
+    env:
+      COMPOSER_AUTH: '{"github-oauth": {"github.com": "${{ github.token }}"}}'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Checkout SLIC
+        uses: actions/checkout@v6
+        with:
+          repository: stellarwp/slic
+          ref: main
+          path: slic
+          fetch-depth: 1
+
+      - name: Set SLIC environment variables
+        run: |
+          echo "SLIC_BIN=${GITHUB_WORKSPACE}/slic/slic" >> $GITHUB_ENV
+          echo "SLIC_WP_DIR=${GITHUB_WORKSPACE}/slic/_wordpress" >> $GITHUB_ENV
+          echo "SLIC_WORDPRESS_DOCKERFILE=Dockerfile.base" >> $GITHUB_ENV
+          echo "SLIC=1" >> $GITHUB_ENV
+          echo "CI=1" >> $GITHUB_ENV
+
+      - name: Start ssh-agent
+        run: |
+          mkdir -p "${HOME}/.ssh"
+          ssh-agent -a /tmp/ssh_agent.sock
+          echo "SSH_AUTH_SOCK=/tmp/ssh_agent.sock" >> $GITHUB_ENV
+
+      - name: Configure SLIC
+        run: |
+          cd "${GITHUB_WORKSPACE}/.."
+          "${SLIC_BIN}" here
+          "${SLIC_BIN}" interactive off
+          "${SLIC_BIN}" build-prompt off
+          "${SLIC_BIN}" build-subdir off
+          "${SLIC_BIN}" xdebug off
+          "${SLIC_BIN}" debug on
+          "${SLIC_BIN}" php-version set 8.3 --skip-rebuild
+          "${SLIC_BIN}" info
+          "${SLIC_BIN}" config
+
+      - name: Install dependencies
+        run: |
+          "${SLIC_BIN}" use foundation
+          "${SLIC_BIN}" composer set-version 2
+          "${SLIC_BIN}" composer install
+
+      - name: Update WordPress
+        run: |
+          "${SLIC_BIN}" wp core update --force
+
+      - name: Build Codeception actors
+        run: |
+          "${SLIC_BIN}" cc build
+
+      - name: Run wpunit tests
+        run: |
+          "${SLIC_BIN}" run wpunit --ext DotReporter

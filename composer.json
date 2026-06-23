@@ -21,12 +21,13 @@
         "vlucas/phpdotenv": ">=4.3"
     },
     "require-dev": {
+        "lucatume/wp-browser": "^4.5",
         "monorepo-php/monorepo": "^12.7",
         "nunomaduro/collision": "^8.9",
         "php-mock/php-mock-mockery": "^1.5",
         "phpstan/extension-installer": "^1.4",
         "phpstan/phpstan": "^2.2",
-        "phpunit/phpunit": "^12.5",
+        "phpunit/phpunit": "^11.5",
         "wp-cli/wp-cli": ">=2.12",
         "zenphp/pinte": "^1.2"
     },
@@ -46,11 +47,16 @@
             "StellarWP\\Foundation\\Log\\": "src/Log/",
             "StellarWP\\Foundation\\Pipeline\\": "src/Pipeline/",
             "StellarWP\\Foundation\\WPCli\\": "src/WPCli/"
-        }
+        },
+        "exclude-from-classmap": [
+            "src/*/vendor/",
+            "tests/CodeceptionSupport/"
+        ]
     },
     "autoload-dev": {
         "psr-4": {
-            "StellarWP\\Foundation\\Tests\\": "tests/"
+            "StellarWP\\Foundation\\Tests\\": "tests/",
+            "StellarWP\\Foundation\\Tests\\WPUnit\\": "tests/wpunit/"
         }
     },
     "bin": [
@@ -70,6 +76,7 @@
         "test": "@php vendor/bin/phpunit -c phpunit.xml.dist --colors=always -d memory_limit=2G",
         "test:unit": "@test --testsuite Unit",
         "test:feature": "@test --testsuite Feature",
+        "test:wpunit": "slic run wpunit",
         "test:coverage": "XDEBUG_MODE=coverage vendor/bin/phpunit --coverage-clover clover.xml",
         "test:coverage-html": "XDEBUG_MODE=coverage vendor/bin/phpunit --coverage-html coverage",
         "analyze": "@php vendor/bin/phpstan analyse --ansi --memory-limit 2G",
