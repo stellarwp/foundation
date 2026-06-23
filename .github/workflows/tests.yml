@@ -36,9 +36,9 @@ jobs:
       - name: Run Feature Tests
         run: vendor/bin/phpunit --configuration ./phpunit.xml.dist --colors=always --testsuite Feature
 
-  wpunit:
+  slic:
     runs-on: ubuntu-latest
-    name: WordPress Tests
+    name: SLIC Tests
 
     env:
       COMPOSER_AUTH: '{"github-oauth": {"github.com": "${{ github.token }}"}}'
@@ -96,6 +96,39 @@ jobs:
         run: |
           "${SLIC_BIN}" cc build
 
+      - name: Run unit tests
+        if: github.event_name != 'pull_request'
+        run: |
+          "${SLIC_BIN}" run unit --ext DotReporter
+
+      - name: Run feature tests
+        if: github.event_name != 'pull_request'
+        run: |
+          "${SLIC_BIN}" run feature --ext DotReporter
+
       - name: Run wpunit tests
+        if: github.event_name != 'pull_request'
         run: |
           "${SLIC_BIN}" run wpunit --ext DotReporter
+
+      - name: Enable Xdebug for coverage
+        if: github.event_name == 'pull_request'
+        run: |
+          "${SLIC_BIN}" xdebug on
+
+      - name: Run Codeception tests with coverage
+        if: github.event_name == 'pull_request'
+        run: |
+          "${SLIC_BIN}" run --coverage --coverage-xml clover.xml --disable-coverage-php --ext DotReporter
+
+      - name: Monitor coverage
+        if: github.event_name == 'pull_request'
+        uses: slavcodev/coverage-monitor-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          comment_footer: false
+          coverage_format: clover
+          coverage_path: tests/_output/clover.xml
+          threshold_alert: 90
+          threshold_warning: 95
+          threshold_metric: "lines"

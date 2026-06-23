@@ -30,6 +30,25 @@ class TestCase extends \PHPUnit\Framework\TestCase
 		LogProvider::class,
 	];
 
+	/**
+	 * @var array<string, string|null>
+	 */
+	private static array $originalEnv = [];
+
+	public static function setUpBeforeClass(): void {
+		parent::setUpBeforeClass();
+
+		self::capture_test_environment();
+	}
+
+	protected function tearDown(): void {
+		$this->closeMockery();
+		$this->cleanup_temp_dirs();
+		$this->reset_test_environment();
+
+		parent::tearDown();
+	}
+
 	protected function setUp(): void {
 		parent::setUp();
 
@@ -46,13 +65,6 @@ class TestCase extends \PHPUnit\Framework\TestCase
 		}
 	}
 
-	protected function tearDown(): void {
-		$this->closeMockery();
-		$this->cleanup_temp_dirs();
-
-		parent::tearDown();
-	}
-
 	/**
 	 * Create a mock.
 	 *
@@ -64,5 +76,26 @@ class TestCase extends \PHPUnit\Framework\TestCase
 	 */
 	protected function mock(...$args): Mockery\MockInterface {
 		return Mockery::mock(...$args); // @phpstan-ignore-line
+	}
+
+	private function reset_test_environment(): void {
+		foreach (self::$originalEnv as $key => $value) {
+			if ($value === null) {
+				unset($_ENV[$key]);
+				continue;
+			}
+
+			$_ENV[$key] = $value;
+		}
+	}
+
+	private static function capture_test_environment(): void {
+		foreach ([
+			'ENVIRONMENT',
+			'TEST_LOG_CHANNEL',
+			'TEST_LOG_LEVEL',
+		] as $key) {
+			self::$originalEnv[$key] = $_ENV[$key] ?? null;
+		}
 	}
 }

@@ -76,11 +76,30 @@
         "test": "@php vendor/bin/phpunit -c phpunit.xml.dist --colors=always -d memory_limit=2G",
         "test:unit": "@test --testsuite Unit",
         "test:feature": "@test --testsuite Feature",
+        "test:slic": "slic run",
+        "test:slic:unit": "slic run unit",
+        "test:slic:feature": "slic run feature",
         "test:wpunit": "slic run wpunit",
-        "test:coverage": "XDEBUG_MODE=coverage vendor/bin/phpunit --coverage-clover clover.xml",
-        "test:coverage-html": "XDEBUG_MODE=coverage vendor/bin/phpunit --coverage-html coverage",
+        "test:coverage": "slic xdebug on && slic run --coverage --coverage-xml clover.xml --disable-coverage-php; status=$?; slic xdebug off; exit $status",
+        "test:coverage-html": "slic xdebug on && slic run --coverage --coverage-html coverage --disable-coverage-php; status=$?; slic xdebug off; exit $status",
         "analyze": "@php vendor/bin/phpstan analyse --ansi --memory-limit 2G",
         "lint": "@php vendor/bin/pinte --test -v",
         "format": "@php vendor/bin/pinte -v"
+    },
+    "scripts-descriptions": {
+        "foundation": "Run the Foundation developer CLI.",
+        "monorepo": "Run the Monorepo Builder CLI.",
+        "test": "Run the fast PHPUnit unit and feature suites.",
+        "test:unit": "Run the PHPUnit unit suite.",
+        "test:feature": "Run the PHPUnit feature suite.",
+        "test:slic": "Run all Codeception suites through SLIC.",
+        "test:slic:unit": "Run the Codeception unit suite through SLIC.",
+        "test:slic:feature": "Run the Codeception feature suite through SLIC.",
+        "test:wpunit": "Run the WordPress-loaded wpunit suite through SLIC.",
+        "test:coverage": "Generate combined SLIC/Codeception Clover coverage, then turn Xdebug off.",
+        "test:coverage-html": "Generate combined SLIC/Codeception HTML coverage, then turn Xdebug off.",
+        "analyze": "Run PHPStan static analysis.",
+        "lint": "Check code style with Pinte.",
+        "format": "Fix code style with Pinte."
     }
 }

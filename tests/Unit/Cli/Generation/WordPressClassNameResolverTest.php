@@ -37,6 +37,9 @@ final class WordPressClassNameResolverTest extends TestCase
 		];
 	}
 
+	/**
+	 * @dataProvider commandClassProvider
+	 */
 	#[DataProvider('commandClassProvider')]
 	public function test_it_normalizes_command_class_names(string $input, string $expected): void {
 		$this->assertSame($expected, (new WordPressClassNameResolver())->commandClass($input));
