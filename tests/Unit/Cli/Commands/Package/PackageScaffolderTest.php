@@ -46,7 +46,50 @@ final class PackageScaffolderTest extends TestCase
 			'.github/workflows/close-pull-request.yml',
 		], $scaffold->createdFiles);
 		$this->assertFileExists($rootPath . '/src/WPCli/composer.json');
-		$this->assertStringContainsString('"StellarWP\\\\Foundation\\\\WPCli\\\\": ""', (string) file_get_contents($rootPath . '/src/WPCli/composer.json'));
+
+		$composer = $this->packageComposer($rootPath, 'WPCli');
+
+		$this->assertArrayHasKey('StellarWP\\Foundation\\WPCli\\', $composer['autoload']['psr-4']);
+		$this->assertSame('1.0.x-dev', $composer['extra']['branch-alias']['dev-main']);
+	}
+
+	public function test_it_uses_the_existing_split_package_branch_alias(): void {
+		$rootPath = $this->temporaryRoot();
+
+		$this->writePackageComposer($rootPath, 'Container', '1.2.x-dev');
+
+		(new PackageScaffolder($rootPath))->create('WPCli', 'stellarwp/foundation-wpcli');
+
+		$composer = $this->packageComposer($rootPath, 'WPCli');
+
+		$this->assertSame('1.2.x-dev', $composer['extra']['branch-alias']['dev-main']);
+	}
+
+	public function test_it_uses_the_highest_existing_split_package_branch_alias(): void {
+		$rootPath = $this->temporaryRoot();
+
+		$this->writePackageComposer($rootPath, 'Container', '1.1.x-dev');
+		$this->writePackageComposer($rootPath, 'Log', '1.2.x-dev');
+
+		(new PackageScaffolder($rootPath))->create('WPCli', 'stellarwp/foundation-wpcli');
+
+		$composer = $this->packageComposer($rootPath, 'WPCli');
+
+		$this->assertSame('1.2.x-dev', $composer['extra']['branch-alias']['dev-main']);
+	}
+
+	public function test_it_ignores_invalid_existing_split_package_branch_aliases(): void {
+		$rootPath = $this->temporaryRoot();
+
+		$this->writePackageComposer($rootPath, 'Container', '1.x-dev');
+		$this->writePackageComposer($rootPath, 'Log', '1.2.x-dev');
+		$this->writeMalformedPackageComposer($rootPath, 'Pipeline');
+
+		(new PackageScaffolder($rootPath))->create('WPCli', 'stellarwp/foundation-wpcli');
+
+		$composer = $this->packageComposer($rootPath, 'WPCli');
+
+		$this->assertSame('1.2.x-dev', $composer['extra']['branch-alias']['dev-main']);
 	}
 
 	public function test_it_accepts_a_custom_foundation_package_name(): void {
@@ -97,6 +140,49 @@ final class PackageScaffolderTest extends TestCase
 		$this->temporaryRoots[] = $root;
 
 		return $root;
+	}
+
+	/**
+	 * @return array<string, mixed>
+	 */
+	private function packageComposer(string $rootPath, string $component): array {
+		$composer = json_decode((string) file_get_contents($rootPath . '/src/' . $component . '/composer.json'), true);
+
+		if (! is_array($composer)) {
+			$this->fail(sprintf('Could not decode composer.json for "%s".', $component));
+		}
+
+		return $composer;
+	}
+
+	private function writePackageComposer(string $rootPath, string $component, string $branchAlias): void {
+		$path = $rootPath . '/src/' . $component;
+
+		if (! mkdir($path, 0777, true) && ! is_dir($path)) {
+			$this->fail(sprintf('Could not create package directory "%s".', $path));
+		}
+
+		file_put_contents(
+			$path . '/composer.json',
+			(string) json_encode([
+				'name'  => 'stellarwp/foundation-' . strtolower($component),
+				'extra' => [
+					'branch-alias' => [
+						'dev-main' => $branchAlias,
+					],
+				],
+			], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+		);
+	}
+
+	private function writeMalformedPackageComposer(string $rootPath, string $component): void {
+		$path = $rootPath . '/src/' . $component;
+
+		if (! mkdir($path, 0777, true) && ! is_dir($path)) {
+			$this->fail(sprintf('Could not create package directory "%s".', $path));
+		}
+
+		file_put_contents($path . '/composer.json', '{');
 	}
 
 	private function removeDirectory(string $directory): void {
