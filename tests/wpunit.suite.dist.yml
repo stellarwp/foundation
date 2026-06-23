@@ -6,6 +6,7 @@ modules:
   enabled:
     - lucatume\WPBrowser\Module\WPLoader
     - lucatume\WPBrowser\Module\WPQueries
+    - lucatume\WPBrowser\Module\WPCLI
   config:
     lucatume\WPBrowser\Module\WPLoader:
       wpRootFolder: %WP_ROOT_FOLDER%
@@ -13,8 +14,16 @@ modules:
       dbHost: %WP_TEST_DB_HOST%
       dbUser: %WP_TEST_DB_USER%
       dbPassword: %WP_TEST_DB_PASSWORD%
-      tablePrefix: test_
+      tablePrefix: %WP_TABLE_PREFIX%
       domain: %WP_DOMAIN%
       adminEmail: admin@stellarwp.com
       title: 'Foundation Tests'
       theme: twentytwentythree
+    lucatume\WPBrowser\Module\WPCLI:
+      path: %WP_ROOT_FOLDER%
+      url: %WP_URL%
+      user: %WP_ADMIN_USERNAME%
+      require:
+        - /var/www/html/wp-content/plugins/foundation/tests/Support/Fixtures/Database/register-wpcli-migrate-command.php
+      throw: false
+      allow-root: true

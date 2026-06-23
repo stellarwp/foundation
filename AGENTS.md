@@ -9,6 +9,7 @@ Initial packages:
 - `stellarwp/foundation-container`
 - `stellarwp/foundation-log`
 - `stellarwp/foundation-lock`
+- `stellarwp/foundation-database`
 - `stellarwp/foundation-pipeline`
 - `stellarwp/foundation-wpcli`
 - `stellarwp/foundation-cli`
@@ -44,6 +45,8 @@ Feature-local interfaces should live in a `Contracts/` folder inside the feature
 
 Shared infrastructure interfaces should live under that shared namespace's `Contracts/` folder, for example `Process/Contracts/ProcessRunner.php`.
 
+Exceptions should live in an `Exceptions/` folder. Put shared package exceptions at the package root, for example `src/Database/Exceptions/DatabaseException.php`; put feature-only exceptions under that feature's `Exceptions/` folder only when they are not shared outside that feature.
+
 Generator commands should be grouped by the `make:*` workflow under `src/Cli/Commands/Make/`, for example `src/Cli/Commands/Make/WPCliCommand.php`. Shared generation infrastructure that is not itself a console command should live under `src/Cli/Generation/`.
 
 Default stubs should live with the package that owns the generated class shape. For example, WP-CLI command stubs live in `src/WPCli/stubs/` because the WPCli package owns the base `Command` API. The CLI package owns resolving, rendering, and writing generated files.
@@ -77,6 +80,8 @@ Use contextual bindings with `$this->container->when()->needs()->give()` for sca
 ## Split Packages
 
 Split packages live in `src/<Package>/` and are split to read-only repositories named `stellarwp/foundation-<package>`.
+
+`stellarwp/foundation-database` is a WordPress-backed database package. Keep its runtime implementation centered on `wpdb`, `dbDelta()`, WordPress table prefixes, and WP-CLI integration. If the project later needs file storage, Redis storage, PDO database support, or another non-WordPress backend, prefer a separate package or explicit driver package instead of making `foundation-database` a generic DBAL-style abstraction.
 
 When adding a new split package, set its package `composer.json` PHP constraint to `>=8.3` unless the user explicitly says otherwise. PHP 7.4 release compatibility will be handled later by an automated Rector downgrade workflow, not by lowering the package PHP constraint during development.
 
@@ -155,6 +160,8 @@ Tests that need writable temporary files or directories should use a test-specif
 Codeception tests run through SLIC. Use `.env.testing.slic` as the SLIC/Codeception environment file. First-time local setup is `slic here` from the directory that contains this repository, `slic use foundation` from the repository, `slic composer install`, and `slic cc build`. If host-installed dependencies conflict with the SLIC PHP version, run `slic composer update --with-all-dependencies` inside the container. Run suites with `slic run unit`, `slic run feature`, and `composer test:wpunit` or `slic run wpunit`.
 
 Test suite meanings: `Unit` is isolated class/package behavior, `Feature` is Foundation feature behavior without bootstrapping WordPress, and `wpunit` is WordPress-loaded behavior through wp-browser. If a PHPUnit test uses `#[DataProvider]` and must run under Codeception, also include the matching `@dataProvider` docblock because Codeception's PHPUnit loader reads docblock providers for these tests.
+
+Use `wpunit` for behavior that depends on WordPress runtime APIs such as `wpdb`, `dbDelta()`, hooks, global WordPress state, or real WP-CLI execution. Keep unit tests focused on portable package behavior and pure collaborators; do not build large fake WordPress runtimes in unit tests when the behavior can be covered with wp-browser.
 
 Use `tests/WPUnitSupport/WPTestCase.php` as the base class for wpunit tests instead of extending Codeception's `WPTestCase` directly. Keep Codeception-generated actor files in `tests/CodeceptionSupport/`; that directory is ignored and excluded from lint/static analysis.
 

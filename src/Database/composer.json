@@ -1,0 +1,26 @@
+{
+    "name": "stellarwp/foundation-database",
+    "type": "library",
+    "description": "Foundation Database package.",
+    "license": "GPL-2.0-or-later",
+    "config": {
+        "vendor-dir": "vendor",
+        "preferred-install": "dist"
+    },
+    "require": {
+        "php": ">=8.3",
+        "stellarwp/foundation-container": "^1.2",
+        "stellarwp/foundation-lock": "^1.2",
+        "stellarwp/foundation-wpcli": "^1.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "StellarWP\\Foundation\\Database\\": ""
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.2.x-dev"
+        }
+    }
+}
