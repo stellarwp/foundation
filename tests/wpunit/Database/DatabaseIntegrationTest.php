@@ -11,6 +11,7 @@ use StellarWP\Foundation\Database\Contracts\Database as DatabaseContract;
 use StellarWP\Foundation\Database\Contracts\Repository as MigrationRecordRepositoryContract;
 use StellarWP\Foundation\Database\Database;
 use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\Database\Exceptions\QueryException;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Repository;
 use StellarWP\Foundation\Database\Migration\Runner;
@@ -116,6 +117,37 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertSame('published', $this->database->value('SELECT status FROM %i WHERE id = %d', $table, $id));
 		$this->assertSame(1, $this->database->delete($table, ['id' => $id]));
 		$this->assertSame('0', (string) $this->database->value('SELECT COUNT(*) FROM %i', $table));
+	}
+
+	public function test_database_returns_null_for_missing_values_without_query_errors(): void {
+		$table = $this->table('missing_value');
+
+		$this->database->execute(sprintf(
+			'CREATE TABLE %s (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				name varchar(191) NOT NULL,
+				PRIMARY KEY  (id)
+			) %s',
+			$this->database->quoteIdentifier($table),
+			$this->database->charsetCollate()
+		));
+
+		$this->assertNull($this->database->value('SELECT name FROM %i WHERE id = %d', $table, 999));
+	}
+
+	public function test_database_wraps_wordpress_query_failures(): void {
+		$previous = $GLOBALS['wpdb']->suppress_errors(true);
+
+		try {
+			$this->assertQueryFails(fn (): mixed => $this->database->row('SELECT * FROM %i', 'missing_foundation_table'));
+			$this->assertSame([], $this->database->rows('SELECT * FROM %i', 'missing_foundation_table'));
+			$this->assertQueryFails(fn (): mixed => $this->database->execute('SELECT * FROM %i', 'missing_foundation_table'));
+			$this->assertQueryFails(fn (): mixed => $this->database->insert('missing_foundation_table', ['name' => 'test']));
+			$this->assertQueryFails(fn (): mixed => $this->database->update('missing_foundation_table', ['name' => 'updated'], ['id' => 1]));
+			$this->assertQueryFails(fn (): mixed => $this->database->delete('missing_foundation_table', ['id' => 1]));
+		} finally {
+			$GLOBALS['wpdb']->suppress_errors($previous);
+		}
 	}
 
 	public function test_schema_creates_inspects_and_changes_tables_through_wordpress(): void {
@@ -229,6 +261,21 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->tables[] = $table;
 
 		return $table;
+	}
+
+	/**
+	 * @param callable(): mixed $callback
+	 */
+	private function assertQueryFails(callable $callback): void {
+		try {
+			$callback();
+		} catch (QueryException $exception) {
+			$this->assertNotSame('', $exception->getMessage());
+
+			return;
+		}
+
+		$this->fail('Expected the database operation to throw a query exception.');
 	}
 
 	private function newContainer(): Container {

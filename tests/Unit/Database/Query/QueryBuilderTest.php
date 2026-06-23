@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Tests\Unit\Database\Query;
 
 use InvalidArgumentException;
+use StellarWP\Foundation\Database\Query\Query;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestTable;
 use StellarWP\Foundation\Tests\TestCase;
@@ -34,5 +35,50 @@ final class QueryBuilderTest extends TestCase
 		$this->expectException(InvalidArgumentException::class);
 
 		(new FakeDatabase())->table('reports')->where('status', 'BETWEEN', ['a', 'z']);
+	}
+
+	public function test_it_rejects_invalid_order_directions(): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('Order direction must be ASC or DESC.');
+
+		(new FakeDatabase())->table('reports')->orderBy('id', 'SIDEWAYS');
+	}
+
+	public function test_it_rejects_invalid_limits(): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('Query limit must be greater than zero.');
+
+		(new FakeDatabase())->table('reports')->limit(0);
+	}
+
+	public function test_it_rejects_negative_offsets(): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('Query offset cannot be negative.');
+
+		(new FakeDatabase())->table('reports')->limit(10, -1);
+	}
+
+	public function test_it_reads_the_first_row(): void {
+		$database               = new FakeDatabase();
+		$database->rowResults[] = ['name' => 'first'];
+
+		$this->assertSame(
+			['name' => 'first'],
+			$database->table('reports')->where('id', '=', 1)->first()
+		);
+	}
+
+	public function test_it_selects_all_columns_by_default(): void {
+		$query = (new FakeDatabase())->table('reports');
+
+		$this->assertSame('SELECT * FROM `wp_reports`', $query->toSql());
+	}
+
+	public function test_it_builds_query_objects(): void {
+		$query = (new FakeDatabase())->table('reports')->where('id', '=', 10)->query();
+
+		$this->assertInstanceOf(Query::class, $query);
+		$this->assertSame('SELECT * FROM `wp_reports` WHERE `id` = %s', $query->toSql());
+		$this->assertSame([10], $query->bindings());
 	}
 }

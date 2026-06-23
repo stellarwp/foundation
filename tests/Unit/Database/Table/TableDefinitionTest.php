@@ -33,4 +33,17 @@ final class TableDefinitionTest extends TestCase
 
 		$definition->assertValid();
 	}
+
+	public function test_it_rejects_tables_without_columns(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'));
+
+		$this->assertSame(['Table reports_table does not define any columns.'], $definition->validationErrors());
+	}
+
+	public function test_it_rejects_indexes_without_columns(): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('An index must define at least one column.');
+
+		TableDefinition::for(new TestTable('reports_table', 'wp_reports'))->index('empty_index');
+	}
 }

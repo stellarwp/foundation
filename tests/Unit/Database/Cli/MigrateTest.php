@@ -14,6 +14,7 @@ use StellarWP\Foundation\Lock\InMemoryLock;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\InMemoryRepository;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchema;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
 use StellarWP\Foundation\Tests\TestCase;
 use WP_CLI;
 
@@ -26,13 +27,7 @@ final class MigrateTest extends TestCase
 			define('WP_CLI', true);
 		}
 
-		$wpCliRoot = dirname(__DIR__, 4) . '/vendor/wp-cli/wp-cli';
-
-		if (! defined('WP_CLI_ROOT')) {
-			define('WP_CLI_ROOT', $wpCliRoot);
-		}
-
-		require_once $wpCliRoot . '/php/utils.php';
+		$this->loadWpCliUtilities();
 
 		$database = new FakeDatabase();
 		$wpSchema = new DatabaseSchema($database, static fn (string $sql): array => []);
@@ -98,5 +93,125 @@ final class MigrateTest extends TestCase
 				'default'     => false,
 			],
 		], $deferredAdditions['foundation migrate']['args']['synopsis']);
+	}
+
+	public function test_it_creates_database_tables_without_running_migrations(): void {
+		[$command, $repository, $schema] = $this->newCommand();
+
+		$this->assertSame(0, $command->runCommand([], ['create-table' => true]));
+
+		$this->assertSame([], $repository->all());
+		$this->assertSame([
+			'createOrUpdate:wp_nexcess_foundation_migrations',
+			'createOrUpdate:wp_nexcess_foundation_locks',
+		], $schema->statements);
+	}
+
+	public function test_it_runs_pending_migrations(): void {
+		[$command, $repository, $schema] = $this->newCommand();
+
+		$this->assertSame(0, $command->runCommand([], ['run' => true]));
+
+		$this->assertTrue($repository->hasRun('2026_06_23_000001_create_example'));
+		$this->assertSame([
+			'createOrUpdate:wp_nexcess_foundation_migrations',
+			'createOrUpdate:wp_nexcess_foundation_locks',
+			'up:2026_06_23_000001_create_example',
+		], $schema->statements);
+	}
+
+	public function test_it_rolls_back_the_latest_migration_batch(): void {
+		[$command, $repository, $schema] = $this->newCommand();
+
+		$command->runCommand([], ['run' => true]);
+		$schema->statements = [];
+
+		$this->assertSame(0, $command->runCommand([], ['rollback' => true]));
+
+		$this->assertFalse($repository->hasRun('2026_06_23_000001_create_example'));
+		$this->assertContains('down:2026_06_23_000001_create_example', $schema->statements);
+	}
+
+	public function test_it_refreshes_database_migrations(): void {
+		[$command, $repository, $schema] = $this->newCommand();
+
+		$command->runCommand([], ['run' => true]);
+		$schema->statements = [];
+
+		$this->assertSame(0, $command->runCommand([], [
+			'refresh' => true,
+			'yes'     => true,
+		]));
+
+		$this->assertTrue($repository->hasRun('2026_06_23_000001_create_example'));
+		$this->assertContains('down:2026_06_23_000001_create_example', $schema->statements);
+		$this->assertContains('up:2026_06_23_000001_create_example', $schema->statements);
+	}
+
+	public function test_it_drops_database_tables(): void {
+		[$command, , $schema] = $this->newCommand();
+
+		$command->runCommand([], ['create-table' => true]);
+
+		$this->assertSame(0, $command->runCommand([], [
+			'drop' => true,
+			'yes'  => true,
+		]));
+
+		$this->assertSame([], $schema->tables);
+		$this->assertContains('drop:wp_nexcess_foundation_migrations', $schema->statements);
+		$this->assertContains('drop:wp_nexcess_foundation_locks', $schema->statements);
+	}
+
+	public function test_it_shows_a_warning_when_status_tables_do_not_exist(): void {
+		[$command] = $this->newCommand();
+
+		$this->assertSame(0, $command->runCommand());
+	}
+
+	public function test_it_shows_migration_status_when_tables_exist(): void {
+		[$command] = $this->newCommand();
+
+		$command->runCommand([], ['run' => true]);
+
+		$this->expectOutputRegex('/2026_06_23_000001_create_example\s+ran\s+1\s+2026-01-01 00:00:00/');
+
+		$this->assertSame(0, $command->runCommand());
+	}
+
+	/**
+	 * @return array{Migrate, InMemoryRepository, RecordingSchema}
+	 */
+	private function newCommand(): array {
+		$this->loadWpCliUtilities();
+
+		$database   = new FakeDatabase();
+		$wpSchema   = new RecordingSchema();
+		$repository = new InMemoryRepository();
+		$runner     = new Runner($repository, $wpSchema, new InMemoryLock());
+		$command    = new Migrate(
+			$this->container,
+			'foundation',
+			$runner,
+			[
+				new TestMigration('2026_06_23_000001_create_example'),
+			],
+			new TableCollection($wpSchema, [
+				new MigrationTable($database, 'wp_nexcess_foundation_migrations'),
+				new LockTable($database, 'wp_nexcess_foundation_locks'),
+			])
+		);
+
+		return [$command, $repository, $wpSchema];
+	}
+
+	private function loadWpCliUtilities(): void {
+		$wpCliRoot = dirname(__DIR__, 4) . '/vendor/wp-cli/wp-cli';
+
+		if (! defined('WP_CLI_ROOT')) {
+			define('WP_CLI_ROOT', $wpCliRoot);
+		}
+
+		require_once $wpCliRoot . '/php/utils.php';
 	}
 }
