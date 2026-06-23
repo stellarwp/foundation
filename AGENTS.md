@@ -8,6 +8,7 @@ Initial packages:
 
 - `stellarwp/foundation-container`
 - `stellarwp/foundation-log`
+- `stellarwp/foundation-lock`
 - `stellarwp/foundation-pipeline`
 - `stellarwp/foundation-wpcli`
 - `stellarwp/foundation-cli`
