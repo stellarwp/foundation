@@ -1,0 +1,28 @@
+<?php
+
+class WPUnitTester
+{
+	/**
+	 * @param string|array<int, string> $command
+	 * @param array<string, mixed>      $args
+	 */
+	public function cli($command, array $args = []): void
+	{
+	}
+
+	public function seeResultCodeIs(int $code): void
+	{
+	}
+
+	public function seeInShellOutput(string $text): void
+	{
+	}
+
+	public function grabLastShellOutput(): string
+	{
+	}
+
+	public function grabLastShellErrorOutput(): string
+	{
+	}
+}
