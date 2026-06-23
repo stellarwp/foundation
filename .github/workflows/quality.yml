@@ -28,6 +28,7 @@ jobs:
           filters: |
             php:
               - added|modified: '**/*.php'
+              - added|modified: '!tests/CodeceptionSupport/**'
 
       - name: Install Composer dependencies
         uses: ramsey/composer-install@v4
@@ -40,4 +41,3 @@ jobs:
 
       - name: Run static analysis
         run: composer analyze
-
