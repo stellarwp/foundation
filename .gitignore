@@ -59,6 +59,5 @@ vendor
 /coverage/
 /tests/_output/*
 !/tests/_output/.gitkeep
-/tests/CodeceptionSupport/
 /tests/_data/temp/*
 !/tests/_data/temp/.gitkeep

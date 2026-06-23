@@ -6,8 +6,6 @@ parameters:
     scanFiles:
         - vendor/php-stubs/wordpress-stubs/wordpress-stubs.php
         - vendor/wp-cli/wp-cli/php/utils.php
-    stubFiles:
-        - tests/Support/PHPStan/WPUnitTester.stub
     excludePaths:
         analyse:
             - src/*/vendor/*
