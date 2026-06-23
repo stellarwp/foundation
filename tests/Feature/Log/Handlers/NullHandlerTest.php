@@ -19,6 +19,8 @@ final class NullHandlerTest extends TestCase
 
 	/**
 	 * @param array{level: int, result: bool} $input
+	 *
+	 * @dataProvider logProvider
 	 */
 	#[DataProvider('logProvider')]
 	public function test_it_null_logs_valid_levels(array $input): void {

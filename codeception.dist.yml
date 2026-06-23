@@ -1,0 +1,18 @@
+actor: Tester
+bootstrap: _bootstrap.php
+coverage:
+  enabled: true
+  include:
+    - src/*
+paths:
+  tests: tests
+  log: tests/_output
+  output: tests/_output
+  data: tests/_data
+  support: tests/CodeceptionSupport
+  wp_root: "%WP_ROOT_FOLDER%"
+settings:
+  colors: true
+  memory_limit: 1024M
+params:
+  - .env.testing.slic

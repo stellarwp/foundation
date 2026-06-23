@@ -3,3 +3,7 @@ parameters:
     paths:
         - src
         - tests
+    excludePaths:
+        analyse:
+            - src/*/vendor/*
+            - tests/CodeceptionSupport/*

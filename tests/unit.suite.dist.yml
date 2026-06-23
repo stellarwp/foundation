@@ -1,0 +1,6 @@
+# Codeception Test Suite Configuration
+
+actor: UnitTester
+path: Unit
+modules:
+  enabled: []

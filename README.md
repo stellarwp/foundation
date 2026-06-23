@@ -47,6 +47,36 @@ Run just the feature test suite:
 composer test:feature
 ```
 
+Run the Codeception suites with SLIC:
+
+```bash
+slic run unit
+slic run feature
+composer test:wpunit
+```
+
+The first time you run the WordPress suite locally, point SLIC at the directory that contains this repository and select the `foundation` project:
+
+```bash
+cd ..
+slic here
+cd foundation
+slic use foundation
+slic composer install
+slic cc build
+composer test:wpunit
+```
+
+If dependencies were installed on a different host PHP version and the SLIC container reports Composer platform conflicts, refresh them inside SLIC:
+
+```bash
+slic composer update --with-all-dependencies
+```
+
+Run `slic cc build` again after changing Codeception suite configuration or modules. Generated Codeception actor files are written to `tests/CodeceptionSupport/` and are intentionally ignored.
+
+The `unit` and `feature` SLIC suites run the same tests as `composer test:unit` and `composer test:feature`. The `wpunit` suite runs WordPress-loaded tests through wp-browser.
+
 Generate the test coverage HTML dashboard (XDEBUG required to be enabled on your machine):
 
 ```bash

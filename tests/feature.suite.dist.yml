@@ -1,0 +1,6 @@
+# Codeception Test Suite Configuration
+
+actor: FeatureTester
+path: Feature
+modules:
+  enabled: []

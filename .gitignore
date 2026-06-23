@@ -51,9 +51,14 @@ vendor
 /clover.xml
 .phpunit.result.cache
 /.phpunit.cache
+/.env.slic.local
+/.env.slic.run
 
 # Tests
 ###########
 /coverage/
+/tests/_output/*
+!/tests/_output/.gitkeep
+/tests/CodeceptionSupport/
 /tests/_data/temp/*
 !/tests/_data/temp/.gitkeep

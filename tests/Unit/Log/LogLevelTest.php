@@ -30,6 +30,9 @@ final class LogLevelTest extends TestCase
 		];
 	}
 
+	/**
+	 * @dataProvider logLevelNameProvider
+	 */
 	#[DataProvider('logLevelNameProvider')]
 	public function test_it_resolves_log_level_names(string $level, int $expected): void {
 		$this->assertSame($expected, LogLevel::fromName($level));
@@ -57,6 +60,9 @@ final class LogLevelTest extends TestCase
 		];
 	}
 
+	/**
+	 * @dataProvider psrLogLevelProvider
+	 */
 	#[DataProvider('psrLogLevelProvider')]
 	public function test_it_resolves_psr_log_level_names(int $level, string $expected): void {
 		$this->assertSame($expected, LogLevel::toPsrLogLevel($level));

@@ -35,3 +35,100 @@ jobs:
 
       - name: Run Feature Tests
         run: vendor/bin/phpunit --configuration ./phpunit.xml.dist --colors=always --testsuite Feature
+
+  slic:
+    runs-on: ubuntu-latest
+    name: SLIC Tests
+
+    env:
+      COMPOSER_AUTH: '{"github-oauth": {"github.com": "${{ github.token }}"}}'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Checkout SLIC
+        uses: actions/checkout@v6
+        with:
+          repository: stellarwp/slic
+          ref: main
+          path: slic
+          fetch-depth: 1
+
+      - name: Set SLIC environment variables
+        run: |
+          echo "SLIC_BIN=${GITHUB_WORKSPACE}/slic/slic" >> $GITHUB_ENV
+          echo "SLIC_WP_DIR=${GITHUB_WORKSPACE}/slic/_wordpress" >> $GITHUB_ENV
+          echo "SLIC_WORDPRESS_DOCKERFILE=Dockerfile.base" >> $GITHUB_ENV
+          echo "SLIC=1" >> $GITHUB_ENV
+          echo "CI=1" >> $GITHUB_ENV
+
+      - name: Start ssh-agent
+        run: |
+          mkdir -p "${HOME}/.ssh"
+          ssh-agent -a /tmp/ssh_agent.sock
+          echo "SSH_AUTH_SOCK=/tmp/ssh_agent.sock" >> $GITHUB_ENV
+
+      - name: Configure SLIC
+        run: |
+          cd "${GITHUB_WORKSPACE}/.."
+          "${SLIC_BIN}" here
+          "${SLIC_BIN}" interactive off
+          "${SLIC_BIN}" build-prompt off
+          "${SLIC_BIN}" build-subdir off
+          "${SLIC_BIN}" xdebug off
+          "${SLIC_BIN}" debug on
+          "${SLIC_BIN}" php-version set 8.3 --skip-rebuild
+          "${SLIC_BIN}" info
+          "${SLIC_BIN}" config
+
+      - name: Install dependencies
+        run: |
+          "${SLIC_BIN}" use foundation
+          "${SLIC_BIN}" composer set-version 2
+          "${SLIC_BIN}" composer install
+
+      - name: Update WordPress
+        run: |
+          "${SLIC_BIN}" wp core update --force
+
+      - name: Build Codeception actors
+        run: |
+          "${SLIC_BIN}" cc build
+
+      - name: Run unit tests
+        if: github.event_name != 'pull_request'
+        run: |
+          "${SLIC_BIN}" run unit --ext DotReporter
+
+      - name: Run feature tests
+        if: github.event_name != 'pull_request'
+        run: |
+          "${SLIC_BIN}" run feature --ext DotReporter
+
+      - name: Run wpunit tests
+        if: github.event_name != 'pull_request'
+        run: |
+          "${SLIC_BIN}" run wpunit --ext DotReporter
+
+      - name: Enable Xdebug for coverage
+        if: github.event_name == 'pull_request'
+        run: |
+          "${SLIC_BIN}" xdebug on
+
+      - name: Run Codeception tests with coverage
+        if: github.event_name == 'pull_request'
+        run: |
+          "${SLIC_BIN}" run --coverage --coverage-xml clover.xml --disable-coverage-php --ext DotReporter
+
+      - name: Monitor coverage
+        if: github.event_name == 'pull_request'
+        uses: slavcodev/coverage-monitor-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          comment_footer: false
+          coverage_format: clover
+          coverage_path: tests/_output/clover.xml
+          threshold_alert: 90
+          threshold_warning: 95
+          threshold_metric: "lines"

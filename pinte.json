@@ -5,6 +5,8 @@
         ".agents",
         ".codex",
         ".claude",
+        "src/*/vendor",
+        "tests/CodeceptionSupport",
         "tests/_data/temp"
     ],
     "rules": {
