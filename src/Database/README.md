@@ -129,7 +129,7 @@ Foundation's own migration infrastructure tables implement `StellarWP\Foundation
 
 ## WP-CLI
 
-The package includes a `migrate` command class for projects using `stellarwp/foundation-wpcli`. Register it from the consuming application's CLI provider with the rest of the project's commands.
+The package includes a `migrate` command class for projects using `stellarwp/foundation-wpcli`. `DatabaseProvider` adds that command to `StellarWP\Foundation\WPCli\Provider::COMMANDS`; register the WP-CLI provider once in the consuming application so merged commands are registered on `cli_init`.
 
 Available flags:
 

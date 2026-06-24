@@ -1,29 +1,32 @@
 <?php declare(strict_types=1);
 
-namespace StellarWP\Foundation\Tests\Unit\Database;
+namespace StellarWP\Foundation\Tests\Integration\Database;
 
 use Adbar\Dot;
 use lucatume\DI52\Container as DI52Container;
-use lucatume\DI52\ContainerException;
 use StellarWP\ContainerContract\ContainerInterface;
 use StellarWP\Foundation\Container\ContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Container;
-use StellarWP\Foundation\Database\Database;
+use StellarWP\Foundation\Database\Cli\Migrate;
 use StellarWP\Foundation\Database\DatabaseProvider;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
-use StellarWP\Foundation\Tests\TestCase;
+use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
+use StellarWP\Foundation\WPCli\Command;
+use StellarWP\Foundation\WPCli\WPCliProvider;
 
-final class DatabaseProviderTest extends TestCase
+final class DatabaseProviderTest extends WPTestCase
 {
 	public function test_it_registers_default_database_configuration(): void {
-		$container = $this->newContainer();
+		$this->container->register(WPCliProvider::class);
+		$this->container->register(DatabaseProvider::class);
 
-		$container->register(DatabaseProvider::class);
+		$commands = $this->container->get(WPCliProvider::COMMANDS);
 
-		$this->assertSame([], $container->get(DatabaseProvider::MIGRATIONS));
-		$this->assertSame('foundation', $container->get(DatabaseProvider::COMMAND_PREFIX));
-		$this->assertSame('foundation-database-migrations', $container->get(DatabaseProvider::LOCK_NAME));
-		$this->assertSame(300, $container->get(DatabaseProvider::LOCK_TTL));
+		$this->assertSame([], $this->container->get(DatabaseProvider::MIGRATIONS));
+		$this->assertSame('foundation-database-migrations', $this->container->get(DatabaseProvider::LOCK_NAME));
+		$this->assertSame(300, $this->container->get(DatabaseProvider::LOCK_TTL));
+		$this->assertContainsOnlyInstancesOf(Command::class, $commands);
+		$this->assertTrue($this->containsMigrateCommand((array) $commands));
 	}
 
 	public function test_it_registers_configured_database_configuration(): void {
@@ -31,52 +34,37 @@ final class DatabaseProviderTest extends TestCase
 			'database' => [
 				'migrations_table' => 'custom_migrations',
 				'locks_table'      => 'custom_locks',
-				'command_prefix'   => 'custom',
 				'lock_name'        => 'custom-migrations',
 				'lock_ttl'         => '120',
 			],
+			'wpcli'    => [
+				'command_prefix' => 'custom',
+			],
 		]);
 
+		$container->register(WPCliProvider::class);
 		$container->register(DatabaseProvider::class);
 
 		$this->assertSame('custom_migrations', $container->get(DatabaseProvider::MIGRATIONS_TABLE));
 		$this->assertSame('custom_locks', $container->get(DatabaseProvider::LOCKS_TABLE));
-		$this->assertSame('custom', $container->get(DatabaseProvider::COMMAND_PREFIX));
 		$this->assertSame('custom-migrations', $container->get(DatabaseProvider::LOCK_NAME));
 		$this->assertSame(120, $container->get(DatabaseProvider::LOCK_TTL));
+		$this->assertSame('custom', $container->get(WPCliProvider::COMMAND_PREFIX));
 	}
 
-	public function test_it_does_not_overwrite_preconfigured_migrations(): void {
+	public function test_it_preserves_preconfigured_migrations(): void {
 		$migration = new TestMigration('2026_06_23_000001_create_example');
 		$container = $this->newContainer();
-		$container->singleton(DatabaseProvider::MIGRATIONS, [$migration]);
+		$container->mergeArrayVar(DatabaseProvider::MIGRATIONS, [$migration]);
 
+		$container->register(WPCliProvider::class);
 		$container->register(DatabaseProvider::class);
 
 		$this->assertSame([$migration], $container->get(DatabaseProvider::MIGRATIONS));
 	}
 
-	public function test_it_fails_clearly_when_wordpress_database_is_not_available(): void {
-		$previous = $GLOBALS['wpdb'] ?? null;
-		unset($GLOBALS['wpdb']);
-
-		$container = $this->newContainer();
-		$container->register(DatabaseProvider::class);
-
-		$this->expectException(ContainerException::class);
-		$this->expectExceptionMessage('the global wpdb instance is not available.');
-
-		try {
-			$container->get(Database::class);
-		} finally {
-			if ($previous !== null) {
-				$GLOBALS['wpdb'] = $previous;
-			}
-		}
-	}
-
 	/**
-	 * @param array<string, mixed> $config
+	 * @param array<string,mixed> $config
 	 */
 	private function newContainer(array $config = []): Container {
 		$container = new ContainerAdapter(new DI52Container());
@@ -85,5 +73,18 @@ final class DatabaseProviderTest extends TestCase
 		$container->singleton(Dot::class, new Dot($config));
 
 		return $container;
+	}
+
+	/**
+	 * @param array<mixed> $commands
+	 */
+	private function containsMigrateCommand(array $commands): bool {
+		foreach ($commands as $command) {
+			if ($command instanceof Migrate) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 }

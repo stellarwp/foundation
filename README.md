@@ -54,7 +54,9 @@ Run the Codeception suites with SLIC:
 ```bash
 slic run unit
 slic run feature
+composer test:integration
 composer test:wpunit
+composer test:wpcli
 ```
 
 The first time you run the WordPress suite locally, point SLIC at the directory that contains this repository and select the `foundation` project:
@@ -66,7 +68,9 @@ cd foundation
 slic use foundation
 slic composer install
 slic cc build
+composer test:integration
 composer test:wpunit
+composer test:wpcli
 ```
 
 If dependencies were installed on a different host PHP version and the SLIC container reports Composer platform conflicts, refresh them inside SLIC:
@@ -77,13 +81,15 @@ slic composer update --with-all-dependencies
 
 Run `slic cc build` again after changing Codeception suite configuration or modules. Generated Codeception actor files are written to `tests/CodeceptionSupport/` and are intentionally ignored.
 
-The `unit` and `feature` SLIC suites run the same tests as `composer test:unit` and `composer test:feature`. The `wpunit` suite runs WordPress-loaded tests through wp-browser.
+The `unit` and `feature` SLIC suites run the same tests as `composer test:unit` and `composer test:feature`. The `integration` suite covers multi-provider/container behavior that needs WordPress runtime APIs. The `wpunit` suite runs lower-level WordPress-loaded tests through wp-browser. The `wpcli` suite is shared across the monorepo for WP-CLI command tests and uses wp-browser's WPCLI module without the full wpunit module stack.
 
 Generate the test coverage HTML dashboard (XDEBUG required to be enabled on your machine):
 
 ```bash
 composer test:coverage-html
 ```
+
+Coverage runs the `feature`, `unit`, `wpcli`, and `wpunit` suites in one Codeception coverage process. Run `composer test:integration` separately when you need to validate provider composition; it is intentionally outside the combined coverage command because wp-browser cannot reliably bootstrap multiple WPLoader suites in the same coverage process.
 
 ### Code Quality
 

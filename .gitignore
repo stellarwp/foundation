@@ -59,5 +59,7 @@ vendor
 /coverage/
 /tests/_output/*
 !/tests/_output/.gitkeep
+!/tests/_output/coverage/
+!/tests/_output/coverage/.gitignore
 /tests/_data/temp/*
 !/tests/_data/temp/.gitkeep

@@ -13,7 +13,7 @@
         "ext-curl": "*",
         "ext-exif": "*",
         "adbario/php-dot-notation": ">=2.5",
-        "lucatume/di52": ">=3.0",
+        "lucatume/di52": ">=4.1",
         "monolog/monolog": "^2.11",
         "psr/log": ">=1.0",
         "stellarwp/container-contract": "^1.1",
@@ -60,9 +60,16 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "StellarWP\\Foundation\\Tests\\": "tests/",
+            "StellarWP\\Foundation\\Tests\\Feature\\": "tests/Feature/",
+            "StellarWP\\Foundation\\Tests\\Integration\\": "tests/integration/",
+            "StellarWP\\Foundation\\Tests\\Support\\": "tests/Support/",
+            "StellarWP\\Foundation\\Tests\\Unit\\": "tests/Unit/",
+            "StellarWP\\Foundation\\Tests\\WPUnitSupport\\": "tests/WPUnitSupport/",
             "StellarWP\\Foundation\\Tests\\WPUnit\\": "tests/wpunit/"
-        }
+        },
+        "classmap": [
+            "tests/TestCase.php"
+        ]
     },
     "bin": [
         "src/Cli/bin/foundation"
@@ -84,9 +91,31 @@
         "test:slic": "slic run",
         "test:slic:unit": "slic run unit",
         "test:slic:feature": "slic run feature",
+        "test:integration": "slic run integration",
         "test:wpunit": "slic run wpunit",
-        "test:coverage": "slic xdebug on && slic run --coverage --coverage-xml clover.xml --disable-coverage-php; status=$?; slic xdebug off; exit $status",
-        "test:coverage-html": "slic xdebug on && slic run --coverage --coverage-html coverage --disable-coverage-php; status=$?; slic xdebug off; exit $status",
+        "test:wpcli": "slic run wpcli",
+        "test:coverage": "@test:coverage:split",
+        "test:coverage-html": "@test:coverage-html:split",
+        "test:clean": "rm -f clover.xml tests/_output/coverage/*.cov && rm -rf ./coverage",
+        "coverage:phpcov-install": [
+            "mkdir -p dev/bin",
+            "test -f ./dev/bin/phpcov.phar || curl -L -o ./dev/bin/phpcov.phar https://phar.phpunit.de/phpcov-10.0.1.phar"
+        ],
+        "coverage:prepare": "rm -f tests/_output/coverage/*.cov",
+        "coverage:merge": "@php dev/bin/phpcov.phar merge tests/_output/coverage --clover clover.xml",
+        "coverage:merge-html": "@php dev/bin/phpcov.phar merge tests/_output/coverage --clover clover.xml --html coverage",
+        "test:coverage:split": [
+            "@coverage:phpcov-install",
+            "@coverage:prepare",
+            "slic xdebug on && slic run unit --coverage coverage/unit.cov && slic run feature --coverage coverage/feature.cov && slic run integration --coverage coverage/integration.cov && slic run wpunit --coverage coverage/wpunit.cov && slic run wpcli --coverage coverage/wpcli.cov; rc=$?; slic xdebug off; exit $rc",
+            "slic composer run coverage:merge"
+        ],
+        "test:coverage-html:split": [
+            "@coverage:phpcov-install",
+            "@coverage:prepare",
+            "slic xdebug on && slic run unit --coverage coverage/unit.cov && slic run feature --coverage coverage/feature.cov && slic run integration --coverage coverage/integration.cov && slic run wpunit --coverage coverage/wpunit.cov && slic run wpcli --coverage coverage/wpcli.cov; rc=$?; slic xdebug off; exit $rc",
+            "slic composer run coverage:merge-html"
+        ],
         "analyze": "@php vendor/bin/phpstan analyse --ansi --memory-limit 2G",
         "lint": "@php vendor/bin/pinte --test -v",
         "format": "@php vendor/bin/pinte -v"
@@ -100,9 +129,18 @@
         "test:slic": "Run all Codeception suites through SLIC.",
         "test:slic:unit": "Run the Codeception unit suite through SLIC.",
         "test:slic:feature": "Run the Codeception feature suite through SLIC.",
+        "test:integration": "Run the WordPress-loaded integration suite through SLIC.",
         "test:wpunit": "Run the WordPress-loaded wpunit suite through SLIC.",
-        "test:coverage": "Generate combined SLIC/Codeception Clover coverage, then turn Xdebug off.",
-        "test:coverage-html": "Generate combined SLIC/Codeception HTML coverage, then turn Xdebug off.",
+        "test:wpcli": "Run the shared WP-CLI command suite through SLIC.",
+        "test:coverage": "Generate merged Clover coverage from split SLIC suite artifacts.",
+        "test:coverage-html": "Generate merged Clover and HTML coverage from split SLIC suite artifacts.",
+        "test:clean": "Remove generated test coverage reports and serialized coverage artifacts.",
+        "coverage:phpcov-install": "Download the pinned phpcov PHAR used to merge split coverage artifacts.",
+        "coverage:prepare": "Create and clear the split coverage artifact directory.",
+        "coverage:merge": "Merge split coverage artifacts into clover.xml. Run through SLIC so container paths resolve.",
+        "coverage:merge-html": "Merge split coverage artifacts into clover.xml and HTML coverage. Run through SLIC so container paths resolve.",
+        "test:coverage:split": "Run SLIC suites separately, merge PHPUnit coverage artifacts, and generate clover.xml.",
+        "test:coverage-html:split": "Run SLIC suites separately, merge PHPUnit coverage artifacts, and generate clover.xml plus HTML coverage.",
         "analyze": "Run PHPStan static analysis.",
         "lint": "Check code style with Pinte.",
         "format": "Fix code style with Pinte."

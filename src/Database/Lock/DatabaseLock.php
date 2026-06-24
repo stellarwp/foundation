@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\Database\Lock;
 
 use DateInterval;
 use DateMalformedIntervalStringException;
+use DateMalformedStringException;
 use DateTimeImmutable;
 use InvalidArgumentException;
 use Random\RandomException;
@@ -28,6 +29,7 @@ final readonly class DatabaseLock implements Lock
 	/**
 	 * @throws DateMalformedIntervalStringException
 	 * @throws RandomException
+	 * @throws DateMalformedStringException
 	 */
 	public function acquire(string $name, int $ttl): ?LockToken {
 		$this->assertValidName($name);

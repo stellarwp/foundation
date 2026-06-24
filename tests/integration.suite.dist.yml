@@ -1,7 +1,7 @@
 # Codeception Test Suite Configuration
 
-actor: WPUnitTester
-bootstrap: _bootstrap.php
+actor: IntegrationTester
+path: integration
 modules:
   enabled:
     - lucatume\WPBrowser\Module\WPLoader

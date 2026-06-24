@@ -16,6 +16,7 @@ use StellarWP\Foundation\Database\Table\Collection as TableCollection;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
+use StellarWP\Foundation\WPCli\WPCliProvider;
 
 /**
  * Registers Foundation database services for WordPress environments.
@@ -25,17 +26,15 @@ final class DatabaseProvider extends Provider
 	public const string MIGRATIONS       = 'foundation.database.migrations';
 	public const string MIGRATIONS_TABLE = 'foundation.database.migrations_table';
 	public const string LOCKS_TABLE      = 'foundation.database.locks_table';
-	public const string COMMAND_PREFIX   = 'foundation.database.command_prefix';
 	public const string LOCK_NAME        = 'foundation.database.lock_name';
 	public const string LOCK_TTL         = 'foundation.database.lock_ttl';
 
 	public function register(): void {
-		$this->singletonIfMissing(self::MIGRATIONS, []);
-		$this->singletonIfMissing(self::MIGRATIONS_TABLE, $this->tableName('migrations_table', 'nexcess_foundation_migrations'));
-		$this->singletonIfMissing(self::LOCKS_TABLE, $this->tableName('locks_table', 'nexcess_foundation_locks'));
-		$this->singletonIfMissing(self::COMMAND_PREFIX, $this->config->get('database.command_prefix', 'foundation'));
-		$this->singletonIfMissing(self::LOCK_NAME, $this->config->get('database.lock_name', 'foundation-database-migrations'));
-		$this->singletonIfMissing(self::LOCK_TTL, (int) $this->config->get('database.lock_ttl', 300));
+		$this->container->mergeArrayVar(self::MIGRATIONS, []);
+		$this->container->singleton(self::MIGRATIONS_TABLE, $this->tableName('migrations_table', 'nexcess_foundation_migrations'));
+		$this->container->singleton(self::LOCKS_TABLE, $this->tableName('locks_table', 'nexcess_foundation_locks'));
+		$this->container->singleton(self::LOCK_NAME, $this->config->get('database.lock_name', 'foundation-database-migrations'));
+		$this->container->singleton(self::LOCK_TTL, (int) $this->config->get('database.lock_ttl', 300));
 
 		$this->configureContextualBindings();
 
@@ -59,6 +58,8 @@ final class DatabaseProvider extends Provider
 		$this->container->singleton(LockTable::class);
 		$this->container->singleton(Runner::class);
 		$this->container->singleton(Migrate::class);
+
+		$this->registerCliCommands();
 	}
 
 	private function configureContextualBindings(): void {
@@ -90,20 +91,26 @@ final class DatabaseProvider extends Provider
 			->needs(Lock::class)
 			->give(static fn (C $c): DatabaseLock => $c->get(DatabaseLock::class));
 
-		$this->container->when(Migrate::class)
-			->needs('$commandPrefix')
-			->give(static fn (C $c): string => $c->get(self::COMMAND_PREFIX));
-
-		$this->container->when(Migrate::class)
-			->needs('$migrations')
-			->give(static fn (C $c): iterable => $c->get(self::MIGRATIONS));
-
 		$this->container->when(TableCollection::class)
 			->needs('$tables')
 			->give(static fn (C $c): array => [
 				$c->get(MigrationTable::class),
 				$c->get(LockTable::class),
 			]);
+	}
+
+	private function registerCliCommands(): void {
+		$this->container->when(Migrate::class)
+			->needs('$commandPrefix')
+			->give(static fn (C $c): string => $c->get(WPCliProvider::COMMAND_PREFIX));
+
+		$this->container->when(Migrate::class)
+			->needs('$migrations')
+			->give(static fn (C $c): iterable => $c->get(self::MIGRATIONS));
+
+		$this->container->mergeArrayVar(WPCliProvider::COMMANDS, static fn (C $c): array => [
+			$c->get(Migrate::class),
+		]);
 	}
 
 	private function tableName(string $key, string $default): mixed {
@@ -114,13 +121,5 @@ final class DatabaseProvider extends Provider
 		}
 
 		return static fn (C $c): string => $c->get(DatabaseContract::class)->tableName($default);
-	}
-
-	private function singletonIfMissing(string $id, mixed $implementation): void {
-		if ($this->container->has($id)) {
-			return;
-		}
-
-		$this->container->singleton($id, $implementation);
 	}
 }
