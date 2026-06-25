@@ -107,13 +107,13 @@
         "test:coverage:split": [
             "@coverage:phpcov-install",
             "@coverage:prepare",
-            "slic xdebug on && slic run unit --coverage coverage/unit.cov && slic run feature --coverage coverage/feature.cov && slic run integration --coverage coverage/integration.cov && slic run wpunit --coverage coverage/wpunit.cov && slic run wpcli --coverage coverage/wpcli.cov; rc=$?; slic xdebug off; exit $rc",
+            "slic pcov on --yes && slic run unit --coverage coverage/unit.cov && slic run feature --coverage coverage/feature.cov && slic run integration --coverage coverage/integration.cov && slic run wpunit --coverage coverage/wpunit.cov && slic run wpcli --coverage coverage/wpcli.cov; rc=$?; slic pcov off; exit $rc",
             "slic composer run coverage:merge"
         ],
         "test:coverage-html:split": [
             "@coverage:phpcov-install",
             "@coverage:prepare",
-            "slic xdebug on && slic run unit --coverage coverage/unit.cov && slic run feature --coverage coverage/feature.cov && slic run integration --coverage coverage/integration.cov && slic run wpunit --coverage coverage/wpunit.cov && slic run wpcli --coverage coverage/wpcli.cov; rc=$?; slic xdebug off; exit $rc",
+            "slic pcov on --yes && slic run unit --coverage coverage/unit.cov && slic run feature --coverage coverage/feature.cov && slic run integration --coverage coverage/integration.cov && slic run wpunit --coverage coverage/wpunit.cov && slic run wpcli --coverage coverage/wpcli.cov; rc=$?; slic pcov off; exit $rc",
             "slic composer run coverage:merge-html"
         ],
         "analyze": "@php vendor/bin/phpstan analyse --ansi --memory-limit 2G",

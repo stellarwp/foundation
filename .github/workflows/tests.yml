@@ -121,18 +121,12 @@ jobs:
         run: |
           "${SLIC_BIN}" run wpcli --ext DotReporter
 
-      - name: Enable Xdebug for coverage
-        if: github.event_name == 'pull_request'
-        run: |
-          "${SLIC_BIN}" xdebug on
-
       - name: Run Codeception tests with coverage
         if: github.event_name == 'pull_request'
         run: |
           composer run coverage:phpcov-install
           composer run coverage:prepare
-          trap '"${SLIC_BIN}" xdebug off' EXIT
-          "${SLIC_BIN}" xdebug on
+          "${SLIC_BIN}" pcov on --yes
           "${SLIC_BIN}" run unit --coverage coverage/unit.cov --ext DotReporter
           "${SLIC_BIN}" run feature --coverage coverage/feature.cov --ext DotReporter
           "${SLIC_BIN}" run integration --coverage coverage/integration.cov --ext DotReporter
