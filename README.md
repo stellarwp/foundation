@@ -83,13 +83,13 @@ Run `slic cc build` again after changing Codeception suite configuration or modu
 
 The `unit` and `feature` SLIC suites run the same tests as `composer test:unit` and `composer test:feature`. The `integration` suite covers multi-provider/container behavior that needs WordPress runtime APIs. The `wpunit` suite runs lower-level WordPress-loaded tests through wp-browser. The `wpcli` suite is shared across the monorepo for WP-CLI command tests and uses wp-browser's WPCLI module without the full wpunit module stack.
 
-Generate the test coverage HTML dashboard (XDEBUG required to be enabled on your machine):
+Generate the test coverage HTML dashboard:
 
 ```bash
 composer test:coverage-html
 ```
 
-Coverage runs the `feature`, `unit`, `wpcli`, and `wpunit` suites in one Codeception coverage process. Run `composer test:integration` separately when you need to validate provider composition; it is intentionally outside the combined coverage command because wp-browser cannot reliably bootstrap multiple WPLoader suites in the same coverage process.
+Coverage uses SLIC 2.3.0+ PCOV support for faster collection. It runs each SLIC suite separately, writes serialized `.cov` artifacts, and merges them with `phpcov` so multiple WordPress-loaded suites can contribute to one Clover or HTML report.
 
 ### Code Quality
 
