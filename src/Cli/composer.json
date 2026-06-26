@@ -9,6 +9,7 @@
     },
     "require": {
         "php": ">=8.3",
+        "nikic/php-parser": ">=5.0 <6.0",
         "stellarwp/foundation-container": "^1.2",
         "stellarwp/foundation-database": "^1.2",
         "stellarwp/foundation-wpcli": "^1.2",

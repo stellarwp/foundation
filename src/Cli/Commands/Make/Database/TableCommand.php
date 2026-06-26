@@ -1,6 +1,6 @@
 <?php declare(strict_types=1);
 
-namespace StellarWP\Foundation\Cli\Commands\Make;
+namespace StellarWP\Foundation\Cli\Commands\Make\Database;
 
 use RuntimeException;
 use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
@@ -24,7 +24,7 @@ use Symfony\Component\Console\Output\OutputInterface;
  * Use this from a consuming WordPress project when a feature needs a table
  * definition that can be wrapped in a Foundation `CreateTable` migration.
  */
-final class DatabaseTableCommand extends Command
+final class TableCommand extends Command
 {
 	private const string NAME = 'make:database-table';
 
@@ -34,7 +34,8 @@ final class DatabaseTableCommand extends Command
 		private readonly WordPressClassNameResolver $classNameResolver,
 		private readonly StubResolver $stubResolver,
 		private readonly StubRenderer $stubRenderer,
-		private readonly GeneratedFileWriter $fileWriter
+		private readonly GeneratedFileWriter $fileWriter,
+		private readonly ProviderRegistrationEditor $providerUpdater
 	) {
 		parent::__construct(self::NAME);
 	}
@@ -44,6 +45,7 @@ final class DatabaseTableCommand extends Command
 			->addArgument('name', InputArgument::REQUIRED, 'Table class name, e.g. Reports_Table, Reports, or reports.')
 			->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the generated table class.')
 			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Directory where the table class should be written.')
+			->addOption('provider', null, InputOption::VALUE_REQUIRED, 'Database provider file to update when it exists.')
 			->addOption('id', null, InputOption::VALUE_REQUIRED, 'Stable table identifier used by migrations.')
 			->addOption('table', null, InputOption::VALUE_REQUIRED, 'Unprefixed WordPress table name.')
 			->addOption('force', null, InputOption::VALUE_NONE, 'Overwrite the file if it already exists.');
@@ -51,8 +53,10 @@ final class DatabaseTableCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int {
 		try {
+			$this->validateExplicitProviderUpdate($input);
 			$file = $this->generatedFile($input);
 			$this->fileWriter->write($file, (bool) $input->getOption('force'));
+			$providerPath = $this->updateProvider($input);
 		} catch (RuntimeException $exception) {
 			$output->writeln('<error>' . $exception->getMessage() . '</error>');
 
@@ -62,6 +66,10 @@ final class DatabaseTableCommand extends Command
 		$output->writeln(sprintf('<info>Created:</info> %s', $file->relativePath));
 		$output->writeln('');
 		$output->writeln('<comment>Add this table to a migration, usually with StellarWP\Foundation\Database\Table\CreateTable.</comment>');
+
+		if ($providerPath !== null) {
+			$output->writeln(sprintf('<info>Updated:</info> %s', $this->relativePath($providerPath)));
+		}
 
 		$runtimeDependencyWarning = $this->runtimeDependencyWarning();
 
@@ -96,6 +104,69 @@ final class DatabaseTableCommand extends Command
 				'foundation_database_table_definition' => $project->foundationClass('StellarWP\\Foundation\\Database\\Table\\TableDefinition'),
 			])
 		);
+	}
+
+	private function validateExplicitProviderUpdate(InputInterface $input): void {
+		if (! $this->hasExplicitProvider($input)) {
+			return;
+		}
+
+		$project      = $this->autoloadResolver->project();
+		$className    = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
+		$namespace    = $this->namespace($input, $project->defaultPsr4Namespace());
+		$providerPath = $this->providerPath($input, $project);
+
+		if (! is_file($providerPath)) {
+			throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->relativePath($providerPath)));
+		}
+
+		$status = $this->providerUpdater->checkTable($providerPath, $className, $namespace);
+
+		if ($status === ProviderRegistrationEditor::UPDATED || $status === ProviderRegistrationEditor::ALREADY_REGISTERED) {
+			return;
+		}
+
+		throw new RuntimeException(sprintf(
+			'Could not update database provider "%s": %s.',
+			$this->relativePath($providerPath),
+			$this->providerUpdateFailure($status)
+		));
+	}
+
+	private function updateProvider(InputInterface $input): ?string {
+		$project      = $this->autoloadResolver->project();
+		$className    = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
+		$namespace    = $this->namespace($input, $project->defaultPsr4Namespace());
+		$providerPath = $this->providerPath($input, $project);
+		$explicit     = $this->hasExplicitProvider($input);
+
+		if (! is_file($providerPath)) {
+			if ($explicit) {
+				throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->relativePath($providerPath)));
+			}
+
+			return null;
+		}
+
+		$status = $this->providerUpdater->addTable($providerPath, $className, $namespace);
+
+		if ($status === ProviderRegistrationEditor::UPDATED) {
+			return $providerPath;
+		}
+
+		if ($status === ProviderRegistrationEditor::ALREADY_REGISTERED) {
+			return null;
+		}
+
+		if ($explicit) {
+			throw new RuntimeException(sprintf(
+				'Could not update database provider "%s": %s.',
+				$this->relativePath($providerPath),
+				$this->providerUpdateFailure($status)
+			));
+		}
+
+		return null;
 	}
 
 	private function optionOrDefault(InputInterface $input, string $option, string $default): string {
@@ -139,6 +210,42 @@ final class DatabaseTableCommand extends Command
 		}
 
 		return $this->rootPath . '/' . $autoload->pathFor($namespace);
+	}
+
+	private function providerPath(InputInterface $input, ComposerProject $project): string {
+		$provider = $input->getOption('provider');
+
+		if (is_string($provider) && trim($provider) !== '') {
+			return $this->absolutePath($provider);
+		}
+
+		$namespace = trim($project->defaultPsr4Namespace()->namespace, '\\') . '\\Database';
+		$autoload  = $project->psr4NamespaceFor($namespace);
+
+		if ($autoload === null) {
+			return $this->rootPath . '/src/Database/Provider.php';
+		}
+
+		return $this->rootPath . '/' . $autoload->pathFor($namespace) . '/Provider.php';
+	}
+
+	private function hasExplicitProvider(InputInterface $input): bool {
+		$provider = $input->getOption('provider');
+
+		return is_string($provider) && trim($provider) !== '';
+	}
+
+	private function providerUpdateFailure(string $status): string {
+		return match ($status) {
+			ProviderRegistrationEditor::NOT_FOUND        => 'file does not exist or is not readable',
+			ProviderRegistrationEditor::NOT_WRITABLE     => 'file is not writable',
+			ProviderRegistrationEditor::MISSING_ANCHOR   => 'file does not contain a generated database provider registration point',
+			ProviderRegistrationEditor::MISSING_MARKER   => 'file does not contain the generated database provider markers',
+			ProviderRegistrationEditor::IMPORT_COLLISION => 'a different imported class uses the same short class name',
+			ProviderRegistrationEditor::PARSE_FAILED     => 'file could not be parsed as PHP',
+			ProviderRegistrationEditor::WRITE_FAILED     => 'file could not be written',
+			default                                      => 'provider could not be updated',
+		};
 	}
 
 	private function absolutePath(string $path): string {

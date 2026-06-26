@@ -49,7 +49,9 @@ Avoid `use ... as ...` import aliases unless they resolve a real class-name coll
 
 Exceptions should live in an `Exceptions/` folder. Put shared package exceptions at the package root, for example `src/Database/Exceptions/DatabaseException.php`; put feature-only exceptions under that feature's `Exceptions/` folder only when they are not shared outside that feature.
 
-Generator commands should be grouped by the `make:*` workflow under `src/Cli/Commands/Make/`, for example `src/Cli/Commands/Make/WPCliCommand.php`. Shared generation infrastructure that is not itself a console command should live under `src/Cli/Generation/`.
+Generator commands should be grouped by the `make:*` workflow under `src/Cli/Commands/Make/`, for example `src/Cli/Commands/Make/WPCliCommand.php`. When a make feature grows beyond a single command class or needs private collaborators, group that feature under its own namespace such as `src/Cli/Commands/Make/Database/`. Command-specific collaborators should live inside that feature namespace, not beside unrelated command classes in `Commands/Make/`.
+
+Shared generation infrastructure that is not itself a console command and is reused across command features should live under `src/Cli/Generation/`.
 
 Default stubs should live with the package that owns the generated class shape. For example, WP-CLI command stubs live in `src/WPCli/stubs/` because the WPCli package owns the base `Command` API. The CLI package owns resolving, rendering, and writing generated files.
 

@@ -66,6 +66,10 @@ final class WordPressClassNameResolverTest extends TestCase
 		$this->assertSame('reports', (new WordPressClassNameResolver())->tableName('Reports_Table'));
 	}
 
+	public function test_it_uses_the_lowercase_class_name_when_a_table_name_has_no_words(): void {
+		$this->assertSame('@@@', (new WordPressClassNameResolver())->tableName('@@@'));
+	}
+
 	public function test_it_creates_timestamped_migration_ids_from_migration_classes(): void {
 		$this->assertSame(
 			'2026_06_26_120000_create_reports_table',
@@ -80,6 +84,13 @@ final class WordPressClassNameResolverTest extends TestCase
 		(new WordPressClassNameResolver())->commandClass('@@@');
 	}
 
+	public function test_it_fails_when_generic_class_input_cannot_be_normalized_to_a_class_name(): void {
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('Could not create a class name from "@@@".');
+
+		(new WordPressClassNameResolver())->className('@@@');
+	}
+
 	public function test_it_fails_when_the_generated_class_name_would_start_with_a_number(): void {
 		$this->expectException(RuntimeException::class);
 		$this->expectExceptionMessage('Could not create a valid PHP class name from "2fa-sync".');
@@ -87,11 +98,39 @@ final class WordPressClassNameResolverTest extends TestCase
 		(new WordPressClassNameResolver())->commandClass('2fa-sync');
 	}
 
+	public function test_it_fails_when_the_generic_class_name_would_start_with_a_number(): void {
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('Could not create a valid PHP class name from "2fa-sync".');
+
+		(new WordPressClassNameResolver())->className('2fa-sync');
+	}
+
 	public function test_it_fails_when_the_generated_class_name_would_conflict_with_the_base_command(): void {
 		$this->expectException(RuntimeException::class);
 		$this->expectExceptionMessage('Could not create a command class named "Command" from "Command"');
 
 		(new WordPressClassNameResolver())->commandClass('Command');
+	}
+
+	public function test_it_fails_when_table_input_cannot_be_normalized_to_a_class_name(): void {
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('Could not create a table class name from "@@@".');
+
+		(new WordPressClassNameResolver())->tableClass('@@@');
+	}
+
+	public function test_it_fails_when_the_table_class_name_would_start_with_a_number(): void {
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('Could not create a valid PHP class name from "2fa".');
+
+		(new WordPressClassNameResolver())->tableClass('2fa');
+	}
+
+	public function test_it_fails_when_migration_input_cannot_be_normalized_to_an_id(): void {
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('Could not create a migration id from "@@@".');
+
+		(new WordPressClassNameResolver())->migrationId('@@@');
 	}
 
 	public function test_it_uses_a_default_description_when_the_class_has_no_words(): void {

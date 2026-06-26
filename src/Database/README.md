@@ -236,27 +236,50 @@ final readonly class PluginUpdater
 
 ## Generators
 
-If the project also installs `stellarwp/foundation-cli` as a development dependency, scaffold a table class and matching migration in a consuming WordPress project:
+If the project also installs `stellarwp/foundation-cli` as a development dependency, scaffold a database provider, table class, and matching migration in a consuming WordPress project:
 
 ```bash
+vendor/bin/foundation make:database-provider
 vendor/bin/foundation make:database-table Reports_Table
 vendor/bin/foundation make:database-migration Create_Reports_Table
 ```
 
-The table generator reads the project's first `autoload.psr-4` namespace from `composer.json` and writes a Snake_Case table class under `src/Database/Tables` by default. The migration generator writes under `src/Database/Migrations` by default and references the matching table class.
+The provider generator reads the project's first `autoload.psr-4` namespace from `composer.json` and writes `src/Database/Provider.php` by default. Register the Foundation `DatabaseProvider` first, then the generated application provider:
+
+```php
+use Acme\Plugin\Database\Provider;
+use StellarWP\Foundation\Database\DatabaseProvider;
+
+protected array $providers = [
+	DatabaseProvider::class,
+	Provider::class,
+];
+```
+
+The table generator writes a Snake_Case table class under `src/Database/Tables` by default. The migration generator writes under `src/Database/Migrations` by default and references the matching table class.
+
+Migration names matching `Create_*_Table`, or migrations generated with `--table-class`, use the table-backed migration stub and wrap the table in `CreateTable`. Other migration names use the generic migration stub.
+
+If `src/Database/Provider.php` exists and contains the generated provider markers, the table and migration generators automatically add imports and registrations to that provider. Pass `--provider=path/to/Provider.php` to update a non-standard provider file. Re-running a generator does not duplicate existing provider imports or registrations. If you generate a custom provider class name or location, pass `--provider` when generating later tables or migrations.
 
 Common options:
 
 ```bash
+vendor/bin/foundation make:database-provider Provider \
+  --namespace="Acme\\Plugin\\Database" \
+  --path=src/Database
+
 vendor/bin/foundation make:database-table Reports_Table \
   --namespace="Acme\\Plugin\\Database\\Tables" \
   --path=src/Database/Tables \
+  --provider=src/Database/Provider.php \
   --id=reports_table \
   --table=reports
 
 vendor/bin/foundation make:database-migration Create_Reports_Table \
   --namespace="Acme\\Plugin\\Database\\Migrations" \
   --path=src/Database/Migrations \
+  --provider=src/Database/Provider.php \
   --id=2026_06_26_000001_create_reports_table \
   --table-class=Reports_Table \
   --table-namespace="Acme\\Plugin\\Database\\Tables"
@@ -267,6 +290,8 @@ Project-specific stub overrides live in:
 ```text
 foundation/stubs/database/table.stub
 foundation/stubs/database/migration.stub
+foundation/stubs/database/table-migration.stub
+foundation/stubs/database/provider.stub
 ```
 
 When present, overrides are used instead of the default stubs from the `foundation-database` package.

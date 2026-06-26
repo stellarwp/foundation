@@ -4,22 +4,28 @@ namespace {{ namespace }};
 
 use {{ foundation_database_migration }};
 use {{ foundation_database_schema }};
-use {{ foundation_database_irreversible_migration }};
+use {{ foundation_database_create_table }};
+use {{ table_namespace }}\{{ table_class }};
 
 final readonly class {{ class }} implements Migration {
 
 	public const string ID = {{ id_php }};
+
+	public function __construct(
+		private {{ table_class }} $table
+	) {
+	}
 
 	public function id(): string {
 		return self::ID;
 	}
 
 	public function up( Schema $schema ): void {
-		// Add migration behavior here.
+		( new CreateTable( $this->table ) )->up( $schema );
 	}
 
 	public function down( Schema $schema ): void {
-		throw new IrreversibleMigration( self::ID );
+		( new CreateTable( $this->table ) )->down( $schema );
 	}
 
 }

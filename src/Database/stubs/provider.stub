@@ -1,0 +1,25 @@
+<?php declare(strict_types=1);
+
+namespace {{ namespace }};
+
+use lucatume\DI52\Container as C;
+use {{ foundation_database_provider }};
+use {{ foundation_service_provider }} as Service_Provider;
+
+final class {{ class }} extends Service_Provider {
+
+	public function register(): void {
+		$this->register_tables();
+		$this->register_migrations();
+	}
+
+	private function register_tables(): void {
+		// foundation:database-tables
+	}
+
+	private function register_migrations(): void {
+		$this->container->mergeArrayVar( DatabaseProvider::MIGRATIONS, static fn ( C $c ): array => [
+		] );
+	}
+
+}

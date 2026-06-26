@@ -3,8 +3,12 @@
 namespace StellarWP\Foundation\Cli;
 
 use lucatume\DI52\Container;
-use StellarWP\Foundation\Cli\Commands\Make\DatabaseMigrationCommand;
-use StellarWP\Foundation\Cli\Commands\Make\DatabaseTableCommand;
+use PhpParser\Lexer;
+use PhpParser\ParserFactory;
+use StellarWP\Foundation\Cli\Commands\Make\Database\MigrationCommand;
+use StellarWP\Foundation\Cli\Commands\Make\Database\ProviderCommand;
+use StellarWP\Foundation\Cli\Commands\Make\Database\ProviderRegistrationEditor;
+use StellarWP\Foundation\Cli\Commands\Make\Database\TableCommand;
 use StellarWP\Foundation\Cli\Commands\Make\WPCliCommand;
 use StellarWP\Foundation\Cli\Commands\Package\Contracts\PackageRepositoryCreator;
 use StellarWP\Foundation\Cli\Commands\Package\CreateCommand;
@@ -15,6 +19,7 @@ use StellarWP\Foundation\Cli\Commands\Package\PackageResolver;
 use StellarWP\Foundation\Cli\Commands\Package\PackageScaffolder;
 use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
+use StellarWP\Foundation\Cli\Generation\Php\PhpSourceEditor;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
@@ -55,11 +60,15 @@ final class CliProvider extends Provider
 			->needs('$rootPath')
 			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
 
-		$this->container->when(DatabaseMigrationCommand::class)
+		$this->container->when(MigrationCommand::class)
 			->needs('$rootPath')
 			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
 
-		$this->container->when(DatabaseTableCommand::class)
+		$this->container->when(ProviderCommand::class)
+			->needs('$rootPath')
+			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+
+		$this->container->when(TableCommand::class)
 			->needs('$rootPath')
 			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
 
@@ -67,8 +76,9 @@ final class CliProvider extends Provider
 			->needs('$commands')
 			->give(static fn (Container $c): array => [
 				$c->get(CreateCommand::class),
-				$c->get(DatabaseMigrationCommand::class),
-				$c->get(DatabaseTableCommand::class),
+				$c->get(MigrationCommand::class),
+				$c->get(ProviderCommand::class),
+				$c->get(TableCommand::class),
 				$c->get(WPCliCommand::class),
 			]);
 
@@ -83,10 +93,15 @@ final class CliProvider extends Provider
 		$this->container->singleton(WordPressClassNameResolver::class);
 		$this->container->singleton(ComposerAutoloadResolver::class);
 		$this->container->singleton(GeneratedFileWriter::class);
+		$this->container->singleton(Lexer::class);
+		$this->container->singleton(ParserFactory::class);
+		$this->container->singleton(PhpSourceEditor::class);
 		$this->container->singleton(StubRenderer::class);
 		$this->container->singleton(StubResolver::class);
-		$this->container->singleton(DatabaseMigrationCommand::class);
-		$this->container->singleton(DatabaseTableCommand::class);
+		$this->container->singleton(MigrationCommand::class);
+		$this->container->singleton(ProviderCommand::class);
+		$this->container->singleton(ProviderRegistrationEditor::class);
+		$this->container->singleton(TableCommand::class);
 		$this->container->singleton(WPCliCommand::class);
 		$this->container->singleton(Application::class);
 	}
