@@ -10,6 +10,7 @@ use StellarWP\Foundation\Database\Contracts\Migration;
 use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
 use StellarWP\Foundation\Database\Database;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
+use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
 use StellarWP\Foundation\Database\Migration\Repository;
 use StellarWP\Foundation\Database\Migration\Runner;
 use StellarWP\Foundation\Database\Schema;
@@ -78,7 +79,7 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 			$schema,
 			new DatabaseLock($database, $lockTable)
 		),
-		[$migration],
+		new MigrationCollection([$migration]),
 		new TableCollection($schema, [
 			new MigrationTable($database, $migrationTable),
 			new LockTable($database, $lockTable),

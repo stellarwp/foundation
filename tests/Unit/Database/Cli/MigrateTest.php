@@ -5,6 +5,7 @@ namespace StellarWP\Foundation\Tests\Unit\Database\Cli;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use StellarWP\Foundation\Database\Cli\Migrate;
+use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
 use StellarWP\Foundation\Database\Migration\Runner;
 use StellarWP\Foundation\Database\Schema as DatabaseSchema;
 use StellarWP\Foundation\Database\Table\Collection as TableCollection;
@@ -35,7 +36,7 @@ final class MigrateTest extends TestCase
 			$this->container,
 			'foundation',
 			new Runner(new InMemoryRepository(), new RecordingSchema(), new InMemoryLock()),
-			[],
+			new MigrationCollection(),
 			new TableCollection($wpSchema, [
 				new MigrationTable($database, 'wp_nexcess_foundation_migrations'),
 				new LockTable($database, 'wp_nexcess_foundation_locks'),
@@ -193,9 +194,9 @@ final class MigrateTest extends TestCase
 			$this->container,
 			'foundation',
 			$runner,
-			[
+			new MigrationCollection([
 				new TestMigration('2026_06_23_000001_create_example'),
-			],
+			]),
 			new TableCollection($wpSchema, [
 				new MigrationTable($database, 'wp_nexcess_foundation_migrations'),
 				new LockTable($database, 'wp_nexcess_foundation_locks'),

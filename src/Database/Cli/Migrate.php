@@ -3,9 +3,9 @@
 namespace StellarWP\Foundation\Database\Cli;
 
 use StellarWP\Foundation\Container\Contracts\Container;
-use StellarWP\Foundation\Database\Contracts\Migration;
+use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
 use StellarWP\Foundation\Database\Migration\Runner;
-use StellarWP\Foundation\Database\Table\Collection;
+use StellarWP\Foundation\Database\Table\Collection as TableCollection;
 use StellarWP\Foundation\WPCli\Command;
 use WP_CLI;
 
@@ -24,15 +24,12 @@ final class Migrate extends Command
 	private const string FLAG_CREATE_TABLE = 'create-table';
 	private const string FLAG_YES          = 'yes';
 
-	/**
-	 * @param iterable<Migration> $migrations
-	 */
 	public function __construct(
 		protected Container $container,
 		string $commandPrefix,
 		private readonly Runner $runner,
-		private readonly iterable $migrations,
-		private readonly Collection $tables
+		private readonly MigrationCollection $migrations,
+		private readonly TableCollection $tables
 	) {
 		parent::__construct($this->container, $commandPrefix);
 	}

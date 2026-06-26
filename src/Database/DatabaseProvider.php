@@ -10,6 +10,7 @@ use StellarWP\Foundation\Database\Contracts\Repository;
 use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
+use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
 use StellarWP\Foundation\Database\Migration\Repository as MigrationRecordRepository;
 use StellarWP\Foundation\Database\Migration\Runner;
 use StellarWP\Foundation\Database\Table\Collection;
@@ -83,6 +84,10 @@ final class DatabaseProvider extends Provider
 	}
 
 	private function registerMigrations(): void {
+		$this->container->when(MigrationCollection::class)
+			->needs('$migrations')
+			->give(static fn (C $c): iterable => $c->get(self::MIGRATIONS));
+
 		$this->container->when(MigrationRecordRepository::class)
 			->needs('$table')
 			->give(static fn (C $c): string => $c->get(self::MIGRATIONS_TABLE));
@@ -99,6 +104,7 @@ final class DatabaseProvider extends Provider
 			->needs(Lock::class)
 			->give(static fn (C $c): DatabaseLock => $c->get(DatabaseLock::class));
 
+		$this->container->singleton(MigrationCollection::class);
 		$this->container->singleton(MigrationRecordRepository::class);
 		$this->container->singleton(Repository::class, static fn (C $c): MigrationRecordRepository => $c->get(MigrationRecordRepository::class));
 		$this->container->singleton(Runner::class);
@@ -116,10 +122,6 @@ final class DatabaseProvider extends Provider
 		$this->container->when(Migrate::class)
 			->needs('$commandPrefix')
 			->give(static fn (C $c): string => $c->get(WPCliProvider::COMMAND_PREFIX));
-
-		$this->container->when(Migrate::class)
-			->needs('$migrations')
-			->give(static fn (C $c): iterable => $c->get(self::MIGRATIONS));
 
 		$this->container->singleton(Migrate::class);
 

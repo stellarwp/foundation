@@ -9,6 +9,7 @@ use StellarWP\Foundation\Container\ContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Database\Cli\Migrate;
 use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\Database\Migration\Collection;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
 use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
 use StellarWP\Foundation\WPCli\Command;
@@ -61,6 +62,7 @@ final class DatabaseProviderTest extends WPTestCase
 		$container->register(DatabaseProvider::class);
 
 		$this->assertSame([$migration], $container->get(DatabaseProvider::MIGRATIONS));
+		$this->assertSame([$migration], $container->get(Collection::class)->all());
 	}
 
 	/**
