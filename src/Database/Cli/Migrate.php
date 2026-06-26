@@ -3,9 +3,7 @@
 namespace StellarWP\Foundation\Database\Cli;
 
 use StellarWP\Foundation\Container\Contracts\Container;
-use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
-use StellarWP\Foundation\Database\Migration\Runner;
-use StellarWP\Foundation\Database\Table\Collection as TableCollection;
+use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\WPCli\Command;
 use WP_CLI;
 
@@ -21,15 +19,14 @@ final class Migrate extends Command
 	private const string FLAG_ROLLBACK     = 'rollback';
 	private const string FLAG_REFRESH      = 'refresh';
 	private const string FLAG_DROP         = 'drop';
+	private const string FLAG_PREPARE      = 'prepare';
 	private const string FLAG_CREATE_TABLE = 'create-table';
 	private const string FLAG_YES          = 'yes';
 
 	public function __construct(
 		protected Container $container,
 		string $commandPrefix,
-		private readonly Runner $runner,
-		private readonly MigrationCollection $migrations,
-		private readonly TableCollection $tables
+		private readonly Migrator $migrator
 	) {
 		parent::__construct($this->container, $commandPrefix);
 	}
@@ -43,18 +40,29 @@ final class Migrate extends Command
 		$rollback    = (bool) get_flag_value($assocArgs, self::FLAG_ROLLBACK, false);
 		$refresh     = (bool) get_flag_value($assocArgs, self::FLAG_REFRESH, false);
 		$drop        = (bool) get_flag_value($assocArgs, self::FLAG_DROP, false);
+		$prepare     = (bool) get_flag_value($assocArgs, self::FLAG_PREPARE, false);
 		$createTable = (bool) get_flag_value($assocArgs, self::FLAG_CREATE_TABLE, false);
+
+		if (! $this->hasSingleOperation([
+			self::FLAG_RUN      => $run,
+			self::FLAG_ROLLBACK => $rollback,
+			self::FLAG_REFRESH  => $refresh,
+			self::FLAG_DROP     => $drop,
+			self::FLAG_PREPARE  => $prepare || $createTable,
+		])) {
+			return self::ERROR;
+		}
 
 		if ($drop) {
 			WP_CLI::confirm('Are you sure you want to drop the Foundation database tables? This cannot be undone.', $assocArgs);
-			$this->tables->drop();
+			$this->migrator->drop();
 			WP_CLI::success('Foundation database tables were dropped.');
 
 			return self::SUCCESS;
 		}
 
-		if ($createTable) {
-			$this->tables->create();
+		if ($prepare || $createTable) {
+			$this->migrator->prepare();
 			WP_CLI::success('Foundation database tables are ready.');
 
 			return self::SUCCESS;
@@ -62,24 +70,21 @@ final class Migrate extends Command
 
 		if ($refresh) {
 			WP_CLI::confirm('Are you sure you want to roll back and rerun all Foundation database migrations?', $assocArgs);
-			$this->tables->create();
-			$result = $this->runner->refresh($this->migrations);
+			$result = $this->migrator->refresh();
 			WP_CLI::success(sprintf('Rolled back %d migrations and ran %d migrations.', count($result->rolledBack), count($result->ran)));
 
 			return self::SUCCESS;
 		}
 
 		if ($rollback) {
-			$this->tables->create();
-			$result = $this->runner->rollback($this->migrations);
+			$result = $this->migrator->rollback();
 			WP_CLI::success(sprintf('Rolled back %d migrations.', count($result->rolledBack)));
 
 			return self::SUCCESS;
 		}
 
 		if ($run) {
-			$this->tables->create();
-			$result = $this->runner->run($this->migrations);
+			$result = $this->migrator->run();
 			WP_CLI::success(sprintf('Ran %d migrations.', count($result->ran)));
 
 			return self::SUCCESS;
@@ -130,8 +135,15 @@ final class Migrate extends Command
 			],
 			[
 				'type'        => self::FLAG,
+				'name'        => self::FLAG_PREPARE,
+				'description' => 'Prepare Foundation migration storage without running migrations.',
+				'optional'    => true,
+				'default'     => false,
+			],
+			[
+				'type'        => self::FLAG,
 				'name'        => self::FLAG_CREATE_TABLE,
-				'description' => 'Create Foundation database tables without running migrations.',
+				'description' => 'Alias for --prepare.',
 				'optional'    => true,
 				'default'     => false,
 			],
@@ -146,10 +158,8 @@ final class Migrate extends Command
 	}
 
 	private function showStatus(): void {
-		if (! $this->tables->exists()) {
-			WP_CLI::warning('The Foundation database tables do not exist. Run this command with --create-table or --run.');
-
-			return;
+		if (! $this->migrator->exists()) {
+			WP_CLI::warning('The Foundation database tables do not exist. Run this command with --prepare or --run.');
 		}
 
 		format_items('table', array_map(
@@ -159,12 +169,30 @@ final class Migrate extends Command
 				'batch'     => $status->batch ?? '',
 				'ran_at'    => $status->ranAt?->format('Y-m-d H:i:s') ?? '',
 			],
-			$this->runner->status($this->migrations)
+			$this->migrator->status()
 		), [
 			'migration',
 			'status',
 			'batch',
 			'ran_at',
 		]);
+	}
+
+	/**
+	 * @param array<string, bool> $operations
+	 */
+	private function hasSingleOperation(array $operations): bool {
+		$selected = array_keys(array_filter($operations));
+
+		if (count($selected) <= 1) {
+			return true;
+		}
+
+		WP_CLI::error(sprintf(
+			'Only one migration operation can be used at a time. Received: --%s.',
+			implode(', --', $selected)
+		), false);
+
+		return false;
 	}
 }

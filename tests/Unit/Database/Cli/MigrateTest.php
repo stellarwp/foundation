@@ -6,7 +6,9 @@ use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use StellarWP\Foundation\Database\Cli\Migrate;
 use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
+use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Runner;
+use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Schema as DatabaseSchema;
 use StellarWP\Foundation\Database\Table\Collection as TableCollection;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
@@ -35,12 +37,14 @@ final class MigrateTest extends TestCase
 		$command  = new Migrate(
 			$this->container,
 			'foundation',
-			new Runner(new InMemoryRepository(), new RecordingSchema(), new InMemoryLock()),
-			new MigrationCollection(),
-			new TableCollection($wpSchema, [
-				new MigrationTable($database, 'wp_nexcess_foundation_migrations'),
-				new LockTable($database, 'wp_nexcess_foundation_locks'),
-			])
+			new Migrator(
+				new Store(new TableCollection($wpSchema, [
+					new MigrationTable($database, 'wp_nexcess_foundation_migrations'),
+					new LockTable($database, 'wp_nexcess_foundation_locks'),
+				])),
+				new Runner(new InMemoryRepository(), new RecordingSchema(), new InMemoryLock()),
+				new MigrationCollection()
+			)
 		);
 
 		$command->register();
@@ -81,8 +85,15 @@ final class MigrateTest extends TestCase
 			],
 			[
 				'type'        => 'flag',
+				'name'        => 'prepare',
+				'description' => 'Prepare Foundation migration storage without running migrations.',
+				'optional'    => true,
+				'default'     => false,
+			],
+			[
+				'type'        => 'flag',
 				'name'        => 'create-table',
-				'description' => 'Create Foundation database tables without running migrations.',
+				'description' => 'Alias for --prepare.',
 				'optional'    => true,
 				'default'     => false,
 			],
@@ -99,6 +110,18 @@ final class MigrateTest extends TestCase
 	public function test_it_creates_database_tables_without_running_migrations(): void {
 		[$command, $repository, $schema] = $this->newCommand();
 
+		$this->assertSame(0, $command->runCommand([], ['prepare' => true]));
+
+		$this->assertSame([], $repository->all());
+		$this->assertSame([
+			'createOrUpdate:wp_nexcess_foundation_migrations',
+			'createOrUpdate:wp_nexcess_foundation_locks',
+		], $schema->statements);
+	}
+
+	public function test_it_supports_create_table_as_an_alias_for_prepare(): void {
+		[$command, $repository, $schema] = $this->newCommand();
+
 		$this->assertSame(0, $command->runCommand([], ['create-table' => true]));
 
 		$this->assertSame([], $repository->all());
@@ -106,6 +129,18 @@ final class MigrateTest extends TestCase
 			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'createOrUpdate:wp_nexcess_foundation_locks',
 		], $schema->statements);
+	}
+
+	public function test_it_rejects_conflicting_migration_operations(): void {
+		[$command, $repository, $schema] = $this->newCommand();
+
+		$this->assertSame(1, $command->runCommand([], [
+			'run'     => true,
+			'prepare' => true,
+		]));
+
+		$this->assertSame([], $repository->all());
+		$this->assertSame([], $schema->statements);
 	}
 
 	public function test_it_runs_pending_migrations(): void {
@@ -167,6 +202,8 @@ final class MigrateTest extends TestCase
 	public function test_it_shows_a_warning_when_status_tables_do_not_exist(): void {
 		[$command] = $this->newCommand();
 
+		$this->expectOutputRegex('/2026_06_23_000001_create_example\s+pending/');
+
 		$this->assertSame(0, $command->runCommand());
 	}
 
@@ -193,14 +230,16 @@ final class MigrateTest extends TestCase
 		$command    = new Migrate(
 			$this->container,
 			'foundation',
-			$runner,
-			new MigrationCollection([
-				new TestMigration('2026_06_23_000001_create_example'),
-			]),
-			new TableCollection($wpSchema, [
-				new MigrationTable($database, 'wp_nexcess_foundation_migrations'),
-				new LockTable($database, 'wp_nexcess_foundation_locks'),
-			])
+			new Migrator(
+				new Store(new TableCollection($wpSchema, [
+					new MigrationTable($database, 'wp_nexcess_foundation_migrations'),
+					new LockTable($database, 'wp_nexcess_foundation_locks'),
+				])),
+				$runner,
+				new MigrationCollection([
+					new TestMigration('2026_06_23_000001_create_example'),
+				])
+			)
 		);
 
 		return [$command, $repository, $wpSchema];

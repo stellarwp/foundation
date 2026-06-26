@@ -5,6 +5,7 @@ namespace StellarWP\Foundation\Database\Migration;
 use ArrayIterator;
 use IteratorAggregate;
 use StellarWP\Foundation\Database\Contracts\Migration;
+use StellarWP\Foundation\Database\Exceptions\DuplicateMigration;
 use Traversable;
 
 /**
@@ -30,8 +31,17 @@ final class Collection implements IteratorAggregate
 		}
 	}
 
+	/**
+	 * @throws DuplicateMigration
+	 */
 	public function add(Migration ...$migrations): void {
 		foreach ($migrations as $migration) {
+			foreach ($this->migrations as $registered) {
+				if ($registered->id() === $migration->id()) {
+					throw DuplicateMigration::forMigration($migration->id());
+				}
+			}
+
 			$this->migrations[] = $migration;
 		}
 	}

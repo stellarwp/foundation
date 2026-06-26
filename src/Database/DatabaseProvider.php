@@ -11,8 +11,10 @@ use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
+use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository as MigrationRecordRepository;
 use StellarWP\Foundation\Database\Migration\Runner;
+use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Table\Collection;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
@@ -108,6 +110,8 @@ final class DatabaseProvider extends Provider
 		$this->container->singleton(MigrationRecordRepository::class);
 		$this->container->singleton(Repository::class, static fn (C $c): MigrationRecordRepository => $c->get(MigrationRecordRepository::class));
 		$this->container->singleton(Runner::class);
+		$this->container->singleton(Store::class);
+		$this->container->singleton(Migrator::class);
 	}
 
 	private function registerLocks(): void {

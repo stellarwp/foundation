@@ -10,6 +10,7 @@ use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Database\Cli\Migrate;
 use StellarWP\Foundation\Database\DatabaseProvider;
 use StellarWP\Foundation\Database\Migration\Collection;
+use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
 use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
 use StellarWP\Foundation\WPCli\Command;
@@ -28,6 +29,8 @@ final class DatabaseProviderTest extends WPTestCase
 		$this->assertSame(300, $this->container->get(DatabaseProvider::LOCK_TTL));
 		$this->assertContainsOnlyInstancesOf(Command::class, $commands);
 		$this->assertTrue($this->containsMigrateCommand((array) $commands));
+		$this->assertInstanceOf(Migrator::class, $this->container->get(Migrator::class));
+		$this->assertInstanceOf(Migrate::class, $this->container->get(Migrate::class));
 	}
 
 	public function test_it_registers_configured_database_configuration(): void {
@@ -62,6 +65,17 @@ final class DatabaseProviderTest extends WPTestCase
 		$container->register(DatabaseProvider::class);
 
 		$this->assertSame([$migration], $container->get(DatabaseProvider::MIGRATIONS));
+		$this->assertSame([$migration], $container->get(Collection::class)->all());
+	}
+
+	public function test_it_collects_migrations_added_after_provider_registration(): void {
+		$migration = new TestMigration('2026_06_23_000001_create_example');
+		$container = $this->newContainer();
+
+		$container->register(WPCliProvider::class);
+		$container->register(DatabaseProvider::class);
+		$container->mergeArrayVar(DatabaseProvider::MIGRATIONS, [$migration]);
+
 		$this->assertSame([$migration], $container->get(Collection::class)->all());
 	}
 

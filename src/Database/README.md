@@ -11,7 +11,7 @@ composer require stellarwp/foundation-database
 
 ## Overview
 
-Foundation Database is a WordPress-backed database package. It provides a small migration runner, migration and table collections, `wpdb`/`dbDelta` schema services, a database-backed lock, and a WP-CLI migration command.
+Foundation Database is a WordPress-backed database package. It provides a configured migrator, migration runner, migration and table collections, `wpdb`/`dbDelta` schema services, a database-backed lock, and a WP-CLI migration command.
 
 This package intentionally targets WordPress runtime APIs instead of acting as a generic database abstraction. Migration classes depend on a small schema contract so application packages can define migration behavior without calling `wpdb` directly.
 
@@ -34,7 +34,9 @@ The provider registers:
 - `StellarWP\Foundation\Database\Table\Tables\MigrationTable`
 - `StellarWP\Foundation\Database\Table\Tables\LockTable`
 - `StellarWP\Foundation\Database\Contracts\Repository` for the migration ledger
+- `StellarWP\Foundation\Database\Migration\Store`
 - `StellarWP\Foundation\Database\Migration\Runner`
+- `StellarWP\Foundation\Database\Migration\Migrator`
 - `StellarWP\Foundation\Database\Lock\DatabaseLock` for the migration runner
 
 By default, WordPress tables are named:
@@ -42,7 +44,37 @@ By default, WordPress tables are named:
 - `<wp_prefix>nexcess_foundation_migrations`
 - `<wp_prefix>nexcess_foundation_locks`
 
-Configure these through the Foundation config keys `database.migrations_table` and `database.locks_table` when an application needs different table names. Configured table names are treated as full table names, so include the WordPress prefix yourself when overriding them.
+Configure these through the Foundation config keys `database.migrations_table` and `database.locks_table` when an application needs different table names. Configured table names are treated as exact full table names and are not passed through `Database::tableName()`, so include the WordPress prefix yourself when overriding them.
+
+Example `config.php` values:
+
+```php
+<?php declare(strict_types=1);
+
+return [
+	'database' => [
+		// Leave empty or omit these keys to use the default WordPress-prefixed names.
+		'migrations_table' => $_ENV['FOUNDATION_DATABASE_MIGRATIONS_TABLE'] ?? '',
+		'locks_table'      => $_ENV['FOUNDATION_DATABASE_LOCKS_TABLE'] ?? '',
+		'lock_name'        => $_ENV['FOUNDATION_DATABASE_LOCK_NAME'] ?? 'foundation-database-migrations',
+		'lock_ttl'         => (int) ($_ENV['FOUNDATION_DATABASE_LOCK_TTL'] ?? 300),
+	],
+	'wpcli'    => [
+		'command_prefix' => $_ENV['FOUNDATION_WPCLI_COMMAND_PREFIX'] ?? 'nx',
+	],
+];
+```
+
+If overriding table names, provide the full table name:
+
+```php
+return [
+	'database' => [
+		'migrations_table' => 'wp_custom_foundation_migrations',
+		'locks_table'      => 'wp_custom_foundation_locks',
+	],
+];
+```
 
 ## Running Queries
 
@@ -123,13 +155,68 @@ final readonly class CreateReportsTable implements Migration
 }
 ```
 
-Applications should bind `DatabaseProvider::MIGRATIONS` to the ordered list of `Migration` instances they want the runner to manage. If migrations are bound before registering `DatabaseProvider`, the provider will preserve the existing binding.
+Applications should add migrations to `DatabaseProvider::MIGRATIONS` with `mergeArrayVar()` so multiple providers/packages can contribute migrations:
 
-Foundation's own migration infrastructure tables implement `StellarWP\Foundation\Database\Contracts\Table` and are wired into `Table\Collection`. Applications can use the same `Table` contract for their own custom tables. When a table should be recorded in the migration ledger, wrap it in `StellarWP\Foundation\Database\Table\CreateTable` and add that migration instance to `DatabaseProvider::MIGRATIONS`.
+```php
+use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Database\DatabaseProvider;
+
+$this->container->mergeArrayVar(DatabaseProvider::MIGRATIONS, static fn (C $c): array => [
+	$c->get(CreateReportsTable::class),
+]);
+```
+
+If migrations are added before registering `DatabaseProvider`, the provider will preserve the existing values. Other providers may also add migrations after `DatabaseProvider` is registered, as long as they do so before the migration collection or migrator is resolved.
+
+Application feature tables should usually be represented by migrations. If a table only needs normal create/drop behavior, define it with `StellarWP\Foundation\Database\Contracts\Table`, wrap it in `StellarWP\Foundation\Database\Table\CreateTable`, and add that migration instance to `DatabaseProvider::MIGRATIONS`.
+
+```php
+use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\Database\Table\CreateTable;
+
+$this->container->mergeArrayVar(DatabaseProvider::MIGRATIONS, static fn (C $c): array => [
+	new CreateTable($c->get(ReportsTable::class)), // ReportsTable implements Contracts\Table.
+]);
+```
+
+Application code that needs to run migrations should inject `StellarWP\Foundation\Database\Migration\Migrator`. It is the configured entry point for preparing the migration store, running pending migrations, rolling back, refreshing, dropping migration storage, and reading migration status.
+
+```php
+use StellarWP\Foundation\Database\Migration\Migrator;
+
+final readonly class PluginUpdater
+{
+	public function __construct(
+		private Migrator $migrator
+	) {
+	}
+
+	public function update(): void {
+		$this->migrator->run();
+	}
+}
+```
+
+`run()`, `rollback()`, and `refresh()` prepare the migration store automatically before executing migrations.
 
 ## WP-CLI
 
-The package includes a `migrate` command class for projects using `stellarwp/foundation-wpcli`. `DatabaseProvider` adds that command to `StellarWP\Foundation\WPCli\Provider::COMMANDS`; register the WP-CLI provider once in the consuming application so merged commands are registered on `cli_init`.
+The package includes a `migrate` command class for projects using `stellarwp/foundation-wpcli`. `DatabaseProvider` adds that command to `StellarWP\Foundation\WPCli\WPCliProvider::COMMANDS`; register the WP-CLI provider once in the consuming application so merged commands are registered on `cli_init`.
+
+```php
+use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\WPCli\WPCliProvider;
+
+$container->register(WPCliProvider::class);
+$container->register(DatabaseProvider::class);
+```
+
+Run the command under the configured WP-CLI prefix:
+
+```bash
+wp nx migrate --run
+```
 
 Available flags:
 
@@ -137,7 +224,10 @@ Available flags:
 - `--rollback` rolls back the latest migration batch.
 - `--refresh` rolls back all known migrations and runs them again.
 - `--drop` drops the migrations and lock tables after confirmation.
-- `--create-table` creates the migrations and lock tables without running migrations.
+- `--prepare` prepares the migration store without running migrations.
+- `--create-table` is an alias for `--prepare`.
 - `--yes` skips confirmation prompts for destructive actions.
 
-Running the command without a flag prints migration status.
+Use only one operation flag at a time. `--yes` is a modifier for confirmation prompts and can be combined with destructive operations.
+
+Running the command without a flag prints migration status. If the migration store does not exist yet, the command warns first and shows all configured migrations as pending.
