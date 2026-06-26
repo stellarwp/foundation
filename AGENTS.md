@@ -45,6 +45,8 @@ Feature-local interfaces should live in a `Contracts/` folder inside the feature
 
 Shared infrastructure interfaces should live under that shared namespace's `Contracts/` folder, for example `Process/Contracts/ProcessRunner.php`.
 
+Avoid `use ... as ...` import aliases unless they resolve a real class-name collision or ambiguity. Prefer importing the class by its actual short name. The standing exception is `use lucatume\DI52\Container as C;`, which may be used for concise container factory callbacks.
+
 Exceptions should live in an `Exceptions/` folder. Put shared package exceptions at the package root, for example `src/Database/Exceptions/DatabaseException.php`; put feature-only exceptions under that feature's `Exceptions/` folder only when they are not shared outside that feature.
 
 Generator commands should be grouped by the `make:*` workflow under `src/Cli/Commands/Make/`, for example `src/Cli/Commands/Make/WPCliCommand.php`. Shared generation infrastructure that is not itself a console command should live under `src/Cli/Generation/`.
@@ -76,6 +78,8 @@ If local scaffolding assets such as `foundation/stubs/` should not be included i
 When writing providers or container registration code, prefer container-driven construction over inline factories with explicit `new` calls. Bind classes and interfaces directly when the container can autowire them.
 
 Use contextual bindings with `$this->container->when()->needs()->give()` for scalar constructor arguments, command lists, or feature-specific substitutions. Use a factory closure only when the value must be computed or resolved from the container, and keep that closure focused on supplying the constructor dependency rather than constructing the full object.
+
+Organize provider registration by feature or capability, not by container mechanism. The main `register()` method should call focused private methods such as `registerConfiguration()`, `registerMigrations()`, `registerLocks()`, or `registerCliCommands()`. Keep each feature's contextual bindings beside the classes they configure. Avoid generic methods such as `configureContextualBindings()` that group unrelated bindings only because they use the same container API.
 
 ## Split Packages
 

@@ -12,7 +12,7 @@ use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Repository as MigrationRecordRepository;
 use StellarWP\Foundation\Database\Migration\Runner;
-use StellarWP\Foundation\Database\Table\Collection as TableCollection;
+use StellarWP\Foundation\Database\Table\Collection;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
@@ -30,14 +30,23 @@ final class DatabaseProvider extends Provider
 	public const string LOCK_TTL         = 'foundation.database.lock_ttl';
 
 	public function register(): void {
+		$this->registerConfiguration();
+		$this->registerDatabase();
+		$this->registerTables();
+		$this->registerMigrations();
+		$this->registerLocks();
+		$this->registerCliCommands();
+	}
+
+	private function registerConfiguration(): void {
 		$this->container->mergeArrayVar(self::MIGRATIONS, []);
 		$this->container->singleton(self::MIGRATIONS_TABLE, $this->tableName('migrations_table', 'nexcess_foundation_migrations'));
 		$this->container->singleton(self::LOCKS_TABLE, $this->tableName('locks_table', 'nexcess_foundation_locks'));
 		$this->container->singleton(self::LOCK_NAME, $this->config->get('database.lock_name', 'foundation-database-migrations'));
 		$this->container->singleton(self::LOCK_TTL, (int) $this->config->get('database.lock_ttl', 300));
+	}
 
-		$this->configureContextualBindings();
-
+	private function registerDatabase(): void {
 		$this->container->singleton(Database::class, static function (): Database {
 			$wpdb = $GLOBALS['wpdb'] ?? null;
 
@@ -50,34 +59,33 @@ final class DatabaseProvider extends Provider
 		$this->container->singleton(DatabaseContract::class, static fn (C $c): Database => $c->get(Database::class));
 		$this->container->singleton(Schema::class, static fn (C $c): Schema => new Schema($c->get(DatabaseContract::class)));
 		$this->container->singleton(SchemaContract::class, static fn (C $c): Schema => $c->get(Schema::class));
-		$this->container->singleton(TableCollection::class);
-		$this->container->singleton(MigrationRecordRepository::class);
-		$this->container->singleton(Repository::class, static fn (C $c): MigrationRecordRepository => $c->get(MigrationRecordRepository::class));
-		$this->container->singleton(DatabaseLock::class);
-		$this->container->singleton(MigrationTable::class);
-		$this->container->singleton(LockTable::class);
-		$this->container->singleton(Runner::class);
-		$this->container->singleton(Migrate::class);
-
-		$this->registerCliCommands();
 	}
 
-	private function configureContextualBindings(): void {
-		$this->container->when(MigrationRecordRepository::class)
-			->needs('$table')
-			->give(static fn (C $c): string => $c->get(self::MIGRATIONS_TABLE));
-
+	private function registerTables(): void {
 		$this->container->when(MigrationTable::class)
 			->needs('$table')
 			->give(static fn (C $c): string => $c->get(self::MIGRATIONS_TABLE));
 
-		$this->container->when(DatabaseLock::class)
-			->needs('$table')
-			->give(static fn (C $c): string => $c->get(self::LOCKS_TABLE));
-
 		$this->container->when(LockTable::class)
 			->needs('$table')
 			->give(static fn (C $c): string => $c->get(self::LOCKS_TABLE));
+
+		$this->container->when(Collection::class)
+			->needs('$tables')
+			->give(static fn (C $c): array => [
+				$c->get(MigrationTable::class),
+				$c->get(LockTable::class),
+			]);
+
+		$this->container->singleton(MigrationTable::class);
+		$this->container->singleton(LockTable::class);
+		$this->container->singleton(Collection::class);
+	}
+
+	private function registerMigrations(): void {
+		$this->container->when(MigrationRecordRepository::class)
+			->needs('$table')
+			->give(static fn (C $c): string => $c->get(self::MIGRATIONS_TABLE));
 
 		$this->container->when(Runner::class)
 			->needs('$lockName')
@@ -91,12 +99,17 @@ final class DatabaseProvider extends Provider
 			->needs(Lock::class)
 			->give(static fn (C $c): DatabaseLock => $c->get(DatabaseLock::class));
 
-		$this->container->when(TableCollection::class)
-			->needs('$tables')
-			->give(static fn (C $c): array => [
-				$c->get(MigrationTable::class),
-				$c->get(LockTable::class),
-			]);
+		$this->container->singleton(MigrationRecordRepository::class);
+		$this->container->singleton(Repository::class, static fn (C $c): MigrationRecordRepository => $c->get(MigrationRecordRepository::class));
+		$this->container->singleton(Runner::class);
+	}
+
+	private function registerLocks(): void {
+		$this->container->when(DatabaseLock::class)
+			->needs('$table')
+			->give(static fn (C $c): string => $c->get(self::LOCKS_TABLE));
+
+		$this->container->singleton(DatabaseLock::class);
 	}
 
 	private function registerCliCommands(): void {
@@ -107,6 +120,8 @@ final class DatabaseProvider extends Provider
 		$this->container->when(Migrate::class)
 			->needs('$migrations')
 			->give(static fn (C $c): iterable => $c->get(self::MIGRATIONS));
+
+		$this->container->singleton(Migrate::class);
 
 		$this->container->mergeArrayVar(WPCliProvider::COMMANDS, static fn (C $c): array => [
 			$c->get(Migrate::class),
