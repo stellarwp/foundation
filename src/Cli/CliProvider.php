@@ -3,6 +3,8 @@
 namespace StellarWP\Foundation\Cli;
 
 use lucatume\DI52\Container;
+use StellarWP\Foundation\Cli\Commands\Make\DatabaseMigrationCommand;
+use StellarWP\Foundation\Cli\Commands\Make\DatabaseTableCommand;
 use StellarWP\Foundation\Cli\Commands\Make\WPCliCommand;
 use StellarWP\Foundation\Cli\Commands\Package\Contracts\PackageRepositoryCreator;
 use StellarWP\Foundation\Cli\Commands\Package\CreateCommand;
@@ -53,10 +55,20 @@ final class CliProvider extends Provider
 			->needs('$rootPath')
 			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
 
+		$this->container->when(DatabaseMigrationCommand::class)
+			->needs('$rootPath')
+			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+
+		$this->container->when(DatabaseTableCommand::class)
+			->needs('$rootPath')
+			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+
 		$this->container->when(Application::class)
 			->needs('$commands')
 			->give(static fn (Container $c): array => [
 				$c->get(CreateCommand::class),
+				$c->get(DatabaseMigrationCommand::class),
+				$c->get(DatabaseTableCommand::class),
 				$c->get(WPCliCommand::class),
 			]);
 
@@ -73,6 +85,8 @@ final class CliProvider extends Provider
 		$this->container->singleton(GeneratedFileWriter::class);
 		$this->container->singleton(StubRenderer::class);
 		$this->container->singleton(StubResolver::class);
+		$this->container->singleton(DatabaseMigrationCommand::class);
+		$this->container->singleton(DatabaseTableCommand::class);
 		$this->container->singleton(WPCliCommand::class);
 		$this->container->singleton(Application::class);
 	}

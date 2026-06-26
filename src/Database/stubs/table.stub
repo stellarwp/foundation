@@ -1,0 +1,37 @@
+<?php declare(strict_types=1);
+
+namespace {{ namespace }};
+
+use {{ foundation_database_contract }};
+use {{ foundation_database_table }};
+use {{ foundation_database_table_definition }};
+
+final readonly class {{ class }} implements Table {
+
+	public const string ID    = {{ id_php }};
+	public const string TABLE = {{ table_php }};
+
+	public function __construct(
+		private Database $database
+	) {
+	}
+
+	public function id(): string {
+		return self::ID;
+	}
+
+	public function name(): string {
+		return $this->database->tableName( self::TABLE );
+	}
+
+	public function definition(): TableDefinition {
+		return TableDefinition::for( $this )
+			->bigIncrements( 'id' )
+			->string( 'status', 20 )->default( 'draft' )
+			->longText( 'payload' )
+			->dateTime( 'created_at' )
+			->dateTime( 'updated_at' )->nullable()
+			->index( 'status', 'status' );
+	}
+
+}

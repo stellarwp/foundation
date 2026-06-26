@@ -234,6 +234,45 @@ final readonly class PluginUpdater
 
 `run()`, `rollback()`, and `refresh()` prepare the migration store automatically before executing migrations.
 
+## Generators
+
+If the project also installs `stellarwp/foundation-cli` as a development dependency, scaffold a table class and matching migration in a consuming WordPress project:
+
+```bash
+vendor/bin/foundation make:database-table Reports_Table
+vendor/bin/foundation make:database-migration Create_Reports_Table
+```
+
+The table generator reads the project's first `autoload.psr-4` namespace from `composer.json` and writes a Snake_Case table class under `src/Database/Tables` by default. The migration generator writes under `src/Database/Migrations` by default and references the matching table class.
+
+Common options:
+
+```bash
+vendor/bin/foundation make:database-table Reports_Table \
+  --namespace="Acme\\Plugin\\Database\\Tables" \
+  --path=src/Database/Tables \
+  --id=reports_table \
+  --table=reports
+
+vendor/bin/foundation make:database-migration Create_Reports_Table \
+  --namespace="Acme\\Plugin\\Database\\Migrations" \
+  --path=src/Database/Migrations \
+  --id=2026_06_26_000001_create_reports_table \
+  --table-class=Reports_Table \
+  --table-namespace="Acme\\Plugin\\Database\\Tables"
+```
+
+Project-specific stub overrides live in:
+
+```text
+foundation/stubs/database/table.stub
+foundation/stubs/database/migration.stub
+```
+
+When present, overrides are used instead of the default stubs from the `foundation-database` package.
+
+Override stubs should use the same context-aware placeholders as the default stubs when writing PHP literals. For example, use `{{ id_php }}` and `{{ table_php }}` for values written into PHP constants, and use the `{{ foundation_database_* }}` import placeholders so Strauss-prefixed projects keep working.
+
 ## WP-CLI
 
 The package includes a `migrate` command class for projects using `stellarwp/foundation-wpcli`. `DatabaseProvider` adds that command to `StellarWP\Foundation\WPCli\WPCliProvider::COMMANDS`; register the WP-CLI provider once in the consuming application so merged commands are registered on `cli_init`.

@@ -7,6 +7,8 @@ use lucatume\DI52\Container as DI52Container;
 use StellarWP\ContainerContract\ContainerInterface;
 use StellarWP\Foundation\Cli\Application;
 use StellarWP\Foundation\Cli\CliProvider;
+use StellarWP\Foundation\Cli\Commands\Make\DatabaseMigrationCommand;
+use StellarWP\Foundation\Cli\Commands\Make\DatabaseTableCommand;
 use StellarWP\Foundation\Cli\Commands\Make\WPCliCommand;
 use StellarWP\Foundation\Cli\Commands\Package\Contracts\PackageRepositoryCreator;
 use StellarWP\Foundation\Cli\Commands\Package\CreateCommand;
@@ -33,6 +35,8 @@ final class CliProviderTest extends TestCase
 
 		$this->assertInstanceOf(Application::class, $container->get(Application::class));
 		$this->assertInstanceOf(CreateCommand::class, $container->get(CreateCommand::class));
+		$this->assertInstanceOf(DatabaseMigrationCommand::class, $container->get(DatabaseMigrationCommand::class));
+		$this->assertInstanceOf(DatabaseTableCommand::class, $container->get(DatabaseTableCommand::class));
 		$this->assertInstanceOf(WPCliCommand::class, $container->get(WPCliCommand::class));
 		$this->assertInstanceOf(PackageResolver::class, $container->get(PackageResolver::class));
 		$this->assertInstanceOf(PackageScaffolder::class, $container->get(PackageScaffolder::class));
@@ -43,6 +47,8 @@ final class CliProviderTest extends TestCase
 		$this->assertInstanceOf(StubResolver::class, $container->get(StubResolver::class));
 		$this->assertInstanceOf(GitHubPackageRepositoryCreator::class, $container->get(PackageRepositoryCreator::class));
 		$this->assertTrue($container->get(Application::class)->has('package:create'));
+		$this->assertTrue($container->get(Application::class)->has('make:database-migration'));
+		$this->assertTrue($container->get(Application::class)->has('make:database-table'));
 		$this->assertTrue($container->get(Application::class)->has('make:wpcli-command'));
 	}
 }

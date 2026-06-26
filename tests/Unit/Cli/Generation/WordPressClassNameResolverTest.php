@@ -53,6 +53,26 @@ final class WordPressClassNameResolverTest extends TestCase
 		$this->assertSame('Sync products.', (new WordPressClassNameResolver())->description('Sync_Products_Command'));
 	}
 
+	public function test_it_normalizes_generic_wordpress_class_names(): void {
+		$this->assertSame('Bump_Version', (new WordPressClassNameResolver())->className('bump-version'));
+	}
+
+	public function test_it_normalizes_table_class_names(): void {
+		$this->assertSame('Reports_Table', (new WordPressClassNameResolver())->tableClass('reports'));
+		$this->assertSame('Reports_Table', (new WordPressClassNameResolver())->tableClass('Reports_Table'));
+	}
+
+	public function test_it_creates_table_names_from_table_classes(): void {
+		$this->assertSame('reports', (new WordPressClassNameResolver())->tableName('Reports_Table'));
+	}
+
+	public function test_it_creates_timestamped_migration_ids_from_migration_classes(): void {
+		$this->assertSame(
+			'2026_06_26_120000_create_reports_table',
+			(new WordPressClassNameResolver())->migrationId('Create_Reports_Table', new \DateTimeImmutable('2026-06-26 12:00:00'))
+		);
+	}
+
 	public function test_it_fails_when_input_cannot_be_normalized_to_a_class_name(): void {
 		$this->expectException(RuntimeException::class);
 		$this->expectExceptionMessage('Could not create a class name from "@@@".');
