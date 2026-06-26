@@ -30,4 +30,30 @@ final class ColumnTest extends TestCase
 			(new Column('attempts', 'int', 10, unsigned: true, default: 0))->sql()
 		);
 	}
+
+	public function test_it_renders_explicit_null_and_boolean_defaults(): void {
+		$this->assertSame(
+			'`completed_at` datetime NULL DEFAULT NULL',
+			(new Column('completed_at', 'datetime'))->nullable()->default(null)->sql()
+		);
+
+		$this->assertSame(
+			'`enabled` tinyint(1) unsigned NOT NULL DEFAULT 1',
+			(new Column('enabled', 'tinyint', 1))->unsigned()->default(true)->sql()
+		);
+	}
+
+	public function test_it_returns_modified_column_copies(): void {
+		$column = new Column('id', 'bigint', 20);
+
+		$this->assertSame('`id` bigint(20) NOT NULL', $column->sql());
+		$this->assertSame('`id` bigint(20) unsigned NOT NULL AUTO_INCREMENT', $column->unsigned()->autoIncrement()->sql());
+	}
+
+	public function test_auto_increment_is_idempotent(): void {
+		$this->assertSame(
+			'`id` bigint(20) NOT NULL AUTO_INCREMENT',
+			(new Column('id', 'bigint', 20))->autoIncrement()->autoIncrement()->sql()
+		);
+	}
 }

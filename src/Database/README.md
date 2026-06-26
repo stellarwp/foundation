@@ -171,6 +171,40 @@ If migrations are added before registering `DatabaseProvider`, the provider will
 Application feature tables should usually be represented by migrations. If a table only needs normal create/drop behavior, define it with `StellarWP\Foundation\Database\Contracts\Table`, wrap it in `StellarWP\Foundation\Database\Table\CreateTable`, and add that migration instance to `DatabaseProvider::MIGRATIONS`.
 
 ```php
+use StellarWP\Foundation\Database\Contracts\Database;
+use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Table\TableDefinition;
+
+final readonly class ReportsTable implements Table
+{
+	public const string ID = 'reports_table';
+
+	public function __construct(
+		private Database $database
+	) {
+	}
+
+	public function id(): string {
+		return self::ID;
+	}
+
+	public function name(): string {
+		return $this->database->tableName('reports');
+	}
+
+	public function definition(): TableDefinition {
+		return TableDefinition::for($this)
+			->bigIncrements('id')
+			->string('status', 20)->default('draft')
+			->longText('payload')
+			->dateTime('published_at')->nullable()
+			->tinyInteger('failed', 1)->unsigned()->default(false)
+			->index('status', 'status');
+	}
+}
+```
+
+```php
 use lucatume\DI52\Container as C;
 use StellarWP\Foundation\Database\DatabaseProvider;
 use StellarWP\Foundation\Database\Table\CreateTable;

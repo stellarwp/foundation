@@ -9,6 +9,7 @@ use StellarWP\Foundation\Container\ContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Database\Contracts\Database as DatabaseContract;
 use StellarWP\Foundation\Database\Contracts\Repository as MigrationRecordRepositoryContract;
+use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Database;
 use StellarWP\Foundation\Database\DatabaseProvider;
 use StellarWP\Foundation\Database\Exceptions\QueryException;
@@ -17,6 +18,7 @@ use StellarWP\Foundation\Database\Migration\Repository;
 use StellarWP\Foundation\Database\Migration\Runner;
 use StellarWP\Foundation\Database\Schema;
 use StellarWP\Foundation\Database\Table\Collection as TableCollection;
+use StellarWP\Foundation\Database\Table\TableDefinition;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
@@ -178,6 +180,52 @@ final class DatabaseIntegrationTest extends WPTestCase
 		));
 
 		$this->assertFalse($schema->hasTable($table));
+	}
+
+	public function test_schema_creates_queue_style_table_definitions_through_wordpress(): void {
+		$table  = $this->table('queue_schema');
+		$schema = new Schema($this->database);
+		$queue  = new class($this->database, $table) implements Table {
+			public function __construct(
+				private DatabaseContract $database,
+				private string $table
+			) {
+			}
+
+			public function id(): string {
+				return 'queue_schema_table';
+			}
+
+			public function name(): string {
+				return $this->database->tableName($this->table);
+			}
+
+			public function definition(): TableDefinition {
+				return TableDefinition::for($this)
+					->bigIncrements('id')
+					->string('queue', 255)
+					->string('task_handler', 255)
+					->longText('args')
+					->integer('priority', 3)->nullable()
+					->dateTime('run_after')->default('0000-00-00 00:00:00')
+					->integer('taken')->default(0)
+					->integer('done')->nullable()->default(0)
+					->tinyInteger('tries')->unsigned()->default(0)
+					->tinyInteger('failed', 1)->unsigned()->default(false)
+					->index('done', 'done')
+					->index('taken_failed', 'taken', 'failed')
+					->index('taken_failed_done', 'taken', 'failed', 'done');
+			}
+		};
+
+		$schema->createOrUpdate($queue);
+
+		$this->assertTrue($schema->hasTable($queue));
+		$this->assertTrue($this->database->columnExists($queue, 'args'));
+		$this->assertTrue($this->database->columnExists($queue, 'priority'));
+		$this->assertTrue($this->database->columnExists($queue, 'failed'));
+		$this->assertTrue($schema->hasIndex($queue, 'taken_failed'));
+		$this->assertTrue($schema->hasIndex($queue, 'taken_failed_done'));
 	}
 
 	public function test_migration_repository_persists_records_in_wordpress(): void {
