@@ -10,6 +10,7 @@ Initial packages:
 - `stellarwp/foundation-log`
 - `stellarwp/foundation-lock`
 - `stellarwp/foundation-database`
+- `stellarwp/foundation-identifier`
 - `stellarwp/foundation-pipeline`
 - `stellarwp/foundation-wpcli`
 - `stellarwp/foundation-cli`
@@ -80,6 +81,8 @@ If local scaffolding assets such as `foundation/stubs/` should not be included i
 When writing providers or container registration code, prefer container-driven construction over inline factories with explicit `new` calls. Bind classes and interfaces directly when the container can autowire them.
 
 Use contextual bindings with `$this->container->when()->needs()->give()` for scalar constructor arguments, command lists, or feature-specific substitutions. Use a factory closure only when the value must be computed or resolved from the container, and keep that closure focused on supplying the constructor dependency rather than constructing the full object.
+
+Classes should take the dependencies they need directly. Do not make constructor dependencies nullable just to instantiate fallback concrete classes internally, for example `?Dependency $dependency = null` with `$this->dependency = $dependency ?? new Dependency()`. Register default implementations and aliases in a provider instead so consumers can replace them through container configuration.
 
 Organize provider registration by feature or capability, not by container mechanism. The main `register()` method should call focused private methods such as `registerConfiguration()`, `registerMigrations()`, `registerLocks()`, or `registerCliCommands()`. Keep each feature's contextual bindings beside the classes they configure. Avoid generic methods such as `configureContextualBindings()` that group unrelated bindings only because they use the same container API.
 
