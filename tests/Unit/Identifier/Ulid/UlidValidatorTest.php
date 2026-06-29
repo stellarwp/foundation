@@ -2,6 +2,7 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Identifier\Ulid;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use StellarWP\Foundation\Identifier\Ulid\UlidValidator;
 use StellarWP\Foundation\Tests\TestCase;
 
@@ -35,6 +36,7 @@ final class UlidValidatorTest extends TestCase
 	/**
 	 * @dataProvider invalidUlidProvider
 	 */
+	#[DataProvider('invalidUlidProvider')]
 	public function test_it_rejects_invalid_ulids(string $identifier): void {
 		$this->assertFalse((new UlidValidator())->isValid($identifier));
 	}
