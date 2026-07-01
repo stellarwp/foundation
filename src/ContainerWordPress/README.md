@@ -54,7 +54,7 @@ All of them accept the same optional trailing `...$alias` arguments as the base
 
 The WordPress container adapter will fire registration hooks when a Provider is being registered. By default, it uses
 `'nexcess/foundation/container/wp/'` as the hook prefix, but you can change that by passing a second argument during the
-adapter's initialization. The adapter normalizes the prefix to include one trailing slash.
+adapter's initialization. The adapter normalizes non-empty prefixes to include one trailing slash.
 
 ```php
 $container = new ContainerAdapter(new FoundationContainerAdapter(new Container()), 'my/hook/prefix/');
@@ -97,8 +97,6 @@ Both actions pass two arguments to listeners: the registered provider class
 (`string`) and the list of aliases (`string[]`).
 
 ```php
-$container->register( My_Provider::class, 'my-alias' );
-
 add_action(
     'nexcess/foundation/container/wp/' . My_Provider::class . '/registered',
     function ( string $provider_class, array $aliases ): void {
@@ -107,6 +105,8 @@ add_action(
     10,
     2
 );
+
+$container->register( My_Provider::class, 'my-alias' );
 ```
 
 ### `registerOnAction()`
