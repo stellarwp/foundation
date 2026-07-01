@@ -39,7 +39,7 @@ final class ContainerAdapter implements Container
 	/**
 	 * @codeCoverageIgnore
 	 */
-	public function get_container(): DI52Container {
+	public function getContainer(): DI52Container {
 		return $this->container;
 	}
 
@@ -93,6 +93,15 @@ final class ContainerAdapter implements Container
 	public function instance(mixed $id, array $buildArgs = [], ?array $afterBuildMethods = null): Closure {
 		// @phpstan-ignore-next-line invalid DocBlock comments in DI52
 		return $this->container->instance($id, $buildArgs, $afterBuildMethods);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @throws ContainerException
+	 */
+	public function mergeArrayVar(string $id, mixed $implementation): void {
+		$this->container->mergeArrayVar($id, $implementation);
 	}
 
 	/**

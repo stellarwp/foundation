@@ -38,6 +38,15 @@ interface Container extends ContainerInterface
 	public function give(mixed $implementation): void;
 
 	/**
+	 * Add array values to an existing or future binding without replacing previous values.
+	 *
+	 * @param class-string|string $id
+	 *
+	 * @throws \lucatume\DI52\ContainerException
+	 */
+	public function mergeArrayVar(string $id, mixed $implementation): void;
+
+	/**
 	 * Returns a callable object (Closure) that will build an instance of the specified
 	 * class using the specified arguments when called.
 	 *

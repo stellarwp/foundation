@@ -1,0 +1,143 @@
+# Foundation Container WordPress
+
+> [!WARNING]
+> **This is a read-only repository!** For pull requests or issues, see [stellarwp/foundation](https://github.com/stellarwp/foundation).
+
+A WordPress-focused wrapper around [stellarwp/foundation-container](https://github.com/stellarwp/foundation-container).
+It exposes the full Foundation DI container API and adds WordPress-specific helpers.
+
+## Installation
+
+```shell
+composer require stellarwp/foundation-container-wordpress
+```
+
+## Usage
+
+Create a new `ContainerAdapter`, passing in a Foundation container adapter. It implements the
+[`Contracts/Container.php`](./Contracts/Container.php) interface, which extends the base
+Foundation container contract:
+
+```php
+<?php declare(strict_types=1);
+
+namespace My\App;
+
+use lucatume\DI52\Container;
+use StellarWP\Foundation\Container\Contracts\Container as ContainerContract;
+use StellarWP\Foundation\ContainerWordPress\Contracts\Container as WPContainerContract;
+use StellarWP\Foundation\Container\ContainerAdapter as FoundationContainerAdapter;
+use StellarWP\Foundation\ContainerWordPress\ContainerAdapter;
+
+// This implements the Contracts/Container.php interface.
+$container = new ContainerAdapter(new FoundationContainerAdapter(new Container()));
+
+// Bind the concrete to the interface, so anytime we ask for a container we get this one.
+$container->bind(ContainerContract::class, $container);
+$container->bind(WPContainerContract::class, $container);
+```
+
+Everything the [Foundation Container](https://github.com/stellarwp/foundation-container) can do,
+this wrapper can do too — binding, singletons, service providers, contextual bindings, and so on.
+
+## WordPress helpers
+
+On top of the base container API, this wrapper adds hook-aware service provider
+registration. These methods are declared on
+[`Contracts/Container.php`](./Contracts/Container.php) and implemented in
+[`ContainerAdapter.php`](./ContainerAdapter.php).
+
+All of them accept the same optional trailing `...$alias` arguments as the base
+`register()` method.
+
+## Hook Prefix
+
+The WordPress container adapter will fire registration hooks when a Provider is being registered. By default, it uses
+`'nexcess/foundation/container/wp/'` as the hook prefix, but you can change that by passing a second argument during the
+adapter's initialization. The adapter normalizes non-empty prefixes to include one trailing slash.
+
+```php
+$container = new ContainerAdapter(new FoundationContainerAdapter(new Container()), 'my/hook/prefix/');
+
+add_action(
+    'my/hook/prefix/' . My_Provider::class . '/registered',
+    function ( string $provider_class, array $aliases ): void {
+        // React to My_Provider having been registered.
+    },
+    10,
+    2
+);
+
+// Or by using its alias.
+add_action(
+    'my/hook/prefix/my-alias/registered',
+    function ( string $provider_class, array $aliases ): void {
+        // React to My_Provider having been registered.
+    },
+    10,
+    2
+);
+
+$container->register( My_Provider::class, 'my-alias' );
+
+
+```
+
+### Registration actions
+
+`register()` is overridden so that, once a provider has been registered, it fires
+WordPress actions other code can hook onto:
+
+| Action                                                               | Fired |
+|----------------------------------------------------------------------| --- |
+| `nexcess/foundation/container/wp/{$serviceProviderClass}/registered` | Once, for the registered provider class. |
+| `nexcess/foundation/container/wp/{$alias}/registered`              | Once per alias the provider was registered under. |
+
+Both actions pass two arguments to listeners: the registered provider class
+(`string`) and the list of aliases (`string[]`).
+
+```php
+add_action(
+    'nexcess/foundation/container/wp/' . My_Provider::class . '/registered',
+    function ( string $provider_class, array $aliases ): void {
+        // React to My_Provider having been registered.
+    },
+    10,
+    2
+);
+
+$container->register( My_Provider::class, 'my-alias' );
+```
+
+### `registerOnAction()`
+
+Register a provider when a WordPress action fires. If the action has already
+fired, the provider is registered immediately; otherwise registration is deferred
+until the action fires and happens only once.
+
+```php
+// Register when `init` fires (or right away if it already has).
+$container->registerOnAction( 'init', My_Provider::class );
+```
+
+### `registerOnProvider()`
+
+Register a provider only after another provider has been registered. It builds on
+the `.../registered` action above, so the dependent provider is wired up as soon
+as the base provider is registered.
+
+```php
+// Register Feature_Provider after Core_Provider has been registered.
+$container->registerOnProvider( Core_Provider::class, Feature_Provider::class );
+```
+
+### `registerAfterAllActions()`
+
+Register a provider only after *every* one of the given actions has fired. If all
+of them have already fired, registration happens immediately; otherwise it waits
+for the last one and then registers exactly once.
+
+```php
+// Register once both `plugins_loaded` and `init` have fired.
+$container->registerAfterAllActions( [ 'plugins_loaded', 'init' ], My_Provider::class );
+```

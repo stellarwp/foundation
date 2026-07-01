@@ -13,7 +13,7 @@
         "ext-curl": "*",
         "ext-exif": "*",
         "adbario/php-dot-notation": ">=2.5",
-        "lucatume/di52": ">=3.0",
+        "lucatume/di52": ">=4.1",
         "monolog/monolog": "^2.11",
         "psr/log": ">=1.0",
         "stellarwp/container-contract": "^1.1",
@@ -25,6 +25,7 @@
         "monorepo-php/monorepo": "^12.7",
         "nunomaduro/collision": "^8.9",
         "php-mock/php-mock-mockery": "^1.5",
+        "php-stubs/wordpress-stubs": ">=6.0",
         "phpstan/extension-installer": "^1.4",
         "phpstan/phpstan": "^2.2",
         "phpunit/phpunit": "^11.5",
@@ -34,6 +35,7 @@
     "replace": {
         "stellarwp/foundation-cli": "self.version",
         "stellarwp/foundation-container": "self.version",
+        "stellarwp/foundation-container-wordpress": "self.version",
         "stellarwp/foundation-log": "self.version",
         "stellarwp/foundation-pipeline": "self.version",
         "stellarwp/foundation-wpcli": "self.version"
@@ -43,6 +45,7 @@
     "autoload": {
         "psr-4": {
             "StellarWP\\Foundation\\Cli\\": "src/Cli/",
+            "StellarWP\\Foundation\\ContainerWordPress\\": "src/ContainerWordPress/",
             "StellarWP\\Foundation\\Container\\": "src/Container/",
             "StellarWP\\Foundation\\Log\\": "src/Log/",
             "StellarWP\\Foundation\\Pipeline\\": "src/Pipeline/",

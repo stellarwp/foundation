@@ -3,7 +3,13 @@ parameters:
     paths:
         - src
         - tests
+    scanFiles:
+        - vendor/php-stubs/wordpress-stubs/wordpress-stubs.php
     excludePaths:
         analyse:
             - src/*/vendor/*
             - tests/CodeceptionSupport/*
+    ignoreErrors:
+        -
+            identifier: catch.neverThrown
+            path: tests/*
