@@ -35,13 +35,9 @@ final class ContainerAdapterTest extends WPTestCase
 	 * Count how many times a WordPress action fires while a callback is attached.
 	 */
 	private function count_action(string $action): callable {
-		$count = 0;
+		$original = did_action( $action );
 
-		add_action($action, static function () use (&$count): void {
-			$count++;
-		});
-
-		return static fn (): int => $count;
+		return static fn (): int => did_action( $action ) - $original;
 	}
 
 	public function test_register_fires_a_registered_action_for_the_provider(): void {
