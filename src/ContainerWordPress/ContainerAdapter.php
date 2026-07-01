@@ -53,7 +53,7 @@ final class ContainerAdapter implements Container
 	 * {@inheritDoc}
 	 */
 	public function register_after_all_actions(array $actions, string $serviceProviderClass, ...$alias): void {
-		$not_done_actions = array_filter(array_map(static fn($action) => did_action( $action ) ? false : $action));
+		$not_done_actions = array_filter(array_map(static fn ($action) => did_action($action) ? false : $action, $actions));
 		if (empty($not_done_actions)) {
 			// All the actions are done already, we can register immediately.
 			$this->register($serviceProviderClass, ...$alias);
