@@ -53,28 +53,39 @@ final class ContainerAdapter implements Container
 	 * {@inheritDoc}
 	 */
 	public function register_after_all_actions(array $actions, string $serviceProviderClass, ...$alias): void {
-		$not_done_actions = array_filter(array_map(static fn ($action) => did_action($action) ? false : $action, $actions));
-		if (empty($not_done_actions)) {
-			// All the actions are done already, we can register immediately.
+		$pending = array_values(array_filter($actions, static fn (string $action): bool => ! did_action($action)));
+
+		if ($pending === []) {
+			// All the actions have already fired, register the provider immediately.
 			$this->register($serviceProviderClass, ...$alias);
+
 			return;
 		}
 
-		foreach ($not_done_actions as $not_done_action) {
-			$closure = function() use ($not_done_actions, $serviceProviderClass, $alias, &$closure) {
-				foreach ($not_done_actions as $nda) {
-					remove_action($nda, $closure);
+		// A single closure is hooked onto every pending action. Whichever action fires
+		// last finds all actions done, registers once, and detaches from the rest.
+		$register_when_ready = function () use ($actions, $pending, $serviceProviderClass, $alias, &$register_when_ready): void {
+			foreach ($actions as $action) {
+				if (! did_action($action)) {
+					return;
 				}
+			}
 
-				$this->register_after_all_actions($not_done_actions, $serviceProviderClass, ...$alias);
-			};
+			// Detach from every pending action so the provider is only registered once.
+			foreach ($pending as $action) {
+				remove_action($action, $register_when_ready);
+			}
 
-			add_action($not_done_action, $closure);
+			$this->register($serviceProviderClass, ...$alias);
+		};
+
+		foreach ($pending as $action) {
+			add_action($action, $register_when_ready);
 		}
 	}
 
 	/**
-	 * {@inhertiDoc}
+	 * {@inheritDoc}
 	 */
 	public function register_on_action(string $action, string $serviceProviderClass, ...$alias): void {
 		if (did_action($action)) {
@@ -95,7 +106,7 @@ final class ContainerAdapter implements Container
 	}
 
 	/**
-	 * {@inhertiDoc}
+	 * {@inheritDoc}
 	 */
 	public function register_after_provider(
 		string $baseProviderClass,
