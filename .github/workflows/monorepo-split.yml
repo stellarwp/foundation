@@ -1,4 +1,4 @@
-# Pushes releases out to stellarwp/prophecy-* git sub-repos.
+# Pushes package code and release tags out to stellarwp/foundation-* split repositories.
 name: Split Monorepo Packages and Release
 
 on:
@@ -66,3 +66,71 @@ jobs:
           # ↓ the user signed under the split commit
           user_name: "StellarWP GitHub Action"
           user_email: "action@github.com"
+
+  bump-next-development-line:
+    needs: split
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Determine next development line
+        id: version
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+
+          if [[ ! "$tag" =~ ^([0-9]+)\.([0-9]+)\.0$ ]]; then
+            echo "Tag ${tag} is not a minor or major release tag ending in .0; skipping dev-main bump."
+            echo "should_bump=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          next_minor=$((minor + 1))
+
+          echo "should_bump=true" >> "$GITHUB_OUTPUT"
+          echo "constraint=^${major}.${next_minor}" >> "$GITHUB_OUTPUT"
+          echo "alias=${major}.${next_minor}.x-dev" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout main
+        if: ${{ steps.version.outputs.should_bump == 'true' }}
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          token: ${{ secrets.GH_BOT_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up PHP
+        if: ${{ steps.version.outputs.should_bump == 'true' }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Install Composer dependencies
+        if: ${{ steps.version.outputs.should_bump == 'true' }}
+        uses: ramsey/composer-install@v4
+        with:
+          dependency-versions: highest
+
+      - name: Bump next development line
+        if: ${{ steps.version.outputs.should_bump == 'true' }}
+        run: |
+          composer monorepo bump-interdependency "${{ steps.version.outputs.constraint }}"
+          composer monorepo package-alias
+          composer monorepo merge
+
+      - name: Commit next development line
+        if: ${{ steps.version.outputs.should_bump == 'true' }}
+        run: |
+          if git diff --quiet -- composer.json src/*/composer.json; then
+            echo "No next development line changes to commit."
+            exit 0
+          fi
+
+          git config user.name "StellarWP GitHub Action"
+          git config user.email "action@github.com"
+          git add composer.json src/*/composer.json
+          git commit -m "Bump Foundation to ${{ steps.version.outputs.alias }}"
+          git push origin HEAD:main
