@@ -14,7 +14,8 @@ interface Container extends ContainerInterface
 	/**
 	 * Register a service provider.
 	 *
-	 * @param string ...$alias
+	 * @param class-string $serviceProviderClass
+	 * @param string       ...$alias
 	 *
 	 * @throws \lucatume\DI52\ContainerException
 	 */
