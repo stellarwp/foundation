@@ -10,3 +10,7 @@ parameters:
         analyse:
             - src/*/vendor/*
             - tests/CodeceptionSupport/*
+    ignoreErrors:
+        -
+            identifier: catch.neverThrown
+            path: tests/*
