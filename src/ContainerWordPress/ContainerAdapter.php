@@ -90,7 +90,7 @@ final class ContainerAdapter implements Container
 
 		// A single closure is hooked onto every pending action. Whichever action fires
 		// last finds all actions done, registers once, and detaches from the rest.
-		$register_when_ready = function () use ($actions, $pending, $serviceProviderClass, $alias, &$register_when_ready): void {
+		$register_when_ready = static function () use ($actions, $pending, $serviceProviderClass, $alias, &$register_when_ready): void {
 			foreach ($actions as $action) {
 				if (! did_action($action)) {
 					return;
