@@ -14,8 +14,8 @@ interface Container extends ContainerInterface
 	/**
 	 * Register a service provider.
 	 *
-	 * @param class-string<Provideable> $serviceProviderClass
-	 * @param string                    ...$alias
+	 * @param string $serviceProviderClass
+	 * @param string ...$alias
 	 *
 	 * @throws \lucatume\DI52\ContainerException
 	 */
