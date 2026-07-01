@@ -6,9 +6,10 @@
  * @see \StellarWP\Foundation\Tests\TestCase::setUp()
  * @see \Adbar\Dot
  * @see phpunit.xml.dist
+ * @see .env.testing.slic
  */
 return [
-	'log' => [
+	'log'   => [
 		'level'    => $_ENV['TEST_LOG_LEVEL'] ?? 'debug',
 		'channel'  => $_ENV['TEST_LOG_CHANNEL'] ?? 'null',
 		'channels' => [
@@ -24,5 +25,8 @@ return [
 				],
 			],
 		],
+	],
+	'wpcli' => [
+		'command_prefix' => $_ENV['TEST_COMMAND_PREFIX'] ?? 'nxtest',
 	],
 ];

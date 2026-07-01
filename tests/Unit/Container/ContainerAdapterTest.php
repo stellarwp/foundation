@@ -25,6 +25,15 @@ final class ContainerAdapterTest extends TestCase
 		$this->assertSame('value', $callback());
 	}
 
+	public function test_it_merges_array_bindings_on_the_wrapped_container(): void {
+		$adapter = new ContainerAdapter(new DI52Container());
+
+		$adapter->mergeArrayVar('values', ['first']);
+		$adapter->mergeArrayVar('values', static fn (): array => ['second']);
+
+		$this->assertSame(['first', 'second'], $adapter->get('values'));
+	}
+
 	public function test_it_forwards_unknown_method_calls_to_the_wrapped_container(): void {
 		$adapter = new ContainerAdapter(new DI52Container());
 

@@ -90,11 +90,6 @@ final class ContainerAdapter implements Container
 		$this->container->give($implementation);
 	}
 
-	public function instance(mixed $id, array $buildArgs = [], ?array $afterBuildMethods = null): Closure {
-		// @phpstan-ignore-next-line invalid DocBlock comments in DI52
-		return $this->container->instance($id, $buildArgs, $afterBuildMethods);
-	}
-
 	/**
 	 * {@inheritDoc}
 	 *
@@ -102,6 +97,11 @@ final class ContainerAdapter implements Container
 	 */
 	public function mergeArrayVar(string $id, mixed $implementation): void {
 		$this->container->mergeArrayVar($id, $implementation);
+	}
+
+	public function instance(mixed $id, array $buildArgs = [], ?array $afterBuildMethods = null): Closure {
+		// @phpstan-ignore-next-line invalid DocBlock comments in DI52
+		return $this->container->instance($id, $buildArgs, $afterBuildMethods);
 	}
 
 	/**

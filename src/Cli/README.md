@@ -35,9 +35,23 @@ Foundation CLI includes generators for packages that own generated class shapes.
 vendor/bin/foundation make:wpcli-command Sync_Products_Command
 ```
 
+The Database package provides generators for a feature provider, table definitions, and migrations:
+
+```bash
+vendor/bin/foundation make:database-provider
+vendor/bin/foundation make:database-table Reports_Table
+vendor/bin/foundation make:database-migration Create_Reports_Table
+```
+
+Generated database providers, tables, and migrations require `stellarwp/foundation-database` as a normal runtime dependency when they ship with the project:
+
+```bash
+composer require stellarwp/foundation-database
+```
+
 Do not add `StellarWP\Foundation\Cli\CliProvider` to the consuming WordPress plugin's provider list. That provider only boots the Foundation Symfony Console application for the `foundation` binary. Register generated WP-CLI commands from the plugin's own WP-CLI provider using `stellarwp/foundation-wpcli`.
 
-See the WPCli package README for WP-CLI generator behavior, options, and stub overrides.
+See the WPCli and Database package READMEs for generator behavior, options, and stub overrides.
 
 ## Foundation Monorepo Maintenance
 

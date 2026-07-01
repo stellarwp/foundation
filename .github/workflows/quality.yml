@@ -36,8 +36,7 @@ jobs:
 
       - name: Run code style checks
         if: ${{ steps.filter.outputs.php == 'true' }}
-        run: composer lint ${{ steps.filter.outputs.php_files }}
+        run: composer lint
 
       - name: Run static analysis
         run: composer analyze
-

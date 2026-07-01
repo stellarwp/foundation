@@ -9,6 +9,10 @@ use RuntimeException;
  */
 final class WordPressClassNameResolver
 {
+	public function className(string $input): string {
+		return $this->classNameFromWords($input);
+	}
+
 	public function commandClass(string $input): string {
 		$words = $this->words($input);
 
@@ -33,6 +37,42 @@ final class WordPressClassNameResolver
 		return $className;
 	}
 
+	public function tableClass(string $input): string {
+		$words = $this->words($input);
+
+		if ($words === []) {
+			throw new RuntimeException(sprintf('Could not create a table class name from "%s".', $input));
+		}
+
+		if (strtolower((string) end($words)) !== 'table') {
+			$words[] = 'table';
+		}
+
+		return $this->validClassName(implode('_', array_map($this->pascalWord(...), $words)), $input);
+	}
+
+	public function tableName(string $className): string {
+		$words = $this->words((string) preg_replace('/_?Table$/', '', $className));
+
+		if ($words === []) {
+			return strtolower($className);
+		}
+
+		return implode('_', array_map(strtolower(...), $words));
+	}
+
+	public function migrationId(string $className, ?\DateTimeImmutable $now = null): string {
+		$words = $this->words($className);
+
+		if ($words === []) {
+			throw new RuntimeException(sprintf('Could not create a migration id from "%s".', $className));
+		}
+
+		$now ??= new \DateTimeImmutable();
+
+		return $now->format('Y_m_d_His') . '_' . implode('_', array_map(strtolower(...), $words));
+	}
+
 	public function subcommand(string $className): string {
 		$words = $this->words((string) preg_replace('/_?Command$/', '', $className));
 
@@ -47,6 +87,16 @@ final class WordPressClassNameResolver
 		}
 
 		return ucfirst(implode(' ', array_map(strtolower(...), $words))) . '.';
+	}
+
+	private function classNameFromWords(string $input): string {
+		$words = $this->words($input);
+
+		if ($words === []) {
+			throw new RuntimeException(sprintf('Could not create a class name from "%s".', $input));
+		}
+
+		return $this->validClassName(implode('_', array_map($this->pascalWord(...), $words)), $input);
 	}
 
 	/**
@@ -68,5 +118,13 @@ final class WordPressClassNameResolver
 		$word = strtolower($word);
 
 		return ucfirst($word);
+	}
+
+	private function validClassName(string $className, string $input): string {
+		if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $className)) {
+			throw new RuntimeException(sprintf('Could not create a valid PHP class name from "%s".', $input));
+		}
+
+		return $className;
 	}
 }

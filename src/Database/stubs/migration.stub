@@ -1,0 +1,25 @@
+<?php declare(strict_types=1);
+
+namespace {{ namespace }};
+
+use {{ foundation_database_migration }};
+use {{ foundation_database_schema }};
+use {{ foundation_database_irreversible_migration }};
+
+final readonly class {{ class }} implements Migration {
+
+	public const string ID = {{ id_php }};
+
+	public function id(): string {
+		return self::ID;
+	}
+
+	public function up( Schema $schema ): void {
+		// Add migration behavior here.
+	}
+
+	public function down( Schema $schema ): void {
+		throw new IrreversibleMigration( self::ID );
+	}
+
+}

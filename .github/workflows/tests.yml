@@ -106,20 +106,33 @@ jobs:
         run: |
           "${SLIC_BIN}" run feature --ext DotReporter
 
+      - name: Run integration tests
+        if: github.event_name != 'pull_request'
+        run: |
+          "${SLIC_BIN}" run integration --ext DotReporter
+
       - name: Run wpunit tests
         if: github.event_name != 'pull_request'
         run: |
           "${SLIC_BIN}" run wpunit --ext DotReporter
 
-      - name: Enable Xdebug for coverage
-        if: github.event_name == 'pull_request'
+      - name: Run wpcli tests
+        if: github.event_name != 'pull_request'
         run: |
-          "${SLIC_BIN}" xdebug on
+          "${SLIC_BIN}" run wpcli --ext DotReporter
 
       - name: Run Codeception tests with coverage
         if: github.event_name == 'pull_request'
         run: |
-          "${SLIC_BIN}" run --coverage --coverage-xml clover.xml --disable-coverage-php --ext DotReporter
+          composer run coverage:phpcov-install
+          composer run coverage:prepare
+          "${SLIC_BIN}" pcov on --yes
+          "${SLIC_BIN}" run unit --coverage coverage/unit.cov --ext DotReporter
+          "${SLIC_BIN}" run feature --coverage coverage/feature.cov --ext DotReporter
+          "${SLIC_BIN}" run integration --coverage coverage/integration.cov --ext DotReporter
+          "${SLIC_BIN}" run wpunit --coverage coverage/wpunit.cov --ext DotReporter
+          "${SLIC_BIN}" run wpcli --coverage coverage/wpcli.cov --ext DotReporter
+          "${SLIC_BIN}" composer run coverage:merge
 
       - name: Monitor coverage
         if: github.event_name == 'pull_request'
@@ -128,7 +141,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           comment_footer: false
           coverage_format: clover
-          coverage_path: tests/_output/clover.xml
+          coverage_path: clover.xml
           threshold_alert: 90
           threshold_warning: 95
           threshold_metric: "lines"

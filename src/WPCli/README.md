@@ -113,7 +113,7 @@ final class {{ class }} extends Command
 
 ## Provider Setup
 
-Applications should register their own provider so they control the command namespace and command list.
+Applications should register `StellarWP\Foundation\WPCli\Provider` once in the application provider list. Feature-specific providers can then add command classes to the shared command list with `mergeArrayVar()`.
 
 Do not register `StellarWP\Foundation\Cli\CliProvider` in a WordPress plugin. That provider belongs to the developer-facing `foundation` console binary, not plugin runtime bootstrap.
 
@@ -125,10 +125,7 @@ Generated command classes use Strauss-prefixed Foundation imports automatically 
 namespace Acme\App\Cli;
 
 use StellarWP\Foundation\Container\Contracts\Provider;
-use StellarWP\Foundation\WPCli\Command;
-use StellarWP\Foundation\WPCli\TimestampedLogger;
-use WP_CLI;
-use WP_CLI\Loggers\Regular;
+use StellarWP\Foundation\WPCli\WPCliProvider as WPCliProvider;
 
 final class Wp_Cli_Provider extends Provider
 {
@@ -142,42 +139,12 @@ final class Wp_Cli_Provider extends Provider
 	];
 
 	public function register(): void {
-		if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) {
-			return;
-		}
-
-		$this->configureCommands();
-		$this->registerTimestampedLogger();
-
-		add_action( 'cli_init', function (): void {
-			foreach ( self::COMMANDS as $commandClass ) {
-				$command = $this->container->get( $commandClass );
-
-				if ( $command instanceof Command ) {
-					$command->register();
-				}
-			}
-		}, 0, 0 );
-	}
-
-	private function configureCommands(): void {
-		foreach ( self::COMMANDS as $commandClass ) {
-			$this->container->when( $commandClass )
-				->needs( '$commandPrefix' )
-				->give( self::COMMAND_PREFIX );
-		}
-	}
-
-	private function registerTimestampedLogger(): void {
-		$wpCliLogger = WP_CLI::get_logger();
-
-		if ( $wpCliLogger instanceof Regular ) {
-			WP_CLI::set_logger( new TimestampedLogger( $wpCliLogger ) );
-		}
+		$this->container->singleton( WPCliProvider::COMMAND_PREFIX, self::COMMAND_PREFIX );
+		$this->container->mergeArrayVar( WPCliProvider::COMMANDS, self::COMMANDS );
 	}
 }
 ```
 
-Use `cli_init` so commands are registered only during WP-CLI command bootstrap, after WordPress has loaded enough for plugin providers and hooks to be available.
+The Foundation WP-CLI provider uses `cli_init` internally so commands are registered only during WP-CLI command bootstrap, after all application providers have had a chance to add command classes.
 
-If your application does not use WordPress hooks during bootstrap, call the command registration loop at the point where WP-CLI is active and your container has been configured.
+If your application wants a different default command prefix without a feature-specific CLI provider, bind `WPCliProvider::COMMAND_PREFIX` before WP-CLI's `cli_init` hook runs.

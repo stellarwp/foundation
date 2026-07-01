@@ -1,0 +1,10 @@
+<?php declare(strict_types=1);
+
+namespace Acme;
+
+final class Provider
+{
+	public function register(): void {
+		$this->container->mergeArrayVar( 'migrations', [ ] );
+	}
+}

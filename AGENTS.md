@@ -8,6 +8,9 @@ Initial packages:
 
 - `stellarwp/foundation-container`
 - `stellarwp/foundation-log`
+- `stellarwp/foundation-lock`
+- `stellarwp/foundation-database`
+- `stellarwp/foundation-identifier`
 - `stellarwp/foundation-pipeline`
 - `stellarwp/foundation-wpcli`
 - `stellarwp/foundation-cli`
@@ -43,7 +46,13 @@ Feature-local interfaces should live in a `Contracts/` folder inside the feature
 
 Shared infrastructure interfaces should live under that shared namespace's `Contracts/` folder, for example `Process/Contracts/ProcessRunner.php`.
 
-Generator commands should be grouped by the `make:*` workflow under `src/Cli/Commands/Make/`, for example `src/Cli/Commands/Make/WPCliCommand.php`. Shared generation infrastructure that is not itself a console command should live under `src/Cli/Generation/`.
+Avoid `use ... as ...` import aliases unless they resolve a real class-name collision or ambiguity. Prefer importing the class by its actual short name. The standing exception is `use lucatume\DI52\Container as C;`, which may be used for concise container factory callbacks.
+
+Exceptions should live in an `Exceptions/` folder. Put shared package exceptions at the package root, for example `src/Database/Exceptions/DatabaseException.php`; put feature-only exceptions under that feature's `Exceptions/` folder only when they are not shared outside that feature.
+
+Generator commands should be grouped by the `make:*` workflow under `src/Cli/Commands/Make/`, for example `src/Cli/Commands/Make/WPCliCommand.php`. When a make feature grows beyond a single command class or needs private collaborators, group that feature under its own namespace such as `src/Cli/Commands/Make/Database/`. Command-specific collaborators should live inside that feature namespace, not beside unrelated command classes in `Commands/Make/`.
+
+Shared generation infrastructure that is not itself a console command and is reused across command features should live under `src/Cli/Generation/`.
 
 Default stubs should live with the package that owns the generated class shape. For example, WP-CLI command stubs live in `src/WPCli/stubs/` because the WPCli package owns the base `Command` API. The CLI package owns resolving, rendering, and writing generated files.
 
@@ -73,9 +82,15 @@ When writing providers or container registration code, prefer container-driven c
 
 Use contextual bindings with `$this->container->when()->needs()->give()` for scalar constructor arguments, command lists, or feature-specific substitutions. Use a factory closure only when the value must be computed or resolved from the container, and keep that closure focused on supplying the constructor dependency rather than constructing the full object.
 
+Classes should take the dependencies they need directly. Do not make constructor dependencies nullable just to instantiate fallback concrete classes internally, for example `?Dependency $dependency = null` with `$this->dependency = $dependency ?? new Dependency()`. Register default implementations and aliases in a provider instead so consumers can replace them through container configuration.
+
+Organize provider registration by feature or capability, not by container mechanism. The main `register()` method should call focused private methods such as `registerConfiguration()`, `registerMigrations()`, `registerLocks()`, or `registerCliCommands()`. Keep each feature's contextual bindings beside the classes they configure. Avoid generic methods such as `configureContextualBindings()` that group unrelated bindings only because they use the same container API.
+
 ## Split Packages
 
 Split packages live in `src/<Package>/` and are split to read-only repositories named `stellarwp/foundation-<package>`.
+
+`stellarwp/foundation-database` is a WordPress-backed database package. Keep its runtime implementation centered on `wpdb`, `dbDelta()`, WordPress table prefixes, and WP-CLI integration. If the project later needs file storage, Redis storage, PDO database support, or another non-WordPress backend, prefer a separate package or explicit driver package instead of making `foundation-database` a generic DBAL-style abstraction.
 
 When adding a new split package, set its package `composer.json` PHP constraint to `>=8.3` unless the user explicitly says otherwise. PHP 7.4 release compatibility will be handled later by an automated Rector downgrade workflow, not by lowering the package PHP constraint during development.
 
@@ -151,13 +166,15 @@ Reusable test fixtures, sample classes, and test doubles should live under `test
 
 Tests that need writable temporary files or directories should use a test-specific subdirectory under `tests/_data/temp` instead of `sys_get_temp_dir()`. Use `$this->temp_dir('<name>')` when only the path is needed; it mirrors `codecept_data_dir()` and does not create the directory. Use `$this->prepare_temp_dir('<name>')` in `setUp()` to create a unique clean directory under that name and register it for automatic cleanup by the base test case. Only call `$this->remove_temp_dir('<name>')` manually when a test needs to remove the prepared directories before teardown.
 
-Codeception tests run through SLIC. Use `.env.testing.slic` as the SLIC/Codeception environment file. First-time local setup is `slic here` from the directory that contains this repository, `slic use foundation` from the repository, `slic composer install`, and `slic cc build`. If host-installed dependencies conflict with the SLIC PHP version, run `slic composer update --with-all-dependencies` inside the container. Run suites with `slic run unit`, `slic run feature`, and `composer test:wpunit` or `slic run wpunit`.
+Codeception tests run through SLIC. Use SLIC 2.3.0 or newer so PCOV-backed coverage commands are available. Use `.env.testing.slic` as the SLIC/Codeception environment file. First-time local setup is `slic here` from the directory that contains this repository, `slic use foundation` from the repository, `slic composer install`, and `slic cc build`. If host-installed dependencies conflict with the SLIC PHP version, run `slic composer update --with-all-dependencies` inside the container. Run suites with `slic run unit`, `slic run feature`, `composer test:integration` or `slic run integration`, `composer test:wpunit` or `slic run wpunit`, and `composer test:wpcli` or `slic run wpcli`.
 
-Test suite meanings: `Unit` is isolated class/package behavior, `Feature` is Foundation feature behavior without bootstrapping WordPress, and `wpunit` is WordPress-loaded behavior through wp-browser. If a PHPUnit test uses `#[DataProvider]` and must run under Codeception, also include the matching `@dataProvider` docblock because Codeception's PHPUnit loader reads docblock providers for these tests.
+Test suite meanings: `Unit` is isolated class/package behavior, `Feature` is Foundation feature behavior without bootstrapping WordPress, `integration` is multi-provider/container behavior that may require WordPress runtime APIs such as hooks, `wpdb`, `dbDelta()`, or globals, `wpunit` is lower-level WordPress-loaded behavior through wp-browser, and `wpcli` is the shared monorepo suite for testing WP-CLI commands through wp-browser's WPCLI module. If a PHPUnit test uses `#[DataProvider]` and must run under Codeception, also include the matching `@dataProvider` docblock because Codeception's PHPUnit loader reads docblock providers for these tests.
+
+Use `integration` for behavior where multiple providers/packages must be registered together to prove the container graph works. Use `wpunit` for a single package/class where the main concern is direct WordPress API behavior. Use `wpcli` for real WP-CLI command execution shared across packages. Keep unit tests focused on portable package behavior and pure collaborators; do not build large fake WordPress runtimes in unit tests when the behavior can be covered with wp-browser.
 
 Use `tests/WPUnitSupport/WPTestCase.php` as the base class for wpunit tests instead of extending Codeception's `WPTestCase` directly. Keep Codeception-generated actor files in `tests/CodeceptionSupport/`; that directory is ignored and excluded from lint/static analysis.
 
-After completing a feature, run `composer test:coverage`, review `clover.xml` for missed source coverage, and add meaningful tests for uncovered behavior before considering the feature complete.
+After completing a feature, run `composer test:coverage`, review `clover.xml` for missed source coverage, and add meaningful tests for uncovered behavior before considering the feature complete. Coverage uses SLIC 2.3.0+ PCOV support, runs each SLIC suite separately, and merges the serialized `.cov` artifacts with `phpcov`; run the merge through `slic composer run coverage:merge` or `slic composer run coverage:merge-html` because the coverage files contain container paths like `/var/www/html/wp-content/plugins/foundation`.
 
 ## Releases
 

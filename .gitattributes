@@ -6,6 +6,7 @@
 /.gitignore             export-ignore
 /.github                export-ignore
 /docs                   export-ignore
+/dev                    export-ignore
 /.env.testing.slic      export-ignore
 /.env.slic.local        export-ignore
 /.env.slic.run          export-ignore
