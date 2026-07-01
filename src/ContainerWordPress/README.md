@@ -24,6 +24,7 @@ Foundation container contract:
 namespace My\App;
 
 use lucatume\DI52\Container;
+use StellarWP\Foundation\Container\Contracts\Container as ContainerContract;
 use StellarWP\Foundation\Container\ContainerAdapter;
 use StellarWP\Foundation\ContainerWordPress\ContainerAdapter;
 
@@ -31,7 +32,7 @@ use StellarWP\Foundation\ContainerWordPress\ContainerAdapter;
 $container = new ContainerAdapter(new FoundationContainerAdapter(new Container()));
 
 // Bind the concrete to the interface, so anytime we ask for a container we get this one.
-$container->bind(Container::class, $container);
+$container->bind(ContainerContract::class, $container);
 ```
 
 Everything the [Foundation Container](https://github.com/stellarwp/foundation-container) can do,
