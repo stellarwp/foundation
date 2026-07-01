@@ -96,6 +96,15 @@ final class ContainerAdapter implements Container
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * @throws ContainerException
+	 */
+	public function mergeArrayVar(string $id, mixed $implementation): void {
+		$this->container->mergeArrayVar($id, $implementation);
+	}
+
+	/**
 	 * @param class-string|string|object $id
 	 *
 	 * @throws ContainerException

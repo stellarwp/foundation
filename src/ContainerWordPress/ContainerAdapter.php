@@ -206,6 +206,15 @@ final readonly class ContainerAdapter implements Container
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * @throws ContainerException
+	 */
+	public function mergeArrayVar(string $id, mixed $implementation): void {
+		$this->container->mergeArrayVar($id, $implementation);
+	}
+
+	/**
 	 * @param array<mixed>  $buildArgs
 	 * @param string[]|null $afterBuildMethods
 	 */
