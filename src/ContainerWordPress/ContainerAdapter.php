@@ -29,10 +29,24 @@ use StellarWP\Foundation\ContainerWordPress\Contracts\Container;
  */
 final class ContainerAdapter implements Container
 {
+	/**
+	 * Prefix for the WordPress actions fired when a service provider is registered.
+	 */
+	private const string REGISTERED_ACTION_PREFIX = 'stellarwp/foundation/container/wp/';
+
 	private readonly FoundationContainerAdapter $container;
 
 	public function __construct(DI52Container $container) {
 		$this->container = new FoundationContainerAdapter($container);
+	}
+
+	/**
+	 * Build the "registered" WordPress action name for a service provider or alias.
+	 *
+	 * @param string $identifier The service provider class or alias slug.
+	 */
+	private function registered_action(string $identifier): string {
+		return self::REGISTERED_ACTION_PREFIX . $identifier . '/registered';
 	}
 
 	/**
@@ -41,10 +55,28 @@ final class ContainerAdapter implements Container
 	public function register(string $serviceProviderClass, ...$alias): void {
 		$this->container->register($serviceProviderClass, ...$alias);
 
-		do_action("{$serviceProviderClass}_registered");
+		/**
+		 * Fires after a service provider has been registered in the container.
+		 *
+		 * The dynamic portion of the hook name, `$serviceProviderClass`, refers to the
+		 * fully-qualified class name of the registered service provider.
+		 *
+		 * @param class-string<Providable> $serviceProviderClass The registered service provider class.
+		 * @param string[] $alias                                The aliases the provider was registered under.
+		 */
+		do_action($this->registered_action($serviceProviderClass), $serviceProviderClass, $alias);
 
 		foreach ($alias as $slug) {
-			do_action("{$slug}_registered");
+			/**
+			 * Fires after a service provider has been registered, once per alias.
+			 *
+			 * The dynamic portion of the hook name, `$slug`, refers to an alias the
+			 * service provider was registered under.
+			 *
+			 * @param class-string<Providalbe> $serviceProviderClass The registered service provider class.
+			 * @param string[] $alias                                The aliases the provider was registered under.
+			 */
+			do_action($this->registered_action($slug), $serviceProviderClass, $alias);
 		}
 	}
 
@@ -112,7 +144,7 @@ final class ContainerAdapter implements Container
 		string $dependantProviderClass,
 		...$alias
 	): void {
-		$this->register_on_action("{$baseProviderClass}_registered", $dependantProviderClass, ...$alias);
+		$this->register_on_action($this->registered_action($baseProviderClass), $dependantProviderClass, ...$alias);
 	}
 
 	/**
