@@ -25,7 +25,8 @@ namespace My\App;
 
 use lucatume\DI52\Container;
 use StellarWP\Foundation\Container\Contracts\Container as ContainerContract;
-use StellarWP\Foundation\Container\ContainerAdapter;
+use StellarWP\Foundation\ContainerWordPress\Contracts\Container as WPContainerContract;
+use StellarWP\Foundation\Container\ContainerAdapter as FoundationContainerAdapter;
 use StellarWP\Foundation\ContainerWordPress\ContainerAdapter;
 
 // This implements the Contracts/Container.php interface.
@@ -33,6 +34,7 @@ $container = new ContainerAdapter(new FoundationContainerAdapter(new Container()
 
 // Bind the concrete to the interface, so anytime we ask for a container we get this one.
 $container->bind(ContainerContract::class, $container);
+$container->bind(WPContainerContract::class, $container);
 ```
 
 Everything the [Foundation Container](https://github.com/stellarwp/foundation-container) can do,
@@ -107,7 +109,7 @@ add_action(
 );
 ```
 
-### `register_on_action()`
+### `registerOnAction()`
 
 Register a provider when a WordPress action fires. If the action has already
 fired, the provider is registered immediately; otherwise registration is deferred
@@ -115,10 +117,10 @@ until the action fires and happens only once.
 
 ```php
 // Register when `init` fires (or right away if it already has).
-$container->register_on_action( 'init', My_Provider::class );
+$container->registerOnAction( 'init', My_Provider::class );
 ```
 
-### `register_after_provider()`
+### `registerOnProvider()`
 
 Register a provider only after another provider has been registered. It builds on
 the `.../registered` action above, so the dependant provider is wired up as soon
@@ -126,10 +128,10 @@ as the base provider is registered.
 
 ```php
 // Register Feature_Provider after Core_Provider has been registered.
-$container->register_after_provider( Core_Provider::class, Feature_Provider::class );
+$container->registerOnProvider( Core_Provider::class, Feature_Provider::class );
 ```
 
-### `register_after_all_actions()`
+### `registerAfterAllActions()`
 
 Register a provider only after *every* one of the given actions has fired. If all
 of them have already fired, registration happens immediately; otherwise it waits
@@ -137,5 +139,5 @@ for the last one and then registers exactly once.
 
 ```php
 // Register once both `plugins_loaded` and `init` have fired.
-$container->register_after_all_actions( [ 'plugins_loaded', 'init' ], My_Provider::class );
+$container->registerAfterAllActions( [ 'plugins_loaded', 'init' ], My_Provider::class );
 ```

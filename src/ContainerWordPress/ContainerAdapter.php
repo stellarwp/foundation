@@ -36,6 +36,8 @@ final readonly class ContainerAdapter implements Container
 	 * @param string $identifier The service provider class or alias slug.
 	 *
 	 * @return non-empty-string
+	 *
+	 * @throws InvalidArgumentException When the provided $identifier is empty.
 	 */
 	private function registeredAction(string $identifier): string {
 		if (! $identifier) {
