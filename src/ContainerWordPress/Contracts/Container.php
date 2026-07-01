@@ -34,7 +34,7 @@ interface Container extends FoundationContainer
 	 *
 	 * @throws \lucatume\DI52\ContainerException
 	 */
-	public function register_on_action(string $action, string $serviceProviderClass, ...$alias): void;
+	public function registerOnAction(string $action, string $serviceProviderClass, ...$alias): void;
 
 	/**
 	 * @param class-string<Providable>|string $baseProviderClass      The provider class or id that the $dependantProviderClass
@@ -45,7 +45,7 @@ interface Container extends FoundationContainer
 	 *
 	 * @throws \lucatume\DI52\ContainerException
 	 */
-	public function register_after_provider(string $baseProviderClass, string $dependantProviderClass, ...$alias): void;
+	public function registerOnProvider(string $baseProviderClass, string $dependantProviderClass, ...$alias): void;
 
 	/**
 	 * @param list<string>             $actions              A list of actions that all need to be fired for the Provider to be
@@ -56,5 +56,5 @@ interface Container extends FoundationContainer
 	 *
 	 * @throws \lucatume\DI52\ContainerException
 	 */
-	public function register_after_all_actions(array $actions, string $serviceProviderClass, ...$alias): void;
+	public function registerAfterAllActions(array $actions, string $serviceProviderClass, ...$alias): void;
 }

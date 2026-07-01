@@ -5,6 +5,7 @@ namespace StellarWP\Foundation\ContainerWordPress;
 use Closure;
 use lucatume\DI52\Container as DI52Container;
 use lucatume\DI52\ContainerException;
+use RuntimeException;
 use StellarWP\Foundation\Container\ContainerAdapter as FoundationContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Providable;
 use StellarWP\Foundation\ContainerWordPress\Contracts\Container;
@@ -23,15 +24,10 @@ use StellarWP\Foundation\ContainerWordPress\Contracts\Container;
  */
 final class ContainerAdapter implements Container
 {
-	/**
-	 * Prefix for the WordPress actions fired when a service provider is registered.
-	 */
-	private const string REGISTERED_ACTION_PREFIX = 'stellarwp/foundation/container/wp/';
-
-	private readonly FoundationContainerAdapter $container;
-
-	public function __construct(DI52Container $container) {
-		$this->container = new FoundationContainerAdapter($container);
+	public function __construct(
+		private readonly FoundationContainerAdapter $container,
+		private readonly string $prefix = 'stellarwp/foundation/container/wp/',
+	) {
 	}
 
 	/**
@@ -41,8 +37,11 @@ final class ContainerAdapter implements Container
 	 *
 	 * @return non-empty-string
 	 */
-	private function registered_action(string $identifier): string {
-		return self::REGISTERED_ACTION_PREFIX . $identifier . '/registered';
+	private function registeredAction(string $identifier): string {
+		if (!$identifier) {
+			throw new RuntimeException( "You need to provide an identifier!" )
+		}
+		return $this->prefix . $identifier . '/registered';
 	}
 
 	/**
@@ -60,7 +59,7 @@ final class ContainerAdapter implements Container
 		 * @param class-string<Providable> $serviceProviderClass The registered service provider class.
 		 * @param string[]                 $alias                The aliases the provider was registered under.
 		 */
-		do_action($this->registered_action($serviceProviderClass), $serviceProviderClass, $alias);
+		do_action($this->registeredAction($serviceProviderClass), $serviceProviderClass, $alias);
 
 		foreach ($alias as $slug) {
 			/**
@@ -72,14 +71,14 @@ final class ContainerAdapter implements Container
 			 * @param class-string<Providable> $serviceProviderClass The registered service provider class.
 			 * @param string[]                 $alias                The aliases the provider was registered under.
 			 */
-			do_action($this->registered_action($slug), $serviceProviderClass, $alias);
+			do_action($this->registeredAction($slug), $serviceProviderClass, $alias);
 		}
 	}
 
 	/**
 	 * {@inheritDoc}
 	 */
-	public function register_after_all_actions(array $actions, string $serviceProviderClass, ...$alias): void {
+	public function registerAfterAllActions(array $actions, string $serviceProviderClass, ...$alias): void {
 		$pending = array_values(array_filter($actions, static fn (string $action): bool => ! did_action($action)));
 
 		if ($pending === []) {
@@ -114,7 +113,7 @@ final class ContainerAdapter implements Container
 	/**
 	 * {@inheritDoc}
 	 */
-	public function register_on_action(string $action, string $serviceProviderClass, ...$alias): void {
+	public function registerOnAction(string $action, string $serviceProviderClass, ...$alias): void {
 		if (did_action($action)) {
 			// If the action has already fired, register the provider immediately.
 			$this->register($serviceProviderClass, ...$alias);
@@ -135,12 +134,12 @@ final class ContainerAdapter implements Container
 	/**
 	 * {@inheritDoc}
 	 */
-	public function register_after_provider(
+	public function registerOnProvider(
 		string $baseProviderClass,
 		string $dependantProviderClass,
 		...$alias
 	): void {
-		$this->register_on_action($this->registered_action($baseProviderClass), $dependantProviderClass, ...$alias);
+		$this->registerOnAction($this->registeredAction($baseProviderClass), $dependantProviderClass, ...$alias);
 	}
 
 	/**

@@ -24,10 +24,11 @@ Foundation container contract:
 namespace My\App;
 
 use lucatume\DI52\Container;
+use StellarWP\Foundation\Container\ContainerAdapter;
 use StellarWP\Foundation\ContainerWordPress\ContainerAdapter;
 
 // This implements the Contracts/Container.php interface.
-$container = new ContainerAdapter(new Container());
+$container = new ContainerAdapter(new FoundationContainerAdapter(new Container()));
 
 // Bind the concrete to the interface, so anytime we ask for a container we get this one.
 $container->bind(Container::class, $container);
@@ -45,6 +46,39 @@ registration. These methods are declared on
 
 All of them accept the same optional trailing `...$alias` arguments as the base
 `register()` method.
+
+## Hook Prefix
+
+The WordPress container adapter will fire registration hooks when a Provider is being registered. By default, we use
+the `'stellarwp/foundation/container/wp/'` as the hook prefix, but you can easily change that by passing a second argument
+during the adapter's initialization.
+
+```php
+$container = new ContainerAdapter(new FoundationContainerAdapter(new Container()), 'my/hook/prefix/');
+
+add_action(
+    'my/hook/prefix/' . My_Provider::class . '/registered',
+    function ( string $provider_class, array $aliases ): void {
+        // React to My_Provider having been registered.
+    },
+    10,
+    2
+);
+
+# Or by using it's alias
+add_action(
+    'my/hook/prefix/my-alias/registered',
+    function ( string $provider_class, array $aliases ): void {
+        // React to My_Provider having been registered.
+    },
+    10,
+    2
+);
+
+$container->register( My_Provider::class, 'my-alias' );
+
+
+```
 
 ### Registration actions
 
