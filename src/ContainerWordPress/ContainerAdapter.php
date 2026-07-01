@@ -3,9 +3,9 @@
 namespace StellarWP\Foundation\ContainerWordPress;
 
 use Closure;
+use InvalidArgumentException;
 use lucatume\DI52\Container as DI52Container;
 use lucatume\DI52\ContainerException;
-use RuntimeException;
 use StellarWP\Foundation\Container\ContainerAdapter as FoundationContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Providable;
 use StellarWP\Foundation\ContainerWordPress\Contracts\Container;
@@ -22,11 +22,11 @@ use StellarWP\Foundation\ContainerWordPress\Contracts\Container;
  * @method void  singletonDecorators($id, array<string> $decorators, ?array<string> $afterBuildMethods = null)
  * @method void  bindDecorators($id, array<string> $decorators, ?array<string> $afterBuildMethods = null)
  */
-final class ContainerAdapter implements Container
+final readonly class ContainerAdapter implements Container
 {
 	public function __construct(
-		private readonly FoundationContainerAdapter $container,
-		private readonly string $prefix = 'stellarwp/foundation/container/wp/',
+		private FoundationContainerAdapter $container,
+		private string $prefix = 'nexcess/foundation/container/wp/',
 	) {
 	}
 
@@ -39,7 +39,7 @@ final class ContainerAdapter implements Container
 	 */
 	private function registeredAction(string $identifier): string {
 		if (!$identifier) {
-			throw new RuntimeException( "You need to provide an identifier!" );
+			throw new InvalidArgumentException( "You need to provide an identifier!" );
 		}
 		return $this->prefix . $identifier . '/registered';
 	}

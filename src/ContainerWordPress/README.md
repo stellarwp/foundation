@@ -50,7 +50,7 @@ All of them accept the same optional trailing `...$alias` arguments as the base
 ## Hook Prefix
 
 The WordPress container adapter will fire registration hooks when a Provider is being registered. By default, we use
-the `'stellarwp/foundation/container/wp/'` as the hook prefix, but you can easily change that by passing a second argument
+the `'nexcess/foundation/container/wp/'` as the hook prefix, but you can easily change that by passing a second argument
 during the adapter's initialization.
 
 ```php
@@ -85,10 +85,10 @@ $container->register( My_Provider::class, 'my-alias' );
 `register()` is overridden so that, once a provider has been registered, it fires
 WordPress actions other code can hook onto:
 
-| Action | Fired |
-| --- | --- |
-| `stellarwp/foundation/container/wp/{$serviceProviderClass}/registered` | Once, for the registered provider class. |
-| `stellarwp/foundation/container/wp/{$alias}/registered` | Once per alias the provider was registered under. |
+| Action                                                               | Fired |
+|----------------------------------------------------------------------| --- |
+| `nexcess/foundation/container/wp/{$serviceProviderClass}/registered` | Once, for the registered provider class. |
+| `nexcess/foundation/container/wp/{$alias}/registered`              | Once per alias the provider was registered under. |
 
 Both actions pass two arguments to listeners: the registered provider class
 (`string`) and the list of aliases (`string[]`).
@@ -97,7 +97,7 @@ Both actions pass two arguments to listeners: the registered provider class
 $container->register( My_Provider::class, 'my-alias' );
 
 add_action(
-    'stellarwp/foundation/container/wp/' . My_Provider::class . '/registered',
+    'nexcess/foundation/container/wp/' . My_Provider::class . '/registered',
     function ( string $provider_class, array $aliases ): void {
         // React to My_Provider having been registered.
     },
