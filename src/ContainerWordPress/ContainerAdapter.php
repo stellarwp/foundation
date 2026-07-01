@@ -5,6 +5,7 @@ namespace StellarWP\Foundation\ContainerWordPress;
 use Closure;
 use lucatume\DI52\Container as DI52Container;
 use StellarWP\Foundation\Container\ContainerAdapter as FoundationContainerAdapter;
+use StellarWP\Foundation\Container\Contracts\Providable;
 use StellarWP\Foundation\ContainerWordPress\Contracts\Container;
 
 /**
@@ -62,7 +63,7 @@ final class ContainerAdapter implements Container
 		 * fully-qualified class name of the registered service provider.
 		 *
 		 * @param class-string<Providable> $serviceProviderClass The registered service provider class.
-		 * @param string[] $alias                                The aliases the provider was registered under.
+		 * @param string[]                 $alias                The aliases the provider was registered under.
 		 */
 		do_action($this->registered_action($serviceProviderClass), $serviceProviderClass, $alias);
 
@@ -73,8 +74,8 @@ final class ContainerAdapter implements Container
 			 * The dynamic portion of the hook name, `$slug`, refers to an alias the
 			 * service provider was registered under.
 			 *
-			 * @param class-string<Providalbe> $serviceProviderClass The registered service provider class.
-			 * @param string[] $alias                                The aliases the provider was registered under.
+			 * @param class-string<Providable> $serviceProviderClass The registered service provider class.
+			 * @param string[]                 $alias                The aliases the provider was registered under.
 			 */
 			do_action($this->registered_action($slug), $serviceProviderClass, $alias);
 		}
