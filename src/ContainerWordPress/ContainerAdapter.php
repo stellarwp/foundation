@@ -38,8 +38,8 @@ final readonly class ContainerAdapter implements Container
 	 * @return non-empty-string
 	 */
 	private function registeredAction(string $identifier): string {
-		if (!$identifier) {
-			throw new InvalidArgumentException( "You need to provide an identifier!" );
+		if (! $identifier) {
+			throw new InvalidArgumentException('You need to provide an identifier!');
 		}
 		return $this->prefix . $identifier . '/registered';
 	}
