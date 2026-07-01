@@ -136,10 +136,10 @@ final class ContainerAdapter implements Container
 	 */
 	public function registerOnProvider(
 		string $baseProviderClass,
-		string $dependantProviderClass,
+		string $dependentProviderClass,
 		...$alias
 	): void {
-		$this->registerOnAction($this->registeredAction($baseProviderClass), $dependantProviderClass, ...$alias);
+		$this->registerOnAction($this->registeredAction($baseProviderClass), $dependentProviderClass, ...$alias);
 	}
 
 	/**

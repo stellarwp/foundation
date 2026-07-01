@@ -37,15 +37,15 @@ interface Container extends FoundationContainer
 	public function registerOnAction(string $action, string $serviceProviderClass, ...$alias): void;
 
 	/**
-	 * @param class-string<Providable>|string $baseProviderClass      The provider class or id that the $dependantProviderClass
+	 * @param class-string<Providable>|string $baseProviderClass      The provider class or id that the $dependentProviderClass
 	 *                                                                depends on.
-	 * @param class-string<Providable>        $dependantProviderClass The Service Provider to register after
+	 * @param class-string<Providable>        $dependentProviderClass The Service Provider to register after
 	 *                                                                $baseProviderClass has been registered.
-	 * @param string                          ...$alias               Alias(es) for the $dependantProviderClass.
+	 * @param string                          ...$alias               Alias(es) for the $dependentProviderClass.
 	 *
 	 * @throws \lucatume\DI52\ContainerException
 	 */
-	public function registerOnProvider(string $baseProviderClass, string $dependantProviderClass, ...$alias): void;
+	public function registerOnProvider(string $baseProviderClass, string $dependentProviderClass, ...$alias): void;
 
 	/**
 	 * @param list<string>             $actions              A list of actions that all need to be fired for the Provider to be
