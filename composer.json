@@ -34,6 +34,7 @@
     "replace": {
         "stellarwp/foundation-cli": "self.version",
         "stellarwp/foundation-container": "self.version",
+        "stellarwp/foundation-container-wordpress": "self.version",
         "stellarwp/foundation-log": "self.version",
         "stellarwp/foundation-pipeline": "self.version",
         "stellarwp/foundation-wpcli": "self.version"
@@ -44,6 +45,7 @@
         "psr-4": {
             "StellarWP\\Foundation\\Cli\\": "src/Cli/",
             "StellarWP\\Foundation\\Container\\": "src/Container/",
+            "StellarWP\\Foundation\\ContainerWordPress\\": "src/ContainerWordPress/",
             "StellarWP\\Foundation\\Log\\": "src/Log/",
             "StellarWP\\Foundation\\Pipeline\\": "src/Pipeline/",
             "StellarWP\\Foundation\\WPCli\\": "src/WPCli/"
