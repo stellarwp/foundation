@@ -39,7 +39,7 @@ final class ContainerAdapter implements Container
 	/**
 	 * @codeCoverageIgnore
 	 */
-	public function get_container(): DI52Container {
+	public function getContainer(): DI52Container {
 		return $this->container;
 	}
 
