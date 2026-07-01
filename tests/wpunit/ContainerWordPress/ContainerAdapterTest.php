@@ -3,10 +3,10 @@
 namespace StellarWP\Foundation\Tests\WPUnit\ContainerWordPress;
 
 use lucatume\DI52\Container as DI52Container;
-use StellarWP\Foundation\Container\Contracts\Container as FoundationContainer;
-use StellarWP\Foundation\ContainerWordPress\Contracts\Container as WPContainerContract;
 use StellarWP\Foundation\Container\ContainerAdapter as FoundationContainerAdapter;
+use StellarWP\Foundation\Container\Contracts\Container as FoundationContainer;
 use StellarWP\Foundation\ContainerWordPress\ContainerAdapter;
+use StellarWP\Foundation\ContainerWordPress\Contracts\Container as WPContainerContract;
 use StellarWP\Foundation\Tests\Support\Fixtures\ContainerWordPress\FirstProvider;
 use StellarWP\Foundation\Tests\Support\Fixtures\ContainerWordPress\SecondProvider;
 use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
@@ -35,9 +35,9 @@ final class ContainerAdapterTest extends WPTestCase
 	 * Count how many times a WordPress action fires while a callback is attached.
 	 */
 	private function count_action(string $action): callable {
-		$original = did_action( $action );
+		$original = did_action($action);
 
-		return static fn (): int => did_action( $action ) - $original;
+		return static fn (): int => did_action($action) - $original;
 	}
 
 	public function test_register_fires_a_registered_action_for_the_provider(): void {
