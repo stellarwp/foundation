@@ -28,11 +28,9 @@ interface Container extends FoundationContainer
 	public function needs(string $id): Container;
 
 	/**
-	 * @param string                   $action.              The WordPress action the $serviceProviderClass should be registered on.
+	 * @param string                   $action               The WordPress action the $serviceProviderClass should be registered on.
 	 * @param class-string<Providable> $serviceProviderClass The Service Provider to register on $action.
 	 * @param string                   $alias                Alias(es) for the $serviceProviderClass.
-	 *
-	 * @return void
 	 *
 	 * @throws \lucatume\DI52\ContainerException
 	 */
@@ -45,8 +43,6 @@ interface Container extends FoundationContainer
 	 *                                                                $baseProviderClass has been registered.
 	 * @param string                          ...$alias               Alias(es) for the $dependantProviderClass.
 	 *
-	 * @return void
-	 *
 	 * @throws \lucatume\DI52\ContainerException
 	 */
 	public function register_after_provider(string $baseProviderClass, string $dependantProviderClass, ...$alias): void;
@@ -57,8 +53,6 @@ interface Container extends FoundationContainer
 	 * @param class-string<Providable> $serviceProviderClass The Service Provider to register when the last action from $actions
 	 *                                                       is fired.
 	 * @param                          ...$alias             Alias(es) for the $serviceProviderClass.
-	 *
-	 * @return void
 	 *
 	 * @throws \lucatume\DI52\ContainerException
 	 */

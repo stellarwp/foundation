@@ -4,7 +4,6 @@ namespace StellarWP\Foundation\ContainerWordPress;
 
 use Closure;
 use lucatume\DI52\Container as DI52Container;
-use lucatume\DI52\ContainerException;
 use StellarWP\Foundation\Container\ContainerAdapter as FoundationContainerAdapter;
 use StellarWP\Foundation\ContainerWordPress\Contracts\Container;
 
@@ -15,18 +14,18 @@ use StellarWP\Foundation\ContainerWordPress\Contracts\Container;
  * container API and gain WordPress-specific helpers. Add WordPress-specific
  * methods here alongside the matching signatures on {@see Container}.
  *
- * @method mixed make(string $id)
- * @method mixed getVar(string $key, mixed|null $default = null)
- * @method void  singletonDecorators($id, array<string> $decorators, ?array<string> $afterBuildMethods = null)
- * @method void  bindDecorators($id, array<string> $decorators, ?array<string> $afterBuildMethods = null)
- * @method void bind(string $id, mixed $implementation = null, ?array $afterBuildMethods = null)
- * @method mixed get(string $id)
+ * @method mixed         make(string $id)
+ * @method mixed         getVar(string $key, mixed|null $default = null)
+ * @method void          singletonDecorators($id, array<string> $decorators, ?array<string> $afterBuildMethods = null)
+ * @method void          bindDecorators($id, array<string> $decorators, ?array<string> $afterBuildMethods = null)
+ * @method void          bind(string $id, mixed $implementation = null, ?array $afterBuildMethods = null)
+ * @method mixed         get(string $id)
  * @method DI52Container get_container()
- * @method bool has(string $id)
- * @method void singleton(string $id, mixed $implementation = null, ?array $afterBuildMethods = null)
- * @method void give(mixed $implementation)
- * @method Closure instance(mixed $id, array $buildArgs = [], ?array $afterBuildMethods = null)
- * @method callable callback(object|string $id, string $method)
+ * @method bool          has(string $id)
+ * @method void          singleton(string $id, mixed $implementation = null, ?array $afterBuildMethods = null)
+ * @method void          give(mixed $implementation)
+ * @method Closure       instance(mixed $id, array $buildArgs = [], ?array $afterBuildMethods = null)
+ * @method callable      callback(object|string $id, string $method)
  */
 final class ContainerAdapter implements Container
 {
@@ -96,7 +95,7 @@ final class ContainerAdapter implements Container
 		}
 
 		// If the action has not fired yet, register the provider when/if it does.
-		$registration_closure = function() use ($action, $serviceProviderClass, $alias, &$registration_closure) {
+		$registration_closure = function () use ($action, $serviceProviderClass, $alias, &$registration_closure) {
 			// Remove the closure from the action to avoid calling it again.
 			remove_action($action, $registration_closure);
 			$this->register($serviceProviderClass, ...$alias);
