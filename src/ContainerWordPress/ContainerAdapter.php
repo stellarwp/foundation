@@ -39,7 +39,7 @@ final class ContainerAdapter implements Container
 	 */
 	private function registeredAction(string $identifier): string {
 		if (!$identifier) {
-			throw new RuntimeException( "You need to provide an identifier!" )
+			throw new RuntimeException( "You need to provide an identifier!" );
 		}
 		return $this->prefix . $identifier . '/registered';
 	}
