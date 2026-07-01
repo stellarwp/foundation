@@ -2,6 +2,7 @@
 
 namespace StellarWP\Foundation\Tests\WPUnit\ContainerWordPress;
 
+use InvalidArgumentException;
 use lucatume\DI52\Container as DI52Container;
 use StellarWP\Foundation\Container\ContainerAdapter as FoundationContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Container as FoundationContainer;
@@ -29,6 +30,15 @@ final class ContainerAdapterTest extends WPTestCase
 	 */
 	private function registered_action(string $identifier): string {
 		return 'nexcess/foundation/container/wp/' . $identifier . '/registered';
+	}
+
+	private function adapter_with_prefix(string $prefix): ContainerAdapter {
+		$adapter = new ContainerAdapter(new FoundationContainerAdapter(new DI52Container()), $prefix);
+
+		$adapter->bind(FoundationContainer::class, $adapter);
+		$adapter->bind(WPContainerContract::class, $adapter);
+
+		return $adapter;
 	}
 
 	/**
@@ -68,6 +78,38 @@ final class ContainerAdapterTest extends WPTestCase
 		$this->assertSame(2, $provider());
 		$this->assertSame(2, $alpha());
 		$this->assertSame(2, $beta());
+	}
+
+	public function test_register_normalizes_custom_prefixes_to_one_trailing_slash(): void {
+		foreach (['custom/foundation/container', 'custom/foundation/container/', 'custom/foundation/container///'] as $prefix) {
+			$adapter = $this->adapter_with_prefix($prefix);
+			$fired   = $this->count_action('custom/foundation/container/' . FirstProvider::class . '/registered');
+
+			$adapter->register(FirstProvider::class);
+
+			$this->assertSame(1, $fired());
+		}
+	}
+
+	public function test_register_allows_an_empty_custom_prefix(): void {
+		$adapter = $this->adapter_with_prefix('');
+		$fired   = $this->count_action(FirstProvider::class . '/registered');
+
+		$adapter->register(FirstProvider::class);
+
+		$this->assertSame(1, $fired());
+	}
+
+	public function test_register_validates_aliases_before_registering_the_provider(): void {
+		$fired = $this->count_action($this->registered_action(FirstProvider::class));
+
+		try {
+			$this->adapter->register(FirstProvider::class, '');
+
+			$this->fail('Expected an invalid alias to throw before provider registration.');
+		} catch (InvalidArgumentException) {
+			$this->assertSame(0, $fired());
+		}
 	}
 
 	public function test_register_passes_the_provider_class_and_aliases_to_listeners(): void {
@@ -141,18 +183,18 @@ final class ContainerAdapterTest extends WPTestCase
 		$this->assertSame(1, $fired());
 	}
 
-	public function test_register_after_provider_registers_the_dependant_once_the_base_registers(): void {
+	public function test_register_after_provider_registers_the_dependent_once_the_base_registers(): void {
 		$base      = $this->count_action($this->registered_action(FirstProvider::class));
-		$dependant = $this->count_action($this->registered_action(SecondProvider::class));
+		$dependent = $this->count_action($this->registered_action(SecondProvider::class));
 
 		$this->adapter->registerOnProvider(FirstProvider::class, SecondProvider::class);
 		$this->assertSame(0, $base());
-		$this->assertSame(0, $dependant());
+		$this->assertSame(0, $dependent());
 
 		$this->adapter->register(FirstProvider::class);
 
 		$this->assertSame(1, $base());
-		$this->assertSame(1, $dependant());
+		$this->assertSame(1, $dependent());
 	}
 
 	public function test_register_after_all_actions_registers_immediately_when_all_actions_are_done(): void {

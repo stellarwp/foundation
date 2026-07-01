@@ -24,10 +24,16 @@ use StellarWP\Foundation\ContainerWordPress\Contracts\Container;
  */
 final readonly class ContainerAdapter implements Container
 {
+	private FoundationContainerAdapter $container;
+
+	private string $prefix;
+
 	public function __construct(
-		private FoundationContainerAdapter $container,
-		private string $prefix = 'nexcess/foundation/container/wp/',
+		FoundationContainerAdapter $container,
+		string $prefix = 'nexcess/foundation/container/wp/',
 	) {
+		$this->container = $container;
+		$this->prefix    = $prefix === '' ? '' : rtrim($prefix, '/') . '/';
 	}
 
 	/**
@@ -40,7 +46,7 @@ final readonly class ContainerAdapter implements Container
 	 * @return non-empty-string
 	 */
 	private function registeredAction(string $identifier): string {
-		if (! $identifier) {
+		if ($identifier === '') {
 			throw new InvalidArgumentException('You need to provide an identifier!');
 		}
 
@@ -51,6 +57,12 @@ final readonly class ContainerAdapter implements Container
 	 * {@inheritDoc}
 	 */
 	public function register(string $serviceProviderClass, ...$alias): void {
+		$this->registeredAction($serviceProviderClass);
+
+		foreach ($alias as $slug) {
+			$this->registeredAction($slug);
+		}
+
 		$this->container->register($serviceProviderClass, ...$alias);
 
 		/**
