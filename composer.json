@@ -25,6 +25,7 @@
         "monorepo-php/monorepo": "^12.7",
         "nunomaduro/collision": "^8.9",
         "php-mock/php-mock-mockery": "^1.5",
+        "php-stubs/wordpress-stubs": ">=6.0",
         "phpstan/extension-installer": "^1.4",
         "phpstan/phpstan": "^2.2",
         "phpunit/phpunit": "^11.5",

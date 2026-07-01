@@ -52,7 +52,7 @@ interface Container extends FoundationContainer
 	 *                                                       registered.
 	 * @param class-string<Providable> $serviceProviderClass The Service Provider to register when the last action from $actions
 	 *                                                       is fired.
-	 * @param                          ...$alias             Alias(es) for the $serviceProviderClass.
+	 * @param string                   ...$alias             Alias(es) for the $serviceProviderClass.
 	 *
 	 * @throws \lucatume\DI52\ContainerException
 	 */

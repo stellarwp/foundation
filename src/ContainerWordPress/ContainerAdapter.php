@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\ContainerWordPress;
 
 use Closure;
 use lucatume\DI52\Container as DI52Container;
+use lucatume\DI52\ContainerException;
 use StellarWP\Foundation\Container\ContainerAdapter as FoundationContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Providable;
 use StellarWP\Foundation\ContainerWordPress\Contracts\Container;
@@ -15,18 +16,10 @@ use StellarWP\Foundation\ContainerWordPress\Contracts\Container;
  * container API and gain WordPress-specific helpers. Add WordPress-specific
  * methods here alongside the matching signatures on {@see Container}.
  *
- * @method mixed         make(string $id)
- * @method mixed         getVar(string $key, mixed|null $default = null)
- * @method void          singletonDecorators($id, array<string> $decorators, ?array<string> $afterBuildMethods = null)
- * @method void          bindDecorators($id, array<string> $decorators, ?array<string> $afterBuildMethods = null)
- * @method void          bind(string $id, mixed $implementation = null, ?array $afterBuildMethods = null)
- * @method mixed         get(string $id)
- * @method DI52Container get_container()
- * @method bool          has(string $id)
- * @method void          singleton(string $id, mixed $implementation = null, ?array $afterBuildMethods = null)
- * @method void          give(mixed $implementation)
- * @method Closure       instance(mixed $id, array $buildArgs = [], ?array $afterBuildMethods = null)
- * @method callable      callback(object|string $id, string $method)
+ * @method mixed make(string $id)
+ * @method mixed getVar(string $key, mixed|null $default = null)
+ * @method void  singletonDecorators($id, array<string> $decorators, ?array<string> $afterBuildMethods = null)
+ * @method void  bindDecorators($id, array<string> $decorators, ?array<string> $afterBuildMethods = null)
  */
 final class ContainerAdapter implements Container
 {
@@ -45,6 +38,8 @@ final class ContainerAdapter implements Container
 	 * Build the "registered" WordPress action name for a service provider or alias.
 	 *
 	 * @param string $identifier The service provider class or alias slug.
+	 *
+	 * @return non-empty-string
 	 */
 	private function registered_action(string $identifier): string {
 		return self::REGISTERED_ACTION_PREFIX . $identifier . '/registered';
@@ -164,6 +159,68 @@ final class ContainerAdapter implements Container
 		$this->container->needs($id);
 
 		return $this;
+	}
+
+	/**
+	 * @param string[]|null $afterBuildMethods
+	 *
+	 * @throws \lucatume\DI52\ContainerException
+	 */
+	public function bind(string $id, mixed $implementation = null, ?array $afterBuildMethods = null): void {
+		$this->container->bind($id, $implementation, $afterBuildMethods);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function get(string $id): mixed {
+		return $this->container->get($id);
+	}
+
+	/**
+	 * @codeCoverageIgnore
+	 */
+	public function get_container(): DI52Container {
+		return $this->container->get_container();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @codeCoverageIgnore
+	 */
+	public function has(string $id): bool {
+		return $this->container->has($id);
+	}
+
+	/**
+	 * @param string[]|null $afterBuildMethods
+	 *
+	 * @throws \lucatume\DI52\ContainerException
+	 */
+	public function singleton(string $id, mixed $implementation = null, ?array $afterBuildMethods = null): void {
+		$this->container->singleton($id, $implementation, $afterBuildMethods);
+	}
+
+	public function give(mixed $implementation): void {
+		$this->container->give($implementation);
+	}
+
+	/**
+	 * @param array<mixed>  $buildArgs
+	 * @param string[]|null $afterBuildMethods
+	 */
+	public function instance(mixed $id, array $buildArgs = [], ?array $afterBuildMethods = null): Closure {
+		return $this->container->instance($id, $buildArgs, $afterBuildMethods);
+	}
+
+	/**
+	 * @param class-string|string|object $id
+	 *
+	 * @throws ContainerException
+	 */
+	public function callback(object|string $id, string $method): callable {
+		return $this->container->callback($id, $method);
 	}
 
 	/**
