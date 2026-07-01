@@ -106,17 +106,20 @@ composer analyze
 
 ### 🥳 Releasing a new version
 
-Before drafting the release, run the monorepo maintenance commands that apply to the release:
+Before drafting the release, run only the monorepo maintenance commands that prepare the release line itself:
 
 | Situation                                                                                                                                                                                                                                                                                     | Command | Why |
 |-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| --- | --- |
-| You are planning a major version release, for example `2.0` to `3.0`. You should run this so any Foundation packages that depend on each other require the new major line, such as `^3.0`. You may also run it for a minor release if one package must require APIs added in that new minor version. | `composer monorepo bump-interdependency <constraint>` | Updates package-to-package dependency constraints. Use the new minimum Composer constraint, such as `^3.0` or `^1.2`. |
-| You have published a minor or major release and `dev-main` should move to the next development line. For example, after releasing `1.1.0`, update internal dependencies to `^1.2` and the branch alias from `1.1.x-dev` to `1.2.x-dev`. Do not run this before every patch release if the existing alias is still correct. | `git fetch --tags`, then `composer monorepo bump-interdependency <next-dev-constraint>` and `composer monorepo package-alias` | Updates package-to-package dependency constraints for the next development line, then updates each package's `extra.branch-alias` using the latest local release tag and the format configured in `monorepo-builder.php`. |
-| Neither of the above changed.                                                                                                                                                                                                                                                                 | No monorepo maintenance command is needed. | Continue to drafting the release. |
+| You are planning a major version release, for example `2.0` to `3.0`. You should run this so any Foundation packages that depend on each other require the new major line, such as `^3.0`. You may also run it for a minor release if one package must require APIs added in that new minor version. | `composer monorepo bump-interdependency <release-constraint>`, then `composer monorepo merge` | Updates package-to-package dependency constraints for the release being published. Use the release's minimum Composer constraint, such as `^3.0` or `^1.2`. |
+| Internal package constraints already match the release line.                                                                                                                                                                                                                                    | No pre-release monorepo maintenance command is needed. | Continue to drafting the release. |
 
 After any needed command, commit the updated `composer.json` files. Then draft a new release on [GitHub](https://github.com/stellarwp/foundation/releases/new), following [semver](https://semver.org/) closely.
 
 The [monorepo split GitHub workflow](./.github/workflows/monorepo-split.yml) deploys each project's code to its sub-repository on pushes to `main` and when release tags are pushed. Publishing a GitHub release creates the release tag and triggers the tagged split.
+
+After a successful tagged split for a minor or major `.0` release, the workflow automatically moves `dev-main` to the next development line. For example, publishing `1.2.0` causes the workflow to bump internal constraints to `^1.3` and branch aliases to `1.3.x-dev`. Patch releases such as `1.2.1` intentionally skip this step.
+
+If the automated post-release bump fails, fetch the release tag and manually run `composer monorepo bump-interdependency <next-dev-constraint>`, `composer monorepo package-alias`, and `composer monorepo merge`, then commit and push the updated package `composer.json` files.
 
 Adding a new split package is usually a minor [semver](https://semver.org/) release because it adds new functionality without breaking existing packages. Use a major release only if the change also breaks an existing public API or package contract.
 
