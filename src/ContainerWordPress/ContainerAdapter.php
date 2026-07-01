@@ -41,6 +41,7 @@ final readonly class ContainerAdapter implements Container
 		if (! $identifier) {
 			throw new InvalidArgumentException('You need to provide an identifier!');
 		}
+
 		return $this->prefix . $identifier . '/registered';
 	}
 
