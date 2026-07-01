@@ -13,7 +13,7 @@
         "ext-curl": "*",
         "ext-exif": "*",
         "adbario/php-dot-notation": ">=2.5",
-        "lucatume/di52": ">=3.0",
+        "lucatume/di52": ">=4.1",
         "monolog/monolog": "^2.11",
         "psr/log": ">=1.0",
         "stellarwp/container-contract": "^1.1",
@@ -45,8 +45,8 @@
     "autoload": {
         "psr-4": {
             "StellarWP\\Foundation\\Cli\\": "src/Cli/",
-            "StellarWP\\Foundation\\Container\\": "src/Container/",
             "StellarWP\\Foundation\\ContainerWordPress\\": "src/ContainerWordPress/",
+            "StellarWP\\Foundation\\Container\\": "src/Container/",
             "StellarWP\\Foundation\\Log\\": "src/Log/",
             "StellarWP\\Foundation\\Pipeline\\": "src/Pipeline/",
             "StellarWP\\Foundation\\WPCli\\": "src/WPCli/"
