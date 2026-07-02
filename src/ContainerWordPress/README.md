@@ -23,6 +23,7 @@ Foundation container contract:
 
 namespace My\App;
 
+use Adbar\Dot;
 use lucatume\DI52\Container;
 use StellarWP\Foundation\Container\Contracts\Container as ContainerContract;
 use StellarWP\Foundation\ContainerWordPress\Contracts\Container as WPContainerContract;
@@ -35,10 +36,34 @@ $container = new ContainerAdapter(new FoundationContainerAdapter(new Container()
 // Bind the concrete to the interface, so anytime we ask for a container we get this one.
 $container->bind(ContainerContract::class, $container);
 $container->bind(WPContainerContract::class, $container);
+
+// Register project configuration. See the Foundation Container README for a fuller config.php example.
+$container->bind(Dot::class, new Dot(require_once dirname(__FILE__) . '/config.php'));
 ```
 
 Everything the [Foundation Container](https://github.com/stellarwp/foundation-container) can do,
 this wrapper can do too — binding, singletons, service providers, contextual bindings, and so on.
+
+## Service Providers
+
+When a provider needs WordPress-specific container helpers, extend the WordPress-aware provider base:
+
+```php
+<?php declare(strict_types=1);
+
+namespace My\App;
+
+use StellarWP\Foundation\ContainerWordPress\Contracts\Provider;
+
+final class My_Provider extends Provider
+{
+    public function register(): void {
+        $this->container->registerOnAction( 'init', Other_Provider::class );
+    }
+}
+```
+
+The base Foundation provider still works for providers that only need the standard container API.
 
 ## WordPress helpers
 
