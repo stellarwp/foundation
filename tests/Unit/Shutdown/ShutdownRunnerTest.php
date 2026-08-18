@@ -80,8 +80,9 @@ final class ShutdownRunnerTest extends TestCase
 	public function test_it_logs_task_execution_and_failures_when_a_logger_is_available(): void {
 		$handler = new TestHandler();
 		$logger  = new Logger('shutdown', [$handler]);
-		$failing = new CallbackTerminable(static function (): void {
-			throw new Error('Expected test failure.', 42);
+		$failure = new Error('Expected test failure.', 42);
+		$failing = new CallbackTerminable(static function () use ($failure): void {
+			throw $failure;
 		});
 
 		$runner = new ShutdownRunner([
@@ -104,8 +105,7 @@ final class ShutdownRunnerTest extends TestCase
 		$this->assertSame([
 			'task'      => CallbackTerminable::class,
 			'priority'  => 10,
-			'exception' => Error::class,
-			'code'      => 42,
+			'exception' => $failure,
 		], $records[2]['context']);
 	}
 

@@ -43,6 +43,13 @@ final class FlushTelemetry implements Terminable
 		// Flush bounded application telemetry.
 	}
 }
+
+final class CloseRequestLog implements Terminable
+{
+	public function terminate(): void {
+		// Close the request log after the response is sent.
+	}
+}
 ```
 
 Contribute an application's termination work from one provider. Resolve the
@@ -87,18 +94,28 @@ registration order.
 
 ## WordPress shutdown
 
-`ShutdownProvider` automatically attaches the runner to WordPress's `shutdown`
-action at the latest priority. The runner is resolved lazily when the action fires,
-so features may contribute tasks after the provider is registered.
+`ShutdownProvider` binds the `ShutdownRunner` contract to the ordered task runner,
+decorated by `ResponseFinishingRunner`, and attaches it to WordPress's `shutdown`
+action at the latest priority. When supported, it finishes the response with
+`fastcgi_finish_request()` or `litespeed_finish_request()` before running the
+contributed tasks. The PHP worker remains occupied until those tasks finish, so
+long-running work still belongs in a proper background queue.
 
-Applications that need a different lifecycle boundary may omit the default provider
-and register their own provider or invoke the runner directly:
+The runner is resolved lazily when the action fires, so features may contribute
+tasks after the provider is registered.
+
+With the default provider registered, applications may also invoke the configured
+runner chain directly:
 
 ```php
-use StellarWP\Foundation\Shutdown\ShutdownRunner;
+use StellarWP\Foundation\Shutdown\Contracts\ShutdownRunner;
 
 $container->get(ShutdownRunner::class)->terminate();
 ```
+
+Applications that omit the default provider must bind the `ShutdownRunner` contract
+in their own provider or construct the concrete
+`StellarWP\Foundation\Shutdown\ShutdownRunner` with their desired tasks.
 
 Each runner instance executes only once, including when termination is invoked
 recursively. A `Throwable` from one task is isolated so later tasks still run.
@@ -110,9 +127,10 @@ recursively. A `Throwable` from one task is isolated so later tasks still run.
 it automatically. Applications without a logger require no additional setup.
 
 The runner logs the task count and each task at `debug` level. Task failures are
-logged at `error` level with the task class, priority, exception class, and code.
-Logger failures are isolated so diagnostics cannot interrupt termination work.
+logged at `error` level with the task class, priority, and actual exception so
+compatible loggers retain its message and stack trace. Logger failures are isolated
+so diagnostics cannot interrupt termination work.
 
-Framework hooks, response finishing, output-buffer management, hard task timeouts,
-and asynchronous execution beyond the default WordPress shutdown action belong to
-the consuming application or a dedicated framework integration.
+Output-buffer management, hard task timeouts, and asynchronous execution beyond
+the default WordPress shutdown action belong to the consuming application or a
+dedicated framework integration.

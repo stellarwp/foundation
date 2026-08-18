@@ -5,13 +5,13 @@ namespace StellarWP\Foundation\Shutdown;
 use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
-use StellarWP\Foundation\Shutdown\Contracts\Terminable;
+use StellarWP\Foundation\Shutdown\Contracts\ShutdownRunner as ShutdownRunnerContract;
 use Throwable;
 
 /**
  * Runs contributed termination tasks once in deterministic priority order.
  */
-final class ShutdownRunner implements Terminable
+final class ShutdownRunner implements ShutdownRunnerContract
 {
 	/** @var list<ShutdownTask> */
 	private array $tasks;
@@ -59,8 +59,7 @@ final class ShutdownRunner implements Terminable
 				$task->terminable->terminate();
 			} catch (Throwable $exception) {
 				$this->log(LogLevel::ERROR, 'Shutdown task failed.', $context + [
-					'exception' => $exception::class,
-					'code'      => $exception->getCode(),
+					'exception' => $exception,
 				]);
 			}
 		}
