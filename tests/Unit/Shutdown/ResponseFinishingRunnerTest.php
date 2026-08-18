@@ -11,6 +11,14 @@ use StellarWP\Foundation\Tests\TestCase;
 
 final class ResponseFinishingRunnerTest extends TestCase
 {
+	protected function setUp(): void {
+		parent::setUp();
+
+		if (function_exists('fastcgi_finish_request') || function_exists('litespeed_finish_request')) {
+			$this->markTestSkipped('Native response-finishing functions cannot be replaced by test fixtures.');
+		}
+	}
+
 	#[RunInSeparateProcess]
 	public function test_it_finishes_the_response_and_runs_shutdown_tasks_once(): void {
 		require dirname(__DIR__, 2) . '/Support/Fixtures/Shutdown/litespeed-finish-request.php';
