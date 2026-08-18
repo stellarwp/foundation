@@ -4,11 +4,12 @@
 
 Foundation is a StellarWP Composer monorepo for reusable PHP packages intended for libraries and WordPress plugin ecosystems.
 
-Initial packages:
+Split packages:
 
 - `stellarwp/foundation-container`
 - `stellarwp/foundation-log`
 - `stellarwp/foundation-pipeline`
+- `stellarwp/foundation-shutdown`
 - `stellarwp/foundation-wpcli`
 - `stellarwp/foundation-cli`
 
