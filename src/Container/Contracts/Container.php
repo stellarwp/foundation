@@ -59,4 +59,40 @@ interface Container extends ContainerInterface
 	 * @param class-string|string|object $id
 	 */
 	public function callback(string|object $id, string $method): callable;
+
+	/**
+	 * Bind a decorator chain that resolves to the same instance on every request.
+	 *
+	 * The base implementation must be the last decorator.
+	 *
+	 * @param class-string|string                          $id
+	 * @param non-empty-list<class-string|object|callable> $decorators
+	 * @param list<string>|null                            $afterBuildMethods
+	 *
+	 * @throws \lucatume\DI52\ContainerException
+	 */
+	public function singletonDecorators(
+		string $id,
+		array $decorators,
+		?array $afterBuildMethods = null,
+		bool $afterBuildAll = false
+	): void;
+
+	/**
+	 * Bind a decorator chain that resolves to a new instance on every request.
+	 *
+	 * The base implementation must be the last decorator.
+	 *
+	 * @param class-string|string                          $id
+	 * @param non-empty-list<class-string|object|callable> $decorators
+	 * @param list<string>|null                            $afterBuildMethods
+	 *
+	 * @throws \lucatume\DI52\ContainerException
+	 */
+	public function bindDecorators(
+		string $id,
+		array $decorators,
+		?array $afterBuildMethods = null,
+		bool $afterBuildAll = false
+	): void;
 }

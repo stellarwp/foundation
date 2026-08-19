@@ -59,4 +59,26 @@ final class ContainerAdapterTest extends TestCase
 
 		$adapter->mergeArrayVar('resolved', ['second']);
 	}
+
+	public function test_it_forwards_singleton_decorator_bindings(): void {
+		$container  = $this->createMock(DI52Container::class);
+		$decorators = [ContainerAdapterSample::class];
+
+		$container->expects($this->once())
+			->method('singletonDecorators')
+			->with('service', $decorators, ['read'], true);
+
+		(new ContainerAdapter($container))->singletonDecorators('service', $decorators, ['read'], true);
+	}
+
+	public function test_it_forwards_decorator_bindings(): void {
+		$container  = $this->createMock(DI52Container::class);
+		$decorators = [ContainerAdapterSample::class];
+
+		$container->expects($this->once())
+			->method('bindDecorators')
+			->with('service', $decorators, ['read'], true);
+
+		(new ContainerAdapter($container))->bindDecorators('service', $decorators, ['read'], true);
+	}
 }
