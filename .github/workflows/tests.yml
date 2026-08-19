@@ -114,7 +114,7 @@ jobs:
       - name: Enable Xdebug for coverage
         if: github.event_name == 'pull_request'
         run: |
-          "${SLIC_BIN}" xdebug on
+          "${SLIC_BIN}" pcov on
 
       - name: Run Codeception tests with coverage
         if: github.event_name == 'pull_request'
