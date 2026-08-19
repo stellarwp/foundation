@@ -2,6 +2,7 @@
 
 namespace StellarWP\Foundation\Database;
 
+use Closure;
 use lucatume\DI52\Container as C;
 use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Database\Cli\Migrate;
@@ -60,7 +61,22 @@ final class DatabaseProvider extends Provider
 			return new Database($wpdb);
 		});
 		$this->container->singleton(DatabaseContract::class, static fn (C $c): Database => $c->get(Database::class));
-		$this->container->singleton(Schema::class, static fn (C $c): Schema => new Schema($c->get(DatabaseContract::class)));
+
+		$this->container->when(Schema::class)
+			->needs(Closure::class)
+			->give(static function (): Closure {
+				if (! function_exists('dbDelta') && defined('ABSPATH')) {
+					require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+				}
+
+				if (! function_exists('dbDelta')) {
+					throw new DatabaseException('WordPress dbDelta() is not available.');
+				}
+
+				return dbDelta(...);
+			});
+
+		$this->container->singleton(Schema::class);
 		$this->container->singleton(SchemaContract::class, static fn (C $c): Schema => $c->get(Schema::class));
 	}
 

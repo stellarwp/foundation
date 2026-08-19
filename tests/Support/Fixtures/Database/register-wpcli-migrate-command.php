@@ -33,13 +33,21 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 		return;
 	}
 
+	if (! defined('ABSPATH')) {
+		return;
+	}
+
 	$container = new ContainerAdapter(new DI52Container());
 	$container->bind(Container::class, $container);
 	$container->bind(ContainerInterface::class, $container);
 	$container->singleton(Dot::class, new Dot());
 
+	if (! function_exists('dbDelta')) {
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+	}
+
 	$database       = new Database($wpdb);
-	$schema         = new Schema($database);
+	$schema         = new Schema($database, dbDelta(...));
 	$migrationTable = $wpdb->prefix . 'foundation_cli_migrations';
 	$lockTable      = $wpdb->prefix . 'foundation_cli_locks';
 	$exampleTable   = $wpdb->prefix . 'foundation_cli_example';

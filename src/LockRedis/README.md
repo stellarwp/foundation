@@ -113,6 +113,16 @@ final class RedisProvider extends Provider
 }
 ```
 
+## Application Usage
+
+After binding `StellarWP\Foundation\Lock\Contracts\Lock` to `RedisLock`, inject
+the shared contract into application services rather than depending directly
+on the Redis implementation. See
+[Preventing Duplicate Work](https://github.com/stellarwp/foundation-lock#preventing-duplicate-work)
+for a complete resource-scoped locking example and
+[Expiration And Refreshing](https://github.com/stellarwp/foundation-lock#expiration-and-refreshing)
+for lease handling guidance.
+
 The package never selects a Redis database or reuses WordPress object-cache
 globals. Supply a separate client connection. A separate logical database
 protects locks from `FLUSHDB` issued against the object-cache database, but it

@@ -3,8 +3,8 @@
 namespace StellarWP\Foundation\Tests\WPUnit\Database;
 
 use Adbar\Dot;
-use DateTimeImmutable;
 use lucatume\DI52\Container as DI52Container;
+use RuntimeException;
 use StellarWP\ContainerContract\ContainerInterface;
 use StellarWP\Foundation\Container\ContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Container;
@@ -23,22 +23,33 @@ use StellarWP\Foundation\Database\Table\TableDefinition;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
-use StellarWP\Foundation\Tests\Support\Fixtures\Lock\MutableClock;
+use StellarWP\Foundation\Lock\LockToken;
 use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
 
 final class DatabaseIntegrationTest extends WPTestCase
 {
 	private Database $database;
 
+	private Schema $schema;
+
 	/**
 	 * @var list<string>
 	 */
 	private array $tables = [];
 
+	/**
+	 * @throws RuntimeException When WordPress is not loaded.
+	 */
 	protected function setUp(): void {
 		parent::setUp();
 
+		if (! defined('ABSPATH')) {
+			throw new RuntimeException('WordPress must be loaded before running database integration tests.');
+		}
+
 		$this->database = new Database($GLOBALS['wpdb']);
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		$this->schema = new Schema($this->database, dbDelta(...));
 	}
 
 	protected function tearDown(): void {
@@ -156,7 +167,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 	public function test_schema_creates_inspects_and_changes_tables_through_wordpress(): void {
 		$table  = $this->table('schema');
-		$schema = new Schema($this->database);
+		$schema = $this->schema;
 
 		$schema->createOrUpdate(sprintf(
 			'CREATE TABLE %s (
@@ -186,7 +197,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 	public function test_schema_creates_queue_style_table_definitions_through_wordpress(): void {
 		$table  = $this->table('queue_schema');
-		$schema = new Schema($this->database);
+		$schema = $this->schema;
 		$queue  = new class($this->database, $table) implements Table {
 			public function __construct(
 				private DatabaseContract $database,
@@ -232,7 +243,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 	public function test_migration_repository_persists_records_in_wordpress(): void {
 		$table          = $this->table('migrations');
-		$schema         = new Schema($this->database);
+		$schema         = $this->schema;
 		$migrationTable = new MigrationTable($this->database, $table);
 		$repository     = new Repository($this->database, $table);
 
@@ -262,7 +273,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 	public function test_database_lock_coordinates_ownership_in_wordpress(): void {
 		$table     = $this->table('locks');
-		$wpSchema  = new Schema($this->database);
+		$wpSchema  = $this->schema;
 		$lockTable = new LockTable($this->database, $table);
 		$lock      = new DatabaseLock($this->database, $table);
 
@@ -289,10 +300,9 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 	public function test_database_lock_replaces_expired_ownership_without_allowing_the_previous_owner_to_release_it(): void {
 		$table     = $this->table('expired_locks');
-		$wpSchema  = new Schema($this->database);
+		$wpSchema  = $this->schema;
 		$lockTable = new LockTable($this->database, $table);
-		$clock     = new MutableClock(new DateTimeImmutable('2026-01-01 00:00:00'));
-		$lock      = new DatabaseLock($this->database, $table, $clock);
+		$lock      = new DatabaseLock($this->database, $table);
 
 		$wpSchema->createOrUpdate($lockTable);
 
@@ -300,7 +310,11 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 		$this->assertNotNull($first);
 
-		$clock->advance(60);
+		$this->database->execute(
+			'UPDATE %i SET expires_at = TIMESTAMPADD(SECOND, -1, UTC_TIMESTAMP(6)) WHERE name = %s',
+			$table,
+			'foundation:database:takeover'
+		);
 
 		$second = $lock->acquire('foundation:database:takeover', 60);
 
@@ -309,6 +323,66 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertFalse($lock->release($first));
 		$this->assertTrue($lock->isAcquired('foundation:database:takeover'));
 		$this->assertTrue($lock->release($second));
+
+		$wpSchema->drop($lockTable);
+	}
+
+	public function test_database_lock_compares_names_and_owners_by_exact_bytes(): void {
+		$table     = $this->table('exact_locks');
+		$wpSchema  = $this->schema;
+		$lockTable = new LockTable($this->database, $table);
+		$lock      = new DatabaseLock($this->database, $table);
+
+		$wpSchema->createOrUpdate($lockTable);
+
+		$upper = $lock->acquire('Catalog:1', 60);
+		$lower = $lock->acquire('catalog:1', 60);
+
+		$this->assertNotNull($upper);
+		$this->assertNotNull($lower);
+
+		$this->database->execute(
+			'UPDATE %i SET owner = %s WHERE name = %s',
+			$table,
+			'owner',
+			$lower->name
+		);
+
+		$this->assertFalse($lock->release(new LockToken($lower->name, 'OWNER', $lower->expiresAt)));
+		$this->assertTrue($lock->release(new LockToken($lower->name, 'owner', $lower->expiresAt)));
+		$this->assertTrue($lock->release($upper));
+
+		$wpSchema->drop($lockTable);
+	}
+
+	public function test_lock_table_reconciles_an_existing_previous_definition(): void {
+		$table     = $this->table('previous_lock_schema');
+		$wpSchema  = $this->schema;
+		$lockTable = new LockTable($this->database, $table);
+
+		$this->database->execute(sprintf(
+			'CREATE TABLE %s (
+				name varchar(191) NOT NULL,
+				owner varchar(64) NOT NULL,
+				expires_at datetime NOT NULL,
+				created_at datetime NOT NULL,
+				updated_at datetime NOT NULL,
+				PRIMARY KEY  (name),
+				KEY expires_at (expires_at)
+			) %s',
+			$this->database->quoteIdentifier($table),
+			$this->database->charsetCollate()
+		));
+
+		(new TableCollection($wpSchema, [$lockTable]))->create();
+
+		$name       = $this->database->row('SHOW COLUMNS FROM %i WHERE Field = %s', $table, 'name');
+		$owner      = $this->database->row('SHOW COLUMNS FROM %i WHERE Field = %s', $table, 'owner');
+		$expiration = $this->database->row('SHOW COLUMNS FROM %i WHERE Field = %s', $table, 'expires_at');
+
+		$this->assertSame('varbinary(191)', strtolower((string) ($name['Type'] ?? '')));
+		$this->assertSame('varbinary(64)', strtolower((string) ($owner['Type'] ?? '')));
+		$this->assertSame('datetime(6)', strtolower((string) ($expiration['Type'] ?? '')));
 
 		$wpSchema->drop($lockTable);
 	}

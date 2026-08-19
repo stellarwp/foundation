@@ -9,7 +9,7 @@ use StellarWP\Foundation\Tests\TestCase;
 
 final class CollectionTest extends TestCase
 {
-	public function test_it_creates_only_missing_tables(): void {
+	public function test_it_creates_or_updates_all_tables(): void {
 		$existing = new TestTable('existing_table', 'existing');
 		$missing  = new TestTable('missing_table', 'missing');
 		$schema   = new RecordingSchema();
@@ -19,7 +19,7 @@ final class CollectionTest extends TestCase
 
 		$collection->create();
 
-		$this->assertSame(['createOrUpdate:missing'], $schema->statements);
+		$this->assertSame(['createOrUpdate:existing', 'createOrUpdate:missing'], $schema->statements);
 		$this->assertTrue($schema->hasTable($existing));
 		$this->assertTrue($schema->hasTable($missing));
 	}

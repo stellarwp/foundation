@@ -45,11 +45,12 @@ final class Collection implements IteratorAggregate
 		return $this->tables;
 	}
 
+	/**
+	 * Create missing tables and reconcile existing tables with their definitions.
+	 */
 	public function create(): void {
 		foreach ($this->tables as $table) {
-			if (! $this->schema->hasTable($table)) {
-				$this->schema->createOrUpdate($table);
-			}
+			$this->schema->createOrUpdate($table);
 		}
 	}
 

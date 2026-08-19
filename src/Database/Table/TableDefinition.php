@@ -59,8 +59,15 @@ final class TableDefinition
 		return $this->column(new Column($name, 'bigint', $length));
 	}
 
-	public function dateTime(string $name): self {
-		return $this->column(new Column($name, 'datetime'));
+	/**
+	 * @throws InvalidArgumentException When precision is outside the database-supported range.
+	 */
+	public function dateTime(string $name, ?int $precision = null): self {
+		if ($precision !== null && ($precision < 0 || $precision > 6)) {
+			throw new InvalidArgumentException('Datetime precision must be between 0 and 6.');
+		}
+
+		return $this->column(new Column($name, 'datetime', $precision));
 	}
 
 	public function text(string $name): self {

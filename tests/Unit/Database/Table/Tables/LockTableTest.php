@@ -22,6 +22,11 @@ final class LockTableTest extends TestCase
 		$this->assertSame(LockTable::ID, $table->id());
 		$this->assertSame('wp_nexcess_foundation_locks', $table->name());
 		$this->assertStringContainsString('CREATE TABLE `wp_nexcess_foundation_locks`', $statements[0]);
+		$this->assertStringContainsString('`name` varbinary(191)', $statements[0]);
+		$this->assertStringContainsString('`owner` varbinary(64)', $statements[0]);
+		$this->assertStringContainsString('`expires_at` datetime(6)', $statements[0]);
+		$this->assertStringContainsString('`created_at` datetime(6)', $statements[0]);
+		$this->assertStringContainsString('`updated_at` datetime(6)', $statements[0]);
 		$this->assertStringContainsString('PRIMARY KEY  (`name`)', $statements[0]);
 		$this->assertStringContainsString('KEY `expires_at`', $statements[0]);
 	}

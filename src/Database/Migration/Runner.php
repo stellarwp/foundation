@@ -2,13 +2,16 @@
 
 namespace StellarWP\Foundation\Database\Migration;
 
+use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Migration;
 use StellarWP\Foundation\Database\Contracts\Repository;
 use StellarWP\Foundation\Database\Contracts\Schema;
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\DuplicateMigration;
 use StellarWP\Foundation\Database\Exceptions\MigrationFailed;
 use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Lock\Contracts\Lock;
+use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use Throwable;
 
 /**
@@ -16,6 +19,9 @@ use Throwable;
  */
 final readonly class Runner
 {
+	/**
+	 * @throws InvalidArgumentException When the migration lock configuration is invalid.
+	 */
 	public function __construct(
 		private Repository $repository,
 		private Schema $schema,
@@ -23,10 +29,23 @@ final readonly class Runner
 		private string $lockName = 'foundation-database-migrations',
 		private int $lockTtl = 300
 	) {
+		if (trim($this->lockName) === '') {
+			throw new InvalidArgumentException('The migration lock name cannot be empty.');
+		}
+
+		if ($this->lockTtl < 1) {
+			throw new InvalidArgumentException('The migration lock TTL must be at least one second.');
+		}
 	}
 
 	/**
 	 * @param iterable<Migration> $migrations
+	 *
+	 * @throws DatabaseException        When migration storage or schema access fails.
+	 * @throws DuplicateMigration       When configured migrations share an identifier.
+	 * @throws MigrationFailed          When a migration fails while running.
+	 * @throws MigrationLockFailed      When the lock cannot be acquired or ownership cannot be confirmed during release.
+	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
 	 */
 	public function run(iterable $migrations): Result {
 		return $this->locked(function () use ($migrations): Result {
@@ -57,6 +76,12 @@ final readonly class Runner
 
 	/**
 	 * @param iterable<Migration> $migrations
+	 *
+	 * @throws DatabaseException        When migration storage or schema access fails.
+	 * @throws DuplicateMigration       When configured migrations share an identifier.
+	 * @throws MigrationFailed          When a migration fails while rolling back.
+	 * @throws MigrationLockFailed      When the lock cannot be acquired or ownership cannot be confirmed during release.
+	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
 	 */
 	public function rollback(iterable $migrations, ?int $batch = null): Result {
 		return $this->locked(function () use ($migrations, $batch): Result {
@@ -75,6 +100,12 @@ final readonly class Runner
 
 	/**
 	 * @param iterable<Migration> $migrations
+	 *
+	 * @throws DatabaseException        When migration storage or schema access fails.
+	 * @throws DuplicateMigration       When configured migrations share an identifier.
+	 * @throws MigrationFailed          When a migration fails while running or rolling back.
+	 * @throws MigrationLockFailed      When the lock cannot be acquired or ownership cannot be confirmed during release.
+	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
 	 */
 	public function refresh(iterable $migrations): Result {
 		return $this->locked(function () use ($migrations): Result {
@@ -92,6 +123,9 @@ final readonly class Runner
 
 	/**
 	 * @param iterable<Migration> $migrations
+	 *
+	 * @throws DatabaseException  When migration storage access fails.
+	 * @throws DuplicateMigration When configured migrations share an identifier.
 	 *
 	 * @return list<Status>
 	 */
@@ -190,6 +224,9 @@ final readonly class Runner
 	 *
 	 * @param callable(): T $callback
 	 *
+	 * @throws MigrationLockFailed      When the lock cannot be acquired or ownership cannot be confirmed during release.
+	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
+	 *
 	 * @return T
 	 */
 	private function locked(callable $callback): mixed {
@@ -200,9 +237,21 @@ final readonly class Runner
 		}
 
 		try {
-			return $callback();
-		} finally {
-			$this->lock->release($token);
+			$result = $callback();
+		} catch (Throwable $failure) {
+			try {
+				$this->lock->release($token);
+			} catch (Throwable) {
+				// Preserve the primary migration failure when cleanup also fails.
+			}
+
+			throw $failure;
 		}
+
+		if (! $this->lock->release($token)) {
+			throw MigrationLockFailed::forUnconfirmedOwnership($this->lockName);
+		}
+
+		return $result;
 	}
 }

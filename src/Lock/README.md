@@ -42,21 +42,67 @@ table above instead; Composer installs `stellarwp/foundation-lock` with it.
 use StellarWP\Foundation\Lock\InMemoryLock;
 
 $lock = new InMemoryLock();
+```
 
-$token = $lock->acquire('queue:sync', 60);
+Use both in-memory and persistent implementations through
+`StellarWP\Foundation\Lock\Contracts\Lock`, as shown below. Persistent
+implementations use `LockToken` ownership checks before releasing or refreshing
+locks.
 
-if ($token === null) {
-    return;
-}
+## Preventing Duplicate Work
 
-try {
-    // Run exclusive work here.
-} finally {
-    $lock->release($token);
+Application services should depend on the shared `Lock` contract so production
+can use a persistent implementation while tests use `InMemoryLock`. Include the
+resource identifier in the lock name so unrelated work can proceed concurrently:
+
+```php
+use RuntimeException;
+use StellarWP\Foundation\Lock\Contracts\Lock;
+use Throwable;
+
+final readonly class CatalogSynchronizer
+{
+    public function __construct(
+        private Lock $lock
+    ) {
+    }
+
+    /**
+     * @param callable(): void $synchronize
+     */
+    public function synchronize(int $siteId, callable $synchronize): bool
+    {
+        $token = $this->lock->acquire(sprintf('catalog:%d:sync', $siteId), 300);
+
+        if ($token === null) {
+            return false;
+        }
+
+        try {
+            $synchronize();
+        } catch (Throwable $failure) {
+            try {
+                $this->lock->release($token);
+            } catch (Throwable) {
+                // Preserve the primary synchronization failure.
+            }
+
+            throw $failure;
+        }
+
+        if (! $this->lock->release($token)) {
+            throw new RuntimeException('Catalog synchronization lock ownership could not be confirmed during release.');
+        }
+
+        return true;
+    }
 }
 ```
 
-Persistent implementations, such as database-backed locks, should implement `StellarWP\Foundation\Lock\Contracts\Lock` and use `LockToken` ownership checks before releasing or refreshing locks.
+A `null` acquisition means another process already owns the lease; the caller
+can skip, retry, or queue the work. A `false` release means ownership could not
+be confirmed during release, so exclusive ownership may not have lasted for the
+full operation.
 
 ## Expiration And Refreshing
 

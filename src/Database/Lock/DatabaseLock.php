@@ -2,19 +2,16 @@
 
 namespace StellarWP\Foundation\Database\Lock;
 
-use DateInterval;
-use DateMalformedIntervalStringException;
 use DateMalformedStringException;
 use DateTimeImmutable;
+use DateTimeZone;
 use InvalidArgumentException;
 use Random\RandomException;
 use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
-use StellarWP\Foundation\Lock\Contracts\Clock;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use StellarWP\Foundation\Lock\LockToken;
-use StellarWP\Foundation\Lock\SystemClock;
 
 /**
  * Database-backed lock implementation for WordPress environments.
@@ -23,62 +20,64 @@ final readonly class DatabaseLock implements Lock
 {
 	public function __construct(
 		private Database $database,
-		private string $table,
-		private Clock $clock = new SystemClock()
+		private string $table
 	) {
 	}
 
 	/**
-	 * @throws DateMalformedIntervalStringException When PHP cannot represent the requested TTL.
-	 * @throws RandomException                      When a secure owner token cannot be generated.
-	 * @throws DateMalformedStringException         When the stored expiration cannot be parsed.
-	 * @throws InvalidArgumentException             When the lock name is empty or the TTL is invalid.
-	 * @throws LockUnavailableException             When the database cannot determine the acquisition result.
+	 * @throws InvalidArgumentException When the lock name is empty or exceeds 191 bytes, or the TTL is invalid.
+	 * @throws LockUnavailableException When ownership cannot be generated or the database cannot determine the result.
 	 */
 	public function acquire(string $name, int $ttl): ?LockToken {
 		$this->assertValidName($name);
 		$this->assertValidTtl($ttl);
 
-		$owner     = bin2hex(random_bytes(16));
-		$now       = $this->format($this->clock->now());
-		$expiresAt = $this->expiresAt($ttl);
+		try {
+			$owner = bin2hex(random_bytes(16));
+		} catch (RandomException $exception) {
+			throw new LockUnavailableException('A secure lock owner token could not be generated.', 0, $exception);
+		}
 
 		try {
 			$this->database->execute(
 				'INSERT INTO %i (name, owner, expires_at, created_at, updated_at)
-					VALUES (%s, %s, %s, %s, %s)
+					VALUES (%s, %s, TIMESTAMPADD(SECOND, %d, UTC_TIMESTAMP(6)), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 					ON DUPLICATE KEY UPDATE
-						owner = IF(expires_at <= %s, VALUES(owner), owner),
-						updated_at = IF(expires_at <= %s, VALUES(updated_at), updated_at),
-						expires_at = IF(expires_at <= %s, VALUES(expires_at), expires_at)',
+						owner = IF(expires_at <= UTC_TIMESTAMP(6), %s, owner),
+						updated_at = IF(expires_at <= UTC_TIMESTAMP(6), UTC_TIMESTAMP(6), updated_at),
+						expires_at = IF(
+							expires_at <= UTC_TIMESTAMP(6),
+							TIMESTAMPADD(SECOND, %d, UTC_TIMESTAMP(6)),
+							expires_at
+						)',
 				$this->database->tableName($this->table),
 				$name,
 				$owner,
-				$this->format($expiresAt),
-				$now,
-				$now,
-				$now,
-				$now,
-				$now
+				$ttl,
+				$owner,
+				$ttl
 			);
 
 			$row = $this->database->row(
-				'SELECT owner, expires_at FROM %i WHERE name = %s LIMIT 1',
+				'SELECT expires_at FROM %i
+					WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6)
+					LIMIT 1',
 				$this->database->tableName($this->table),
-				$name
+				$name,
+				$owner
 			);
 		} catch (DatabaseException $exception) {
 			throw new LockUnavailableException('The database could not determine the lock acquisition result.', 0, $exception);
 		}
 
-		if ($row === null || ($row['owner'] ?? '') !== $owner) {
+		if ($row === null) {
 			return null;
 		}
 
 		return new LockToken(
 			name: $name,
 			owner: $owner,
-			expiresAt: new DateTimeImmutable((string) $row['expires_at'])
+			expiresAt: $this->expiration($row)
 		);
 	}
 
@@ -88,11 +87,10 @@ final readonly class DatabaseLock implements Lock
 	public function release(LockToken $token): bool {
 		try {
 			return $this->database->execute(
-				'DELETE FROM %i WHERE name = %s AND owner = %s AND expires_at > %s',
+				'DELETE FROM %i WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6)',
 				$this->database->tableName($this->table),
 				$token->name,
-				$token->owner,
-				$this->format($this->clock->now())
+				$token->owner
 			) > 0;
 		} catch (DatabaseException $exception) {
 			throw new LockUnavailableException('The database could not determine the lock release result.', 0, $exception);
@@ -100,38 +98,41 @@ final readonly class DatabaseLock implements Lock
 	}
 
 	/**
-	 * @throws DateMalformedIntervalStringException When PHP cannot represent the requested TTL.
-	 * @throws InvalidArgumentException             When the TTL is invalid.
-	 * @throws LockUnavailableException             When the database cannot determine the refresh result.
+	 * @throws InvalidArgumentException When the TTL is invalid.
+	 * @throws LockUnavailableException When the database cannot determine the refresh result.
 	 */
 	public function refresh(LockToken $token, int $ttl): ?LockToken {
 		$this->assertValidTtl($ttl);
 
-		$expiresAt = $this->expiresAt($ttl);
-
 		try {
-			$updated = $this->database->execute(
-				'UPDATE %i SET expires_at = %s, updated_at = %s WHERE name = %s AND owner = %s AND expires_at > %s',
+			$this->database->execute(
+				'UPDATE %i SET expires_at = TIMESTAMPADD(SECOND, %d, UTC_TIMESTAMP(6)), updated_at = UTC_TIMESTAMP(6)
+					WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6)',
 				$this->database->tableName($this->table),
-				$this->format($expiresAt),
-				$this->format($this->clock->now()),
+				$ttl,
 				$token->name,
-				$token->owner,
-				$this->format($this->clock->now())
+				$token->owner
+			);
+
+			$row = $this->database->row(
+				'SELECT expires_at FROM %i WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6) LIMIT 1',
+				$this->database->tableName($this->table),
+				$token->name,
+				$token->owner
 			);
 		} catch (DatabaseException $exception) {
 			throw new LockUnavailableException('The database could not determine the lock refresh result.', 0, $exception);
 		}
 
-		if ($updated < 1) {
+		if ($row === null) {
 			return null;
 		}
 
-		return $token->refresh($expiresAt);
+		return $token->refresh($this->expiration($row));
 	}
 
 	/**
-	 * @throws InvalidArgumentException When the lock name is empty.
+	 * @throws InvalidArgumentException When the lock name is empty or exceeds 191 bytes.
 	 * @throws LockUnavailableException When the database cannot determine whether the lock exists.
 	 */
 	public function isAcquired(string $name): bool {
@@ -139,23 +140,13 @@ final readonly class DatabaseLock implements Lock
 
 		try {
 			return $this->database->row(
-				'SELECT name FROM %i WHERE name = %s AND expires_at > %s LIMIT 1',
+				'SELECT name FROM %i WHERE name = %s AND expires_at > UTC_TIMESTAMP(6) LIMIT 1',
 				$this->database->tableName($this->table),
-				$name,
-				$this->format($this->clock->now())
+				$name
 			) !== null;
 		} catch (DatabaseException $exception) {
 			throw new LockUnavailableException('The database could not determine whether the lock exists.', 0, $exception);
 		}
-	}
-
-	/**
-	 * @throws DateMalformedIntervalStringException
-	 */
-	private function expiresAt(int $ttl): DateTimeImmutable {
-		$this->assertValidTtl($ttl);
-
-		return $this->clock->now()->add(new DateInterval(sprintf('PT%dS', $ttl)));
 	}
 
 	/**
@@ -168,15 +159,34 @@ final readonly class DatabaseLock implements Lock
 	}
 
 	/**
-	 * @throws InvalidArgumentException When the lock name is empty.
+	 * @throws InvalidArgumentException When the lock name is empty or exceeds 191 bytes.
 	 */
 	private function assertValidName(string $name): void {
 		if (trim($name) === '') {
 			throw new InvalidArgumentException('Lock name cannot be empty.');
 		}
+
+		if (strlen($name) > 191) {
+			throw new InvalidArgumentException('A database lock name cannot exceed 191 bytes.');
+		}
 	}
 
-	private function format(DateTimeImmutable $date): string {
-		return $date->format('Y-m-d H:i:s');
+	/**
+	 * @param array{expires_at?: mixed} $row
+	 *
+	 * @throws LockUnavailableException When the database returns an invalid expiration.
+	 */
+	private function expiration(array $row): DateTimeImmutable {
+		$expiration = $row['expires_at'] ?? null;
+
+		if (! is_string($expiration) || $expiration === '') {
+			throw new LockUnavailableException('The database returned an invalid lock expiration.');
+		}
+
+		try {
+			return new DateTimeImmutable($expiration, new DateTimeZone('UTC'));
+		} catch (DateMalformedStringException $exception) {
+			throw new LockUnavailableException('The database returned an invalid lock expiration.', 0, $exception);
+		}
 	}
 }

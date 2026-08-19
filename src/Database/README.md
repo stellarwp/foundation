@@ -15,6 +15,11 @@ Foundation Database is a WordPress-backed database package. It provides a config
 
 This package intentionally targets WordPress runtime APIs instead of acting as a generic database abstraction. Migration classes depend on a small schema contract so application packages can define migration behavior without calling `wpdb` directly.
 
+Foundation Database requires WordPress 6.2 or newer because its query layer
+uses the `%i` identifier placeholder. Database-backed locks additionally require
+fractional-second temporal values: MySQL 5.6.4 or newer, or MariaDB 5.3 or
+newer.
+
 ## Registering The Provider
 
 Register `DatabaseProvider` in the application container when the project needs Foundation-managed migrations:
@@ -75,6 +80,65 @@ return [
 	],
 ];
 ```
+
+`database.lock_ttl` must cover the complete migration operation. The migration
+runner reports unconfirmed ownership if an otherwise successful operation
+cannot release its ownership token. Increase the TTL for long-running
+migrations; the runner does not refresh the lease while a migration is
+executing.
+
+## Using Database Locks
+
+`DatabaseProvider` registers `DatabaseLock` for direct use and uses it for
+migrations, but intentionally does not select it as the application's global
+lock implementation. Register `DatabaseProvider` before an application provider
+that chooses the database implementation:
+
+```php
+use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Database\Lock\DatabaseLock;
+use StellarWP\Foundation\Lock\Contracts\Lock;
+
+$this->container->bind(
+	Lock::class,
+	static fn (C $c): DatabaseLock => $c->get(DatabaseLock::class)
+);
+```
+
+`DatabaseLock` uses the database server's UTC clock for acquisition, expiration,
+refresh, and release decisions. This keeps competing PHP processes on one
+authoritative timeline even when their host clocks differ.
+
+Database lock names are byte-exact and may not exceed 191 bytes.
+
+Lock writes and their verification reads must use the same authoritative
+primary connection. Standard `wpdb` satisfies this requirement. Projects with a
+database drop-in that routes `SELECT` queries to replicas must pin lock-table
+reads to the writer; otherwise replication lag can make a successful acquisition
+or refresh fail closed.
+
+The database lock table must exist before application services acquire locks.
+Prepare it during activation or deployment through the configured migrator:
+
+```php
+use StellarWP\Foundation\Database\Migration\Migrator;
+
+$container->get(Migrator::class)->prepare();
+```
+
+Preparing the migration store also reconciles existing internal tables with
+their current definitions.
+
+Projects using the included WP-CLI command can instead run:
+
+```bash
+wp nx migrate --prepare
+```
+
+Once configured, application services should depend on the shared `Lock`
+contract. See the
+[Foundation Lock usage examples](https://github.com/stellarwp/foundation-lock#preventing-duplicate-work)
+for resource-scoped acquisition, release, and lease handling.
 
 ## Running Queries
 

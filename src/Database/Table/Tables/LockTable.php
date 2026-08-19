@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\Database\Table\Tables;
 
 use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Table\Column;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 
 /**
@@ -29,11 +30,11 @@ final readonly class LockTable implements Table
 
 	public function definition(): TableDefinition {
 		return TableDefinition::for($this)
-			->string('name', 191)
-			->string('owner', 64)
-			->dateTime('expires_at')
-			->dateTime('created_at')
-			->dateTime('updated_at')
+			->column(new Column('name', 'varbinary', 191))
+			->column(new Column('owner', 'varbinary', 64))
+			->dateTime('expires_at', 6)
+			->dateTime('created_at', 6)
+			->dateTime('updated_at', 6)
 			->primary('name')
 			->index('expires_at', 'expires_at');
 	}

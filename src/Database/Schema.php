@@ -6,7 +6,6 @@ use Closure;
 use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
 use StellarWP\Foundation\Database\Contracts\Table;
-use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 
 /**
  * WordPress schema operations backed by wpdb and dbDelta.
@@ -14,18 +13,16 @@ use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 final readonly class Schema implements SchemaContract
 {
 	/**
-	 * @param Closure(string): mixed|null $dbDelta
+	 * @param Closure(string): mixed $dbDelta
 	 */
 	public function __construct(
 		private Database $database,
-		private ?Closure $dbDelta = null
+		private Closure $dbDelta
 	) {
 	}
 
 	public function createOrUpdate(Table|string $table, ?string $sql = null): void {
-		$dbDelta = $this->dbDelta ?? $this->loadDbDelta();
-
-		$dbDelta($sql ?? $this->createTableSql($table));
+		($this->dbDelta)($sql ?? $this->createTableSql($table));
 	}
 
 	public function execute(string $sql): void {
@@ -83,20 +80,5 @@ final readonly class Schema implements SchemaContract
 			implode(",\n", $parts),
 			$this->database->charsetCollate()
 		);
-	}
-
-	/**
-	 * @return Closure(string): mixed
-	 */
-	private function loadDbDelta(): Closure {
-		if (! function_exists('dbDelta') && defined('ABSPATH')) {
-			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-		}
-
-		if (! function_exists('dbDelta')) {
-			throw new DatabaseException('WordPress dbDelta() is not available.');
-		}
-
-		return dbDelta(...);
 	}
 }

@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Tests\Unit\Database\Table;
 
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestTable;
 use StellarWP\Foundation\Tests\TestCase;
@@ -66,6 +67,39 @@ final class TableDefinitionTest extends TestCase
 			"`status` varchar(191) NOT NULL DEFAULT 'draft'",
 			"`payload` text NOT NULL COMMENT 'json payload'",
 		], array_map(static fn ($column): string => $column->sql(), $definition->columns()));
+	}
+
+	public function test_it_defines_datetime_precision_boundaries(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+			->dateTime('seconds', 0)
+			->dateTime('microseconds', 6);
+
+		$this->assertSame([
+			'`seconds` datetime(0) NOT NULL',
+			'`microseconds` datetime(6) NOT NULL',
+		], array_map(static fn ($column): string => $column->sql(), $definition->columns()));
+	}
+
+	/**
+	 * @dataProvider invalidDateTimePrecisionProvider
+	 */
+	#[DataProvider('invalidDateTimePrecisionProvider')]
+	public function test_it_rejects_invalid_datetime_precision(int $precision): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('Datetime precision must be between 0 and 6.');
+
+		TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+			->dateTime('created_at', $precision);
+	}
+
+	/**
+	 * @return array<string, array{int}>
+	 */
+	public static function invalidDateTimePrecisionProvider(): array {
+		return [
+			'negative'      => [-1],
+			'above maximum' => [7],
+		];
 	}
 
 	public function test_it_rejects_indexes_that_reference_missing_columns(): void {

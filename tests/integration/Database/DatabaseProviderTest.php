@@ -9,6 +9,7 @@ use StellarWP\Foundation\Container\ContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Database\Cli\Migrate;
 use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Collection;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
@@ -29,6 +30,7 @@ final class DatabaseProviderTest extends WPTestCase
 		$this->assertSame(300, $this->container->get(DatabaseProvider::LOCK_TTL));
 		$this->assertContainsOnlyInstancesOf(Command::class, $commands);
 		$this->assertTrue($this->containsMigrateCommand((array) $commands));
+		$this->assertInstanceOf(DatabaseLock::class, $this->container->get(DatabaseLock::class));
 		$this->assertInstanceOf(Migrator::class, $this->container->get(Migrator::class));
 		$this->assertInstanceOf(Migrate::class, $this->container->get(Migrate::class));
 	}

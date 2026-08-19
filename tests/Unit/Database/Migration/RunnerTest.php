@@ -2,12 +2,16 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Database\Migration;
 
+use InvalidArgumentException;
 use StellarWP\Foundation\Database\Exceptions\DuplicateMigration;
 use StellarWP\Foundation\Database\Exceptions\MigrationFailed;
 use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Database\Migration\Result;
 use StellarWP\Foundation\Database\Migration\Runner;
+use StellarWP\Foundation\Lock\Contracts\Lock;
+use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use StellarWP\Foundation\Lock\InMemoryLock;
+use StellarWP\Foundation\Lock\LockToken;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FailingMigration;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\InMemoryRepository;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchema;
@@ -32,6 +36,20 @@ final class RunnerTest extends TestCase
 		$this->schema     = new RecordingSchema();
 		$this->lock       = new InMemoryLock(new MutableClock(new \DateTimeImmutable('2026-01-01 00:00:00')));
 		$this->runner     = new Runner($this->repository, $this->schema, $this->lock);
+	}
+
+	public function test_it_rejects_a_blank_migration_lock_name(): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('lock name cannot be empty');
+
+		new Runner($this->repository, $this->schema, $this->lock, lockName: '   ');
+	}
+
+	public function test_it_rejects_an_invalid_migration_lock_ttl(): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('TTL must be at least one second');
+
+		new Runner($this->repository, $this->schema, $this->lock, lockTtl: 0);
 	}
 
 	public function test_it_runs_pending_migrations_in_order(): void {
@@ -190,6 +208,74 @@ final class RunnerTest extends TestCase
 		]);
 	}
 
+	public function test_it_fails_when_migration_lock_ownership_cannot_be_confirmed_during_release(): void {
+		$token = $this->lockToken();
+		$lock  = $this->createMock(Lock::class);
+		$lock->expects($this->once())
+			->method('acquire')
+			->with('foundation-database-migrations', 300)
+			->willReturn($token);
+		$lock->expects($this->once())
+			->method('release')
+			->with($token)
+			->willReturn(false);
+
+		$runner = new Runner($this->repository, $this->schema, $lock);
+
+		$this->expectException(MigrationLockFailed::class);
+		$this->expectExceptionMessage('Could not confirm ownership');
+
+		try {
+			$runner->run([
+				new TestMigration('2026_01_01_000001_create_users'),
+			]);
+		} finally {
+			$this->assertTrue($this->repository->hasRun('2026_01_01_000001_create_users'));
+		}
+	}
+
+	public function test_it_preserves_the_migration_failure_when_lock_release_is_unavailable(): void {
+		$token = $this->lockToken();
+		$lock  = $this->createMock(Lock::class);
+		$lock->expects($this->once())
+			->method('acquire')
+			->willReturn($token);
+		$lock->expects($this->once())
+			->method('release')
+			->with($token)
+			->willThrowException(new LockUnavailableException('Lock backend unavailable.'));
+
+		$runner = new Runner($this->repository, $this->schema, $lock);
+
+		$this->expectException(MigrationFailed::class);
+		$this->expectExceptionMessage('failed while running');
+
+		$runner->run([
+			new FailingMigration('2026_01_01_000001_create_users', failUp: true),
+		]);
+	}
+
+	public function test_it_preserves_the_migration_failure_when_release_cannot_confirm_ownership(): void {
+		$token = $this->lockToken();
+		$lock  = $this->createMock(Lock::class);
+		$lock->expects($this->once())
+			->method('acquire')
+			->willReturn($token);
+		$lock->expects($this->once())
+			->method('release')
+			->with($token)
+			->willReturn(false);
+
+		$runner = new Runner($this->repository, $this->schema, $lock);
+
+		$this->expectException(MigrationFailed::class);
+		$this->expectExceptionMessage('failed while running');
+
+		$runner->run([
+			new FailingMigration('2026_01_01_000001_create_users', failUp: true),
+		]);
+	}
+
 	public function test_it_does_not_record_a_failed_migration(): void {
 		$this->expectException(MigrationFailed::class);
 		$this->expectExceptionMessage('failed while running');
@@ -218,5 +304,13 @@ final class RunnerTest extends TestCase
 		} finally {
 			$this->assertTrue($this->repository->hasRun('2026_01_01_000001_create_users'));
 		}
+	}
+
+	private function lockToken(): LockToken {
+		$token = $this->lock->acquire('foundation-database-migrations', 300);
+
+		$this->assertNotNull($token);
+
+		return $token;
 	}
 }
