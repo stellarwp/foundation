@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Tests\WPUnit\Database;
 
 use Adbar\Dot;
+use DateTimeImmutable;
 use lucatume\DI52\Container as DI52Container;
 use StellarWP\ContainerContract\ContainerInterface;
 use StellarWP\Foundation\Container\ContainerAdapter;
@@ -22,6 +23,7 @@ use StellarWP\Foundation\Database\Table\TableDefinition;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
+use StellarWP\Foundation\Tests\Support\Fixtures\Lock\MutableClock;
 use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
 
 final class DatabaseIntegrationTest extends WPTestCase
@@ -283,6 +285,32 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$wpSchema->drop($lockTable);
 
 		$this->assertFalse($wpSchema->hasTable($lockTable));
+	}
+
+	public function test_database_lock_replaces_expired_ownership_without_allowing_the_previous_owner_to_release_it(): void {
+		$table     = $this->table('expired_locks');
+		$wpSchema  = new Schema($this->database);
+		$lockTable = new LockTable($this->database, $table);
+		$clock     = new MutableClock(new DateTimeImmutable('2026-01-01 00:00:00'));
+		$lock      = new DatabaseLock($this->database, $table, $clock);
+
+		$wpSchema->createOrUpdate($lockTable);
+
+		$first = $lock->acquire('foundation:database:takeover', 60);
+
+		$this->assertNotNull($first);
+
+		$clock->advance(60);
+
+		$second = $lock->acquire('foundation:database:takeover', 60);
+
+		$this->assertNotNull($second);
+		$this->assertNotSame($first->owner, $second->owner);
+		$this->assertFalse($lock->release($first));
+		$this->assertTrue($lock->isAcquired('foundation:database:takeover'));
+		$this->assertTrue($lock->release($second));
+
+		$wpSchema->drop($lockTable);
 	}
 
 	public function test_provider_registers_wordpress_prefixed_database_services(): void {
