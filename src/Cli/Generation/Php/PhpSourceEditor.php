@@ -102,6 +102,39 @@ final readonly class PhpSourceEditor
 		return $this->mergeArrayVarTarget($contents, $class, $constant)?->containerExpression;
 	}
 
+	public function hasContainerSingleton(string $contents, string $fullyQualifiedClass): bool {
+		$statements = $this->parse($contents);
+
+		if ($statements === null) {
+			return false;
+		}
+
+		$aliases = $this->classAliases($contents, $fullyQualifiedClass);
+
+		return $this->findNode(
+			$statements,
+			fn (Node $node): bool => $this->isContainerSingleton($node, $fullyQualifiedClass, $aliases)
+		) !== null;
+	}
+
+	public function mergeArrayVarContainsClass(string $contents, string $class, string $constant, string $fullyQualifiedClass): bool {
+		$target = $this->mergeArrayVarTarget($contents, $class, $constant);
+
+		if ($target === null) {
+			return false;
+		}
+
+		$aliases = $this->classAliases($contents, $fullyQualifiedClass);
+
+		foreach ($target->registrationList->items as $item) {
+			if ($this->isContainerGet($item->value, $target->containerExpression, $fullyQualifiedClass, $aliases)) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	public function insertIntoMergeArrayVar(string $contents, string $class, string $constant, string $statement, ?string $beforeComment = null): ?string {
 		$target = $this->mergeArrayVarTarget($contents, $class, $constant);
 
@@ -293,7 +326,7 @@ final readonly class PhpSourceEditor
 			return null;
 		}
 
-		$aliases = $this->classAliases($contents, $class);
+		$aliases = $this->classAliases($contents, $class, true);
 		$call    = $this->findNode($statements, fn (Node $node): bool => $this->isMergeArrayVarCall($node, $class, $constant, $aliases));
 
 		if (! $call instanceof Expr\MethodCall) {
@@ -306,12 +339,12 @@ final readonly class PhpSourceEditor
 	/**
 	 * @return list<string>
 	 */
-	private function classAliases(string $contents, string $class): array {
+	private function classAliases(string $contents, string $class, bool $allowPrefixed = false): array {
 		$class   = trim($class, '\\');
 		$aliases = [];
 
 		foreach ($this->imports($contents) as $import) {
-			if ($import['class'] === $class || str_ends_with($import['class'], '\\' . $class)) {
+			if ($import['class'] === $class || ($allowPrefixed && str_ends_with($import['class'], '\\' . $class))) {
 				$aliases[] = $import['alias'];
 			}
 		}
@@ -350,6 +383,76 @@ final readonly class PhpSourceEditor
 		}
 
 		return in_array($referencedClass, $aliases, true);
+	}
+
+	/**
+	 * @param list<string> $aliases
+	 */
+	private function isContainerSingleton(Node $node, string $class, array $aliases): bool {
+		if (! $node instanceof Expr\MethodCall || ! $node->name instanceof Node\Identifier || $node->name->toString() !== 'singleton') {
+			return false;
+		}
+
+		if (! $this->isThisContainer($node->var)) {
+			return false;
+		}
+
+		$argument = $node->args[0]->value ?? null;
+
+		return $argument instanceof Expr\ClassConstFetch
+			&& $argument->class instanceof Node\Name
+			&& $argument->name instanceof Node\Identifier
+			&& $argument->name->toString() === 'class'
+			&& $this->isClassReference($argument->class, $class, $aliases);
+	}
+
+	/**
+	 * @param list<string> $aliases
+	 */
+	private function isContainerGet(Node $node, string $containerExpression, string $class, array $aliases): bool {
+		if (! $node instanceof Expr\MethodCall || ! $node->name instanceof Node\Identifier || $node->name->toString() !== 'get') {
+			return false;
+		}
+
+		if (! $this->matchesContainerExpression($node->var, $containerExpression)) {
+			return false;
+		}
+
+		$argument = $node->args[0]->value ?? null;
+
+		return $argument instanceof Expr\ClassConstFetch
+			&& $argument->class instanceof Node\Name
+			&& $argument->name instanceof Node\Identifier
+			&& $argument->name->toString() === 'class'
+			&& $this->isClassReference($argument->class, $class, $aliases);
+	}
+
+	private function matchesContainerExpression(Node $node, string $containerExpression): bool {
+		if ($containerExpression === '$this->container') {
+			return $this->isThisContainer($node);
+		}
+
+		return $node instanceof Expr\Variable
+			&& is_string($node->name)
+			&& '$' . $node->name === $containerExpression;
+	}
+
+	/**
+	 * @param list<string> $aliases
+	 */
+	private function isClassReference(Node\Name $name, string $class, array $aliases): bool {
+		$reference = trim($name->toString(), '\\');
+		$class     = trim($class, '\\');
+
+		if ($name instanceof Node\Name\FullyQualified) {
+			return $reference === $class;
+		}
+
+		if (str_contains($reference, '\\')) {
+			return $reference === $class;
+		}
+
+		return in_array($reference, $aliases, true);
 	}
 
 	private function isThisContainer(Node $node): bool {

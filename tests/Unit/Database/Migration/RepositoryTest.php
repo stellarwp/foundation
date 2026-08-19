@@ -16,7 +16,7 @@ final class RepositoryTest extends TestCase
 		parent::setUp();
 
 		$this->database   = new FakeDatabase();
-		$this->repository = new Repository($this->database, 'wp_nexcess_foundation_migrations');
+		$this->repository = new Repository($this->database, 'network_foundation_migrations');
 	}
 
 	public function test_it_returns_all_migration_records_indexed_by_migration_id(): void {
@@ -46,14 +46,14 @@ final class RepositoryTest extends TestCase
 		$record = $this->repository->recordRun('2026_01_01_000001_create_users', 2);
 
 		$this->assertSame(2, $record->batch);
-		$this->assertStringContainsString('INSERT INTO `wp_nexcess_foundation_migrations`', $this->database->executed[0]);
+		$this->assertStringContainsString('INSERT INTO `network_foundation_migrations`', $this->database->executed[0]);
 	}
 
 	public function test_it_deletes_a_migration_run(): void {
 		$this->database->executeResults[] = 1;
 
 		$this->assertTrue($this->repository->deleteRun('2026_01_01_000001_create_users'));
-		$this->assertStringContainsString('DELETE FROM `wp_nexcess_foundation_migrations`', $this->database->executed[0]);
+		$this->assertStringContainsString('DELETE FROM `network_foundation_migrations`', $this->database->executed[0]);
 	}
 
 	public function test_it_calculates_the_next_batch(): void {

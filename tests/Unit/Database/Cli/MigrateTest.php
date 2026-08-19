@@ -39,8 +39,8 @@ final class MigrateTest extends TestCase
 			'foundation',
 			new Migrator(
 				new Store(new TableCollection($wpSchema, [
-					new MigrationTable($database, 'wp_nexcess_foundation_migrations'),
-					new LockTable($database, 'wp_nexcess_foundation_locks'),
+					new MigrationTable('wp_nexcess_foundation_migrations'),
+					new LockTable('wp_nexcess_foundation_locks'),
 				])),
 				new Runner(new InMemoryRepository(), new RecordingSchema(), new InMemoryLock()),
 				new MigrationCollection()
@@ -232,8 +232,8 @@ final class MigrateTest extends TestCase
 			'foundation',
 			new Migrator(
 				new Store(new TableCollection($wpSchema, [
-					new MigrationTable($database, 'wp_nexcess_foundation_migrations'),
-					new LockTable($database, 'wp_nexcess_foundation_locks'),
+					new MigrationTable('wp_nexcess_foundation_migrations'),
+					new LockTable('wp_nexcess_foundation_locks'),
 				])),
 				$runner,
 				new MigrationCollection([

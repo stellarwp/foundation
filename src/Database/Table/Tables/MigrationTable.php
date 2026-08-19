@@ -2,7 +2,6 @@
 
 namespace StellarWP\Foundation\Database\Table\Tables;
 
-use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 
@@ -14,7 +13,6 @@ final readonly class MigrationTable implements Table
 	public const string ID = 'foundation_database_migrations_table';
 
 	public function __construct(
-		private Database $database,
 		private string $table
 	) {
 	}
@@ -24,7 +22,7 @@ final readonly class MigrationTable implements Table
 	}
 
 	public function name(): string {
-		return $this->database->tableName($this->table);
+		return $this->table;
 	}
 
 	public function definition(): TableDefinition {

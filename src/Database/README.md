@@ -232,6 +232,8 @@ $this->container->mergeArrayVar(DatabaseProvider::MIGRATIONS, static fn (C $c): 
 
 If migrations are added before registering `DatabaseProvider`, the provider will preserve the existing values. Other providers may also add migrations after `DatabaseProvider` is registered, as long as they do so before the migration collection or migrator is resolved.
 
+Register contributing providers in the order their migrations must run. The migration collection preserves registration order, so a migration that depends on an earlier schema or data change must be contributed after that dependency.
+
 Application feature tables should usually be represented by migrations. If a table only needs normal create/drop behavior, define it with `StellarWP\Foundation\Database\Contracts\Table`, wrap it in `StellarWP\Foundation\Database\Table\CreateTable`, and add that migration instance to `DatabaseProvider::MIGRATIONS`.
 
 ```php
@@ -298,6 +300,14 @@ final readonly class PluginUpdater
 
 `run()`, `rollback()`, and `refresh()` prepare the migration store automatically before executing migrations.
 
+Registering `DatabaseProvider` does not execute migrations. Call `Migrator::run()` from the application's activation or version-update lifecycle, or run `wp nx migrate --run` during deployment. Completed migration IDs are skipped on later runs. Because migration changes and their ledger updates are not one atomic operation, write `up()` and `down()` methods so they can recover from retries after partial work or failed ledger writes.
+
+## Evolving Tables
+
+`TableDefinition` and `Schema::createOrUpdate()` use WordPress `dbDelta()` to create tables and reconcile changes that `dbDelta()` supports, such as adding columns and indexes. They should not be relied on to remove or rename columns, replace indexes, manage foreign keys, or backfill data.
+
+Use an explicit, versioned migration for destructive or data-dependent changes. Such migrations can inspect table and index state with `Schema::hasTable()` and `Schema::hasIndex()`; inject `Database` when column inspection through `Database::columnExists()` is required. Use `Schema::execute()` or focused helpers such as `dropIndex()` for the required SQL. Make rollback behavior explicit; throw `IrreversibleMigration::forMigration(self::ID)` when a migration cannot be safely reversed.
+
 ## Generators
 
 If the project also installs `stellarwp/foundation-cli` as a development dependency, scaffold a database provider, table class, and matching migration in a consuming WordPress project:
@@ -324,7 +334,7 @@ The table generator writes a Snake_Case table class under `src/Database/Tables` 
 
 Migration names matching `Create_*_Table`, or migrations generated with `--table-class`, use the table-backed migration stub and wrap the table in `CreateTable`. Other migration names use the generic migration stub.
 
-If `src/Database/Provider.php` exists and contains the generated provider markers, the table and migration generators automatically add imports and registrations to that provider. Pass `--provider=path/to/Provider.php` to update a non-standard provider file. Re-running a generator does not duplicate existing provider imports or registrations. If you generate a custom provider class name or location, pass `--provider` when generating later tables or migrations.
+If `src/Database/Provider.php` exists and contains the generated provider registration points, the table and migration generators automatically add imports and registrations to that provider. Pass `--provider=path/to/Provider.php` to update a non-standard provider file. Re-running a generator does not duplicate existing provider imports or registrations, including after WordPress code formatting. If an existing conventional provider cannot be updated safely, the generator creates the requested class and prints a warning with the manual registration step. An explicitly requested `--provider` that cannot be updated fails before generating the class.
 
 Common options:
 

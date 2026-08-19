@@ -50,7 +50,7 @@ final readonly class DatabaseLock implements Lock
 							TIMESTAMPADD(SECOND, %d, UTC_TIMESTAMP(6)),
 							expires_at
 						)',
-				$this->database->tableName($this->table),
+				$this->table,
 				$name,
 				$owner,
 				$ttl,
@@ -62,7 +62,7 @@ final readonly class DatabaseLock implements Lock
 				'SELECT expires_at FROM %i
 					WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6)
 					LIMIT 1',
-				$this->database->tableName($this->table),
+				$this->table,
 				$name,
 				$owner
 			);
@@ -88,7 +88,7 @@ final readonly class DatabaseLock implements Lock
 		try {
 			return $this->database->execute(
 				'DELETE FROM %i WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6)',
-				$this->database->tableName($this->table),
+				$this->table,
 				$token->name,
 				$token->owner
 			) > 0;
@@ -108,7 +108,7 @@ final readonly class DatabaseLock implements Lock
 			$this->database->execute(
 				'UPDATE %i SET expires_at = TIMESTAMPADD(SECOND, %d, UTC_TIMESTAMP(6)), updated_at = UTC_TIMESTAMP(6)
 					WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6)',
-				$this->database->tableName($this->table),
+				$this->table,
 				$ttl,
 				$token->name,
 				$token->owner
@@ -116,7 +116,7 @@ final readonly class DatabaseLock implements Lock
 
 			$row = $this->database->row(
 				'SELECT expires_at FROM %i WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6) LIMIT 1',
-				$this->database->tableName($this->table),
+				$this->table,
 				$token->name,
 				$token->owner
 			);
@@ -141,7 +141,7 @@ final readonly class DatabaseLock implements Lock
 		try {
 			return $this->database->row(
 				'SELECT name FROM %i WHERE name = %s AND expires_at > UTC_TIMESTAMP(6) LIMIT 1',
-				$this->database->tableName($this->table),
+				$this->table,
 				$name
 			) !== null;
 		} catch (DatabaseException $exception) {

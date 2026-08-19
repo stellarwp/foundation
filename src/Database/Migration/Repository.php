@@ -26,7 +26,7 @@ final readonly class Repository implements RepositoryContract
 
 		foreach ($this->database->rows(sprintf(
 			'SELECT id, migration, batch, ran_at FROM %s ORDER BY id ASC',
-			$this->database->quoteIdentifier($this->database->tableName($this->table))
+			$this->database->quoteIdentifier($this->table)
 		)) as $row) {
 			$record = $this->recordFromRow($row);
 
@@ -39,7 +39,7 @@ final readonly class Repository implements RepositoryContract
 	public function hasRun(string $migration): bool {
 		return $this->database->row(
 			'SELECT id FROM %i WHERE migration = %s LIMIT 1',
-			$this->database->tableName($this->table),
+			$this->table,
 			$migration
 		) !== null;
 	}
@@ -49,7 +49,7 @@ final readonly class Repository implements RepositoryContract
 
 		$this->database->execute(
 			'INSERT INTO %i (migration, batch, ran_at) VALUES (%s, %d, %s)',
-			$this->database->tableName($this->table),
+			$this->table,
 			$migration,
 			$batch,
 			$ranAt->format('Y-m-d H:i:s')
@@ -57,7 +57,7 @@ final readonly class Repository implements RepositoryContract
 
 		$row = $this->database->row(
 			'SELECT id, migration, batch, ran_at FROM %i WHERE migration = %s LIMIT 1',
-			$this->database->tableName($this->table),
+			$this->table,
 			$migration
 		);
 
@@ -71,7 +71,7 @@ final readonly class Repository implements RepositoryContract
 	public function deleteRun(string $migration): bool {
 		return $this->database->execute(
 			'DELETE FROM %i WHERE migration = %s',
-			$this->database->tableName($this->table),
+			$this->table,
 			$migration
 		) > 0;
 	}
@@ -85,7 +85,7 @@ final readonly class Repository implements RepositoryContract
 	public function latestBatch(): ?int {
 		$row = $this->database->row(sprintf(
 			'SELECT MAX(batch) AS batch FROM %s',
-			$this->database->quoteIdentifier($this->database->tableName($this->table))
+			$this->database->quoteIdentifier($this->table)
 		));
 
 		if ($row === null || $row['batch'] === null) {
@@ -103,7 +103,7 @@ final readonly class Repository implements RepositoryContract
 			fn (array $row): Record => $this->recordFromRow($row),
 			$this->database->rows(
 				'SELECT id, migration, batch, ran_at FROM %i WHERE batch = %d ORDER BY id ASC',
-				$this->database->tableName($this->table),
+				$this->table,
 				$batch
 			)
 		);

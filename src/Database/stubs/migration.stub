@@ -19,7 +19,7 @@ final readonly class {{ class }} implements Migration {
 	}
 
 	public function down( Schema $schema ): void {
-		throw new IrreversibleMigration( self::ID );
+		throw IrreversibleMigration::forMigration( self::ID );
 	}
 
 }

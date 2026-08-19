@@ -244,7 +244,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 	public function test_migration_repository_persists_records_in_wordpress(): void {
 		$table          = $this->table('migrations');
 		$schema         = $this->schema;
-		$migrationTable = new MigrationTable($this->database, $table);
+		$migrationTable = new MigrationTable($table);
 		$repository     = new Repository($this->database, $table);
 
 		$this->assertFalse($schema->hasTable($migrationTable));
@@ -274,7 +274,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 	public function test_database_lock_coordinates_ownership_in_wordpress(): void {
 		$table     = $this->table('locks');
 		$wpSchema  = $this->schema;
-		$lockTable = new LockTable($this->database, $table);
+		$lockTable = new LockTable($table);
 		$lock      = new DatabaseLock($this->database, $table);
 
 		$this->assertFalse($wpSchema->hasTable($lockTable));
@@ -301,7 +301,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 	public function test_database_lock_replaces_expired_ownership_without_allowing_the_previous_owner_to_release_it(): void {
 		$table     = $this->table('expired_locks');
 		$wpSchema  = $this->schema;
-		$lockTable = new LockTable($this->database, $table);
+		$lockTable = new LockTable($table);
 		$lock      = new DatabaseLock($this->database, $table);
 
 		$wpSchema->createOrUpdate($lockTable);
@@ -330,7 +330,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 	public function test_database_lock_compares_names_and_owners_by_exact_bytes(): void {
 		$table     = $this->table('exact_locks');
 		$wpSchema  = $this->schema;
-		$lockTable = new LockTable($this->database, $table);
+		$lockTable = new LockTable($table);
 		$lock      = new DatabaseLock($this->database, $table);
 
 		$wpSchema->createOrUpdate($lockTable);
@@ -358,7 +358,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 	public function test_lock_table_reconciles_an_existing_previous_definition(): void {
 		$table     = $this->table('previous_lock_schema');
 		$wpSchema  = $this->schema;
-		$lockTable = new LockTable($this->database, $table);
+		$lockTable = new LockTable($table);
 
 		$this->database->execute(sprintf(
 			'CREATE TABLE %s (

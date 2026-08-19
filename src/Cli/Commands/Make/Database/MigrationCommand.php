@@ -57,7 +57,7 @@ final class MigrationCommand extends Command
 			$this->validateExplicitProviderUpdate($input);
 			$file = $this->generatedFile($input);
 			$this->fileWriter->write($file, (bool) $input->getOption('force'));
-			$providerPath = $this->updateProvider($input);
+			$providerPath = $this->updateProvider($input, $output);
 		} catch (RuntimeException $exception) {
 			$output->writeln('<error>' . $exception->getMessage() . '</error>');
 
@@ -154,7 +154,7 @@ final class MigrationCommand extends Command
 		));
 	}
 
-	private function updateProvider(InputInterface $input): ?string {
+	private function updateProvider(InputInterface $input, OutputInterface $output): ?string {
 		$project      = $this->autoloadResolver->project();
 		$className    = $this->classNameResolver->className((string) $input->getArgument('name'));
 		$namespace    = $this->namespace($input, $project->defaultPsr4Namespace());
@@ -186,6 +186,13 @@ final class MigrationCommand extends Command
 				$this->providerUpdateFailure($status)
 			));
 		}
+
+		$output->writeln(sprintf(
+			'<comment>Provider not updated:</comment> %s (%s). Register %s manually.',
+			$this->relativePath($providerPath),
+			$this->providerUpdateFailure($status),
+			$className
+		));
 
 		return null;
 	}

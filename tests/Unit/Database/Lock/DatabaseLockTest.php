@@ -23,7 +23,7 @@ final class DatabaseLockTest extends TestCase
 		parent::setUp();
 
 		$this->database = new FakeDatabase();
-		$this->lock     = new DatabaseLock($this->database, 'wp_nexcess_foundation_locks');
+		$this->lock     = new DatabaseLock($this->database, 'network_foundation_locks');
 	}
 
 	public function test_it_acquires_a_database_lock_when_the_written_owner_matches(): void {
@@ -62,7 +62,7 @@ final class DatabaseLockTest extends TestCase
 		$this->database->executeResults[] = 1;
 
 		$this->assertTrue($this->lock->release($token));
-		$this->assertStringContainsString('DELETE FROM `wp_nexcess_foundation_locks`', $this->database->executed[0]);
+		$this->assertStringContainsString('DELETE FROM `network_foundation_locks`', $this->database->executed[0]);
 		$this->assertStringContainsString('owner', $this->database->executed[0]);
 		$this->assertStringContainsString('expires_at > UTC_TIMESTAMP(6)', $this->database->executed[0]);
 	}
@@ -81,7 +81,7 @@ final class DatabaseLockTest extends TestCase
 
 		$this->assertInstanceOf(LockToken::class, $refreshed);
 		$this->assertSame('2026-01-01 00:02:00.654321', $refreshed->expiresAt->format('Y-m-d H:i:s.u'));
-		$this->assertStringContainsString('UPDATE `wp_nexcess_foundation_locks`', $this->database->executed[0]);
+		$this->assertStringContainsString('UPDATE `network_foundation_locks`', $this->database->executed[0]);
 		$this->assertStringContainsString('TIMESTAMPADD(SECOND, 120, UTC_TIMESTAMP(6))', $this->database->executed[0]);
 	}
 
@@ -176,7 +176,6 @@ final class DatabaseLockTest extends TestCase
 	public function test_it_normalizes_database_failures(callable $operation, string $databaseMethod): void {
 		$database = $this->mock(Database::class);
 
-		$database->shouldReceive('tableName')->andReturn('wp_nexcess_foundation_locks');
 		$database->shouldReceive($databaseMethod)->andThrow(new QueryException('Query failed.', 'SELECT 1'));
 
 		try {

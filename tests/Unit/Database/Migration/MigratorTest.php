@@ -108,8 +108,8 @@ final class MigratorTest extends TestCase
 		return [
 			new Migrator(
 				new Store(new TableCollection($schema, [
-					new MigrationTable($database, 'wp_nexcess_foundation_migrations'),
-					new LockTable($database, 'wp_nexcess_foundation_locks'),
+					new MigrationTable('wp_nexcess_foundation_migrations'),
+					new LockTable('wp_nexcess_foundation_locks'),
 				])),
 				new Runner($repository, $schema, new InMemoryLock()),
 				new Collection([

@@ -15,13 +15,13 @@ final class LockTableTest extends TestCase
 		$schema     = new DatabaseSchema($database, static function (string $sql) use (&$statements): void {
 			$statements[] = $sql;
 		});
-		$table = new LockTable($database, 'wp_nexcess_foundation_locks');
+		$table = new LockTable('network_foundation_locks');
 
 		$schema->createOrUpdate($table);
 
 		$this->assertSame(LockTable::ID, $table->id());
-		$this->assertSame('wp_nexcess_foundation_locks', $table->name());
-		$this->assertStringContainsString('CREATE TABLE `wp_nexcess_foundation_locks`', $statements[0]);
+		$this->assertSame('network_foundation_locks', $table->name());
+		$this->assertStringContainsString('CREATE TABLE `network_foundation_locks`', $statements[0]);
 		$this->assertStringContainsString('`name` varbinary(191)', $statements[0]);
 		$this->assertStringContainsString('`owner` varbinary(64)', $statements[0]);
 		$this->assertStringContainsString('`expires_at` datetime(6)', $statements[0]);
@@ -34,10 +34,10 @@ final class LockTableTest extends TestCase
 	public function test_it_drops_the_lock_table(): void {
 		$database = new FakeDatabase();
 		$schema   = new DatabaseSchema($database, static fn (string $sql): array => []);
-		$table    = new LockTable($database, 'wp_nexcess_foundation_locks');
+		$table    = new LockTable('network_foundation_locks');
 
 		$schema->drop($table);
 
-		$this->assertSame('DROP TABLE IF EXISTS `wp_nexcess_foundation_locks`', $database->executed[0]);
+		$this->assertSame('DROP TABLE IF EXISTS `network_foundation_locks`', $database->executed[0]);
 	}
 }

@@ -14,8 +14,8 @@ use StellarWP\Foundation\Lock\Contracts\Lock;
  * Process-local lock implementation useful for tests and single-process work.
  *
  * This implementation is not a cross-request or distributed lock. Use a
- * persistent implementation, such as a future database-backed lock, when
- * multiple PHP processes must coordinate ownership.
+ * persistent Foundation lock implementation when multiple PHP processes
+ * must coordinate ownership.
  */
 final class InMemoryLock implements Lock
 {

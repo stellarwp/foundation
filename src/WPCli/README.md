@@ -113,38 +113,60 @@ final class {{ class }} extends Command
 
 ## Provider Setup
 
-Applications should register `StellarWP\Foundation\WPCli\Provider` once in the application provider list. Feature-specific providers can then add command classes to the shared command list with `mergeArrayVar()`.
+Applications should register `StellarWP\Foundation\WPCli\WPCliProvider` once, before feature providers that contribute commands. Feature providers can then add resolved command instances to the shared command list with `mergeArrayVar()`.
 
 Do not register `StellarWP\Foundation\Cli\CliProvider` in a WordPress plugin. That provider belongs to the developer-facing `foundation` console binary, not plugin runtime bootstrap.
 
-Generated command classes use Strauss-prefixed Foundation imports automatically when `extra.strauss.namespace_prefix` is configured. Handwritten provider code is still application code, so projects using Strauss with `update_call_sites=false` may need to use their prefixed Foundation namespace in the imports below.
+Generated command classes use Strauss-prefixed Foundation imports automatically when `extra.strauss.namespace_prefix` is configured. Handwritten provider code is still application code, so projects using Strauss with `update_call_sites=false` may need to prefix the Foundation and third-party imports shown below, including `lucatume\DI52\Container`.
 
 ```php
 <?php declare(strict_types=1);
 
 namespace Acme\App\Cli;
 
+use Acme\App\Cli\Commands\Sync_Command;
+use lucatume\DI52\Container as C;
 use StellarWP\Foundation\Container\Contracts\Provider;
-use StellarWP\Foundation\WPCli\WPCliProvider as WPCliProvider;
+use StellarWP\Foundation\WPCli\WPCliProvider;
 
 final class Wp_Cli_Provider extends Provider
 {
-	private const string COMMAND_PREFIX = 'acme';
-
-	/**
-	 * @var list<class-string<Command>>
-	 */
-	private const array COMMANDS = [
-		Sync_Command::class,
-	];
-
 	public function register(): void {
-		$this->container->singleton( WPCliProvider::COMMAND_PREFIX, self::COMMAND_PREFIX );
-		$this->container->mergeArrayVar( WPCliProvider::COMMANDS, self::COMMANDS );
+		$this->container->when( Sync_Command::class )
+			->needs( '$commandPrefix' )
+			->give( static fn ( C $c ): string => $c->get( WPCliProvider::COMMAND_PREFIX ) );
+
+		$this->container->singleton( Sync_Command::class );
+		$this->container->mergeArrayVar(
+			WPCliProvider::COMMANDS,
+			static fn ( C $c ): array => [
+				$c->get( Sync_Command::class ),
+			]
+		);
 	}
 }
 ```
 
+Register both providers with the container in this order:
+
+```php
+use Acme\App\Cli\Wp_Cli_Provider;
+use StellarWP\Foundation\WPCli\WPCliProvider;
+
+$container->register( WPCliProvider::class );
+$container->register( Wp_Cli_Provider::class );
+```
+
 The Foundation WP-CLI provider uses `cli_init` internally so commands are registered only during WP-CLI command bootstrap, after all application providers have had a chance to add command classes.
 
-If your application wants a different default command prefix without a feature-specific CLI provider, bind `WPCliProvider::COMMAND_PREFIX` before WP-CLI's `cli_init` hook runs.
+Set `wpcli.command_prefix` in the application's Foundation configuration when it needs a prefix other than `nx`:
+
+```php
+return [
+	'wpcli' => [
+		'command_prefix' => 'acme',
+	],
+];
+```
+
+See [Foundation Container configuration](https://github.com/stellarwp/foundation-container#container-configuration) for loading the `config.php` array into the container's `Dot` binding.

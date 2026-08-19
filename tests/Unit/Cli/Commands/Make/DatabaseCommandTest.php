@@ -111,7 +111,7 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertStringContainsString('final readonly class Bump_Version implements Migration {', $contents);
 		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Exceptions\\IrreversibleMigration;', $contents);
 		$this->assertStringContainsString("public const string ID = '2026_06_26_000003_bump_version';", $contents);
-		$this->assertStringContainsString('throw new IrreversibleMigration( self::ID );', $contents);
+		$this->assertStringContainsString('throw IrreversibleMigration::forMigration( self::ID );', $contents);
 		$this->assertStringNotContainsString('CreateTable', $contents);
 		$this->assertStringNotContainsString('Bump_Version_Table', $contents);
 	}
@@ -357,6 +357,38 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertFileDoesNotExist($root . '/src/Database/Tables/Reports_Table.php');
 	}
 
+	public function test_explicit_database_provider_updates_fail_before_writing_when_the_provider_is_not_writable(): void {
+		$root = $this->temporaryProject([
+			'require' => [
+				'stellarwp/foundation-database' => '^1.2',
+			],
+		]);
+
+		(new CommandTester($this->providerCommand($root)))->execute([]);
+
+		$providerPath = $root . '/src/Database/Provider.php';
+		chmod($providerPath, 0444);
+
+		$tableTester = new CommandTester($this->tableCommand($root));
+		$tableStatus = $tableTester->execute([
+			'name'       => 'reports',
+			'--provider' => 'src/Database/Provider.php',
+		]);
+
+		$migrationTester = new CommandTester($this->migrationCommand($root));
+		$migrationStatus = $migrationTester->execute([
+			'name'       => 'create-reports-table',
+			'--provider' => 'src/Database/Provider.php',
+		]);
+
+		$this->assertSame(Command::FAILURE, $tableStatus);
+		$this->assertSame(Command::FAILURE, $migrationStatus);
+		$this->assertStringContainsString('file is not writable', $tableTester->getDisplay());
+		$this->assertStringContainsString('file is not writable', $migrationTester->getDisplay());
+		$this->assertFileDoesNotExist($root . '/src/Database/Tables/Reports_Table.php');
+		$this->assertFileDoesNotExist($root . '/src/Database/Migrations/Create_Reports_Table.php');
+	}
+
 	public function test_explicit_database_provider_migration_update_fails_when_the_provider_has_no_migration_anchor(): void {
 		$root = $this->temporaryProject([
 			'require' => [
@@ -388,6 +420,53 @@ PHP);
 		$this->assertSame(Command::FAILURE, $statusCode);
 		$this->assertStringContainsString('file does not contain a generated database provider registration point', $tester->getDisplay());
 		$this->assertFileDoesNotExist($root . '/src/Database/Migrations/Create_Reports_Table.php');
+	}
+
+	public function test_table_generator_warns_when_the_conventional_provider_cannot_be_updated(): void {
+		$root = $this->temporaryProject([
+			'require' => [
+				'stellarwp/foundation-database' => '^1.2',
+			],
+		]);
+
+		mkdir($root . '/src/Database', 0777, true);
+		file_put_contents(
+			$root . '/src/Database/Provider.php',
+			file_get_contents($this->data_dir('cli/generation/php-source-editor/database-provider-without-registration-points.stub'))
+		);
+
+		$tester     = new CommandTester($this->tableCommand($root));
+		$statusCode = $tester->execute(['name' => 'reports']);
+
+		$this->assertSame(Command::SUCCESS, $statusCode);
+		$this->assertFileExists($root . '/src/Database/Tables/Reports_Table.php');
+		$this->assertStringContainsString('Provider not updated: src/Database/Provider.php', $tester->getDisplay());
+		$this->assertStringContainsString('Register Reports_Table manually.', $tester->getDisplay());
+	}
+
+	public function test_migration_generator_warns_when_the_conventional_provider_cannot_be_updated(): void {
+		$root = $this->temporaryProject([
+			'require' => [
+				'stellarwp/foundation-database' => '^1.2',
+			],
+		]);
+
+		mkdir($root . '/src/Database', 0777, true);
+		file_put_contents(
+			$root . '/src/Database/Provider.php',
+			file_get_contents($this->data_dir('cli/generation/php-source-editor/database-provider-without-registration-points.stub'))
+		);
+
+		$tester     = new CommandTester($this->migrationCommand($root));
+		$statusCode = $tester->execute([
+			'name' => 'create-reports-table',
+			'--id' => '2026_06_26_000001_create_reports_table',
+		]);
+
+		$this->assertSame(Command::SUCCESS, $statusCode);
+		$this->assertFileExists($root . '/src/Database/Migrations/Create_Reports_Table.php');
+		$this->assertStringContainsString('Provider not updated: src/Database/Provider.php', $tester->getDisplay());
+		$this->assertStringContainsString('Register Create_Reports_Table manually.', $tester->getDisplay());
 	}
 
 	public function test_database_provider_migration_update_preserves_legacy_migration_marker_position(): void {
@@ -849,6 +928,75 @@ PHP);
 
 		$this->assertSame(ProviderRegistrationEditor::ALREADY_REGISTERED, $status);
 		$this->assertSame($contents, (string) file_get_contents($providerPath));
+	}
+
+	public function test_database_provider_updater_is_idempotent_after_wordpress_formatting(): void {
+		$root = $this->temporaryProject();
+
+		mkdir($root . '/src/Database', 0777, true);
+
+		$providerPath = $root . '/src/Database/Provider.php';
+		$contents     = (string) file_get_contents($this->data_dir('cli/generation/php-source-editor/formatted-database-provider.stub'));
+		file_put_contents($providerPath, $contents);
+
+		$tableStatus = $this->providerUpdater()->addTable(
+			providerPath: $providerPath,
+			class: 'Reports_Table',
+			classNamespace: 'Acme\\Plugin\\Database\\Tables'
+		);
+		$migrationStatus = $this->providerUpdater()->addMigration(
+			providerPath: $providerPath,
+			class: 'Create_Reports_Table',
+			classNamespace: 'Acme\\Plugin\\Database\\Migrations'
+		);
+
+		$this->assertSame(ProviderRegistrationEditor::ALREADY_REGISTERED, $tableStatus);
+		$this->assertSame(ProviderRegistrationEditor::ALREADY_REGISTERED, $migrationStatus);
+		$this->assertSame($contents, (string) file_get_contents($providerPath));
+	}
+
+	public function test_database_generators_do_not_duplicate_wordpress_formatted_provider_registrations_when_forced(): void {
+		$root = $this->temporaryProject([
+			'require' => [
+				'stellarwp/foundation-database' => '^1.2',
+			],
+		]);
+
+		mkdir($root . '/src/Database', 0777, true);
+
+		$providerPath     = $root . '/src/Database/Provider.php';
+		$providerContents = (string) file_get_contents($this->data_dir('cli/generation/php-source-editor/formatted-database-provider.stub'));
+		file_put_contents(
+			$providerPath,
+			$providerContents
+		);
+
+		$tableTester = new CommandTester($this->tableCommand($root));
+		$tableTester->execute(['name' => 'reports']);
+		chmod($providerPath, 0444);
+		$tableStatus = $tableTester->execute([
+			'name'       => 'reports',
+			'--force'    => true,
+			'--provider' => 'src/Database/Provider.php',
+		]);
+
+		$migrationTester = new CommandTester($this->migrationCommand($root));
+		$migrationTester->execute([
+			'name' => 'create-reports-table',
+			'--id' => '2026_06_26_000001_create_reports_table',
+		]);
+		$migrationStatus = $migrationTester->execute([
+			'name'       => 'create-reports-table',
+			'--id'       => '2026_06_26_000001_create_reports_table',
+			'--force'    => true,
+			'--provider' => 'src/Database/Provider.php',
+		]);
+
+		$contents = (string) file_get_contents($providerPath);
+
+		$this->assertSame(Command::SUCCESS, $tableStatus);
+		$this->assertSame(Command::SUCCESS, $migrationStatus);
+		$this->assertSame($providerContents, $contents);
 	}
 
 	public function test_explicit_database_provider_update_fails_on_import_short_name_collisions(): void {

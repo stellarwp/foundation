@@ -86,8 +86,8 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 		'foundation',
 		new Migrator(
 			new Store(new TableCollection($schema, [
-				new MigrationTable($database, $migrationTable),
-				new LockTable($database, $lockTable),
+				new MigrationTable($migrationTable),
+				new LockTable($lockTable),
 			])),
 			new Runner(
 				new Repository($database, $migrationTable),

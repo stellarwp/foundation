@@ -1,0 +1,30 @@
+<?php declare(strict_types=1);
+
+namespace Acme\Plugin\Database;
+
+use Acme\Plugin\Database\Migrations\Create_Reports_Table;
+use Acme\Plugin\Database\Tables\Reports_Table;
+use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Database\DatabaseProvider;
+
+final class Provider
+{
+	public function register(): void
+	{
+		$this->registerTables();
+		$this->registerMigrations();
+	}
+
+	private function registerTables(): void
+	{
+		$this->container->singleton( Reports_Table::class );
+		// foundation:database-tables
+	}
+
+	private function registerMigrations(): void
+	{
+		$this->container->mergeArrayVar( DatabaseProvider::MIGRATIONS, static fn ( C $c ): array => [
+			$c->get( Create_Reports_Table::class ),
+		] );
+	}
+}

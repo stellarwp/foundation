@@ -6,15 +6,18 @@ Foundation is a StellarWP Composer monorepo for reusable PHP packages intended f
 > This monorepo splits each package out into their own sub-repository, if you only need a specific component you can install only that specific one.
 
 ## Repositories
-- [stellarwp/foundation-container](https://github.com/stellarwp/foundation-container)
-- [stellarwp/foundation-pipeline](https://github.com/stellarwp/foundation-pipeline)
-- [stellarwp/foundation-log](https://github.com/stellarwp/foundation-log)
-- [stellarwp/foundation-lock](https://github.com/stellarwp/foundation-lock)
-- [stellarwp/foundation-lock-redis](https://github.com/stellarwp/foundation-lock-redis)
-- [stellarwp/foundation-database](https://github.com/stellarwp/foundation-database)
-- [stellarwp/foundation-identifier](https://github.com/stellarwp/foundation-identifier)
-- [stellarwp/foundation-wpcli](https://github.com/stellarwp/foundation-wpcli)
-- [stellarwp/foundation-cli](https://github.com/stellarwp/foundation-cli)
+
+| Package | Use when | Installation |
+| --- | --- | --- |
+| [stellarwp/foundation-container](https://github.com/stellarwp/foundation-container) | The application needs Foundation's DI container and providers | Runtime |
+| [stellarwp/foundation-pipeline](https://github.com/stellarwp/foundation-pipeline) | Work should pass through an ordered middleware-style pipeline | Runtime |
+| [stellarwp/foundation-log](https://github.com/stellarwp/foundation-log) | Services need a configured PSR logger | Runtime |
+| [stellarwp/foundation-lock](https://github.com/stellarwp/foundation-lock) | Code needs the portable lock contract or process-local test implementation | Runtime |
+| [stellarwp/foundation-lock-redis](https://github.com/stellarwp/foundation-lock-redis) | Multiple processes or servers coordinate through dedicated Redis | Runtime |
+| [stellarwp/foundation-database](https://github.com/stellarwp/foundation-database) | A WordPress application needs queries, migrations, or database-backed locks | Runtime |
+| [stellarwp/foundation-identifier](https://github.com/stellarwp/foundation-identifier) | Services need injectable ULID generation and validation | Runtime |
+| [stellarwp/foundation-wpcli](https://github.com/stellarwp/foundation-wpcli) | A shipped WordPress plugin exposes WP-CLI commands | Runtime |
+| [stellarwp/foundation-cli](https://github.com/stellarwp/foundation-cli) | Developers need Foundation generators or monorepo maintenance commands | Development |
 
 ## Installation
 

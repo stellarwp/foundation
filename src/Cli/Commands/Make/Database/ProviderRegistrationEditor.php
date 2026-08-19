@@ -77,10 +77,6 @@ final class ProviderRegistrationEditor
 			return self::NOT_FOUND;
 		}
 
-		if ($write && ! is_writable($providerPath)) {
-			return self::NOT_WRITABLE;
-		}
-
 		$contents = (string) file_get_contents($providerPath);
 
 		if (! $this->sourceEditor->canParse($contents)) {
@@ -93,12 +89,16 @@ final class ProviderRegistrationEditor
 
 		$fullyQualifiedClass = $classNamespace . '\\' . $class;
 
-		if ($this->sourceEditor->hasImport($contents, $fullyQualifiedClass) && str_contains($contents, $registration)) {
+		if ($this->sourceEditor->hasContainerSingleton($contents, $fullyQualifiedClass)) {
 			return self::ALREADY_REGISTERED;
 		}
 
 		if ($this->sourceEditor->hasImportShortNameCollision($contents, $class, $fullyQualifiedClass)) {
 			return self::IMPORT_COLLISION;
+		}
+
+		if (! is_writable($providerPath)) {
+			return self::NOT_WRITABLE;
 		}
 
 		if (! $write) {
@@ -129,10 +129,6 @@ final class ProviderRegistrationEditor
 			return self::NOT_FOUND;
 		}
 
-		if ($write && ! is_writable($providerPath)) {
-			return self::NOT_WRITABLE;
-		}
-
 		$contents = (string) file_get_contents($providerPath);
 
 		if (! $this->sourceEditor->canParse($contents)) {
@@ -148,12 +144,16 @@ final class ProviderRegistrationEditor
 		$fullyQualifiedClass = $classNamespace . '\\' . $class;
 		$registration        = sprintf('%s->get(%s::class),', $containerExpression, $class);
 
-		if ($this->sourceEditor->hasImport($contents, $fullyQualifiedClass) && str_contains($contents, $registration)) {
+		if ($this->sourceEditor->mergeArrayVarContainsClass($contents, self::MIGRATIONS_CLASS, self::MIGRATIONS_CONST, $fullyQualifiedClass)) {
 			return self::ALREADY_REGISTERED;
 		}
 
 		if ($this->sourceEditor->hasImportShortNameCollision($contents, $class, $fullyQualifiedClass)) {
 			return self::IMPORT_COLLISION;
+		}
+
+		if (! is_writable($providerPath)) {
+			return self::NOT_WRITABLE;
 		}
 
 		if (! $write) {

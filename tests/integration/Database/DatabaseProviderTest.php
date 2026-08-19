@@ -12,6 +12,8 @@ use StellarWP\Foundation\Database\DatabaseProvider;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Collection;
 use StellarWP\Foundation\Database\Migration\Migrator;
+use StellarWP\Foundation\Database\Table\Tables\LockTable;
+use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
 use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
 use StellarWP\Foundation\WPCli\Command;
@@ -53,6 +55,8 @@ final class DatabaseProviderTest extends WPTestCase
 
 		$this->assertSame('custom_migrations', $container->get(DatabaseProvider::MIGRATIONS_TABLE));
 		$this->assertSame('custom_locks', $container->get(DatabaseProvider::LOCKS_TABLE));
+		$this->assertSame('custom_migrations', $container->get(MigrationTable::class)->name());
+		$this->assertSame('custom_locks', $container->get(LockTable::class)->name());
 		$this->assertSame('custom-migrations', $container->get(DatabaseProvider::LOCK_NAME));
 		$this->assertSame(120, $container->get(DatabaseProvider::LOCK_TTL));
 		$this->assertSame('custom', $container->get(WPCliProvider::COMMAND_PREFIX));

@@ -124,6 +124,25 @@ PHP;
 		);
 	}
 
+	public function test_it_does_not_treat_an_unresolved_class_name_as_a_merge_array_registration(): void {
+		$editor = $this->editor();
+		$class  = 'StellarWP\\Foundation\\Database\\DatabaseProvider';
+		$target = 'Acme\\Plugin\\Database\\Migrations\\Create_Reports_Table';
+
+		$this->assertFalse($editor->mergeArrayVarContainsClass(
+			$this->fixture('migration-class-reference-without-registration'),
+			$class,
+			'MIGRATIONS',
+			$target
+		));
+		$this->assertFalse($editor->mergeArrayVarContainsClass(
+			$this->fixture('nested-migration-registration'),
+			$class,
+			'MIGRATIONS',
+			$target
+		));
+	}
+
 	private function editor(): PhpSourceEditor {
 		return new PhpSourceEditor(
 			parserFactory: new ParserFactory(),

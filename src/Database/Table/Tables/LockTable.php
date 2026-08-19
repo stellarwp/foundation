@@ -2,7 +2,6 @@
 
 namespace StellarWP\Foundation\Database\Table\Tables;
 
-use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Table\Column;
 use StellarWP\Foundation\Database\Table\TableDefinition;
@@ -15,7 +14,6 @@ final readonly class LockTable implements Table
 	public const string ID = 'foundation_database_locks_table';
 
 	public function __construct(
-		private Database $database,
 		private string $table
 	) {
 	}
@@ -25,7 +23,7 @@ final readonly class LockTable implements Table
 	}
 
 	public function name(): string {
-		return $this->database->tableName($this->table);
+		return $this->table;
 	}
 
 	public function definition(): TableDefinition {
