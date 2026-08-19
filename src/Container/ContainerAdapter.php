@@ -10,8 +10,6 @@ use StellarWP\Foundation\Container\Contracts\Container;
 /**
  * @method mixed make(string $id)
  * @method mixed getVar(string $key, mixed|null $default = null)
- * @method void  singletonDecorators($id, array<string> $decorators, ?array<string> $afterBuildMethods = null)
- * @method void  bindDecorators($id, array<string> $decorators, ?array<string> $afterBuildMethods = null)
  */
 final class ContainerAdapter implements Container
 {
@@ -111,6 +109,30 @@ final class ContainerAdapter implements Container
 	 */
 	public function callback(object|string $id, string $method): callable {
 		return $this->container->callback($id, $method);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function singletonDecorators(
+		string $id,
+		array $decorators,
+		?array $afterBuildMethods = null,
+		bool $afterBuildAll = false
+	): void {
+		$this->container->singletonDecorators($id, $decorators, $afterBuildMethods, $afterBuildAll);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function bindDecorators(
+		string $id,
+		array $decorators,
+		?array $afterBuildMethods = null,
+		bool $afterBuildAll = false
+	): void {
+		$this->container->bindDecorators($id, $decorators, $afterBuildMethods, $afterBuildAll);
 	}
 
 	/**
