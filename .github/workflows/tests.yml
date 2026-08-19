@@ -24,6 +24,7 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
           coverage: none
+          extensions: redis
 
       - name: Install Composer dependencies
         uses: ramsey/composer-install@v4
@@ -111,6 +112,11 @@ jobs:
         run: |
           "${SLIC_BIN}" run integration --ext DotReporter
 
+      - name: Run Redis tests
+        if: github.event_name != 'pull_request'
+        run: |
+          "${SLIC_BIN}" run redis --ext DotReporter
+
       - name: Run wpunit tests
         if: github.event_name != 'pull_request'
         run: |
@@ -129,10 +135,16 @@ jobs:
           "${SLIC_BIN}" pcov on --yes
           "${SLIC_BIN}" run unit --coverage coverage/unit.cov --ext DotReporter
           "${SLIC_BIN}" run feature --coverage coverage/feature.cov --ext DotReporter
+          "${SLIC_BIN}" run redis --coverage coverage/redis.cov --ext DotReporter
           "${SLIC_BIN}" run integration --coverage coverage/integration.cov --ext DotReporter
           "${SLIC_BIN}" run wpunit --coverage coverage/wpunit.cov --ext DotReporter
           "${SLIC_BIN}" run wpcli --coverage coverage/wpcli.cov --ext DotReporter
           "${SLIC_BIN}" composer run coverage:merge
+
+      - name: Test minimum supported Predis version
+        run: |
+          "${SLIC_BIN}" composer update predis/predis:3.0.0 --with-all-dependencies
+          "${SLIC_BIN}" run redis --ext DotReporter
 
       - name: Monitor coverage
         if: github.event_name == 'pull_request'

@@ -19,6 +19,7 @@ jobs:
         with:
           php-version: '8.3'
           coverage: pcov
+          extensions: redis
 
       - name: Detect File Changes
         uses: dorny/paths-filter@v4

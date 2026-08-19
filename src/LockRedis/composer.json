@@ -1,0 +1,29 @@
+{
+    "name": "stellarwp/foundation-lock-redis",
+    "type": "library",
+    "description": "Redis-backed locks for Foundation.",
+    "license": "GPL-2.0-or-later",
+    "config": {
+        "vendor-dir": "vendor",
+        "preferred-install": "dist"
+    },
+    "require": {
+        "php": ">=8.3",
+        "stellarwp/foundation-container": "^2.0",
+        "stellarwp/foundation-lock": "^2.0"
+    },
+    "suggest": {
+        "ext-redis": "Required to use PhpRedisConnection.",
+        "predis/predis": "Required to use PredisConnection (>=3.0 <4.0)."
+    },
+    "autoload": {
+        "psr-4": {
+            "StellarWP\\Foundation\\LockRedis\\": ""
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "2.0.x-dev"
+        }
+    }
+}

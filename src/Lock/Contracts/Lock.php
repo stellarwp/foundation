@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Lock\Contracts;
 
 use InvalidArgumentException;
+use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use StellarWP\Foundation\Lock\LockToken;
 
 /**
@@ -19,6 +20,8 @@ interface Lock
 	 *
 	 * @throws InvalidArgumentException When the lock name is empty or the TTL
 	 *                                  is less than one second.
+	 * @throws LockUnavailableException When the backend cannot determine the
+	 *                                  acquisition result.
 	 */
 	public function acquire(string $name, int $ttl): ?LockToken;
 
@@ -27,6 +30,9 @@ interface Lock
 	 *
 	 * Implementations that coordinate multiple processes should compare and
 	 * release atomically by lock name, owner, and non-expired state.
+	 *
+	 * @throws LockUnavailableException When the backend cannot determine the
+	 *                                  release result.
 	 */
 	public function release(LockToken $token): bool;
 
@@ -39,6 +45,8 @@ interface Lock
 	 * owner, and non-expired state.
 	 *
 	 * @throws InvalidArgumentException When the TTL is less than one second.
+	 * @throws LockUnavailableException When the backend cannot determine the
+	 *                                  refresh result.
 	 */
 	public function refresh(LockToken $token, int $ttl): ?LockToken;
 
@@ -49,6 +57,8 @@ interface Lock
 	 * coordination primitive.
 	 *
 	 * @throws InvalidArgumentException When the lock name is empty.
+	 * @throws LockUnavailableException When the backend cannot determine
+	 *                                  whether the lock exists.
 	 */
 	public function isAcquired(string $name): bool;
 }

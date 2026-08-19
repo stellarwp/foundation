@@ -4,7 +4,11 @@ namespace StellarWP\Foundation\Tests\Unit\Database\Lock;
 
 use DateTimeImmutable;
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
+use StellarWP\Foundation\Database\Contracts\Database;
+use StellarWP\Foundation\Database\Exceptions\QueryException;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
+use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use StellarWP\Foundation\Lock\LockToken;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Lock\MutableClock;
@@ -92,6 +96,48 @@ final class DatabaseLockTest extends TestCase
 		$this->expectException(InvalidArgumentException::class);
 
 		$this->lock->acquire('queue:sync', 0);
+	}
+
+	public function test_it_rejects_an_empty_name(): void {
+		$this->expectException(InvalidArgumentException::class);
+
+		$this->lock->isAcquired('');
+	}
+
+	/**
+	 * @dataProvider unavailableOperationProvider
+	 */
+	#[DataProvider('unavailableOperationProvider')]
+	public function test_it_normalizes_database_failures(callable $operation, string $databaseMethod): void {
+		$database = $this->mock(Database::class);
+
+		$database->shouldReceive('tableName')->andReturn('wp_nexcess_foundation_locks');
+		$database->shouldReceive($databaseMethod)->andThrow(new QueryException('Query failed.', 'SELECT 1'));
+
+		try {
+			$operation(new DatabaseLock($database, 'wp_nexcess_foundation_locks', $this->clock));
+			$this->fail('Expected the database failure to be normalized.');
+		} catch (LockUnavailableException $exception) {
+			$this->assertInstanceOf(QueryException::class, $exception->getPrevious());
+		}
+	}
+
+	/**
+	 * @return array<string, array{callable(DatabaseLock): mixed, string}>
+	 */
+	public static function unavailableOperationProvider(): array {
+		$token = new LockToken(
+			name: 'queue:sync',
+			owner: 'owner',
+			expiresAt: new DateTimeImmutable('2026-01-01 00:01:00')
+		);
+
+		return [
+			'acquire'     => [static fn (DatabaseLock $lock): ?LockToken => $lock->acquire('queue:sync', 60), 'execute'],
+			'release'     => [static fn (DatabaseLock $lock): bool => $lock->release($token), 'execute'],
+			'refresh'     => [static fn (DatabaseLock $lock): ?LockToken => $lock->refresh($token, 60), 'execute'],
+			'is acquired' => [static fn (DatabaseLock $lock): bool => $lock->isAcquired('queue:sync'), 'row'],
+		];
 	}
 
 	private function extractOwnerFromInsert(string $sql): string {

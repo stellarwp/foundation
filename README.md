@@ -10,6 +10,7 @@ Foundation is a StellarWP Composer monorepo for reusable PHP packages intended f
 - [stellarwp/foundation-pipeline](https://github.com/stellarwp/foundation-pipeline)
 - [stellarwp/foundation-log](https://github.com/stellarwp/foundation-log)
 - [stellarwp/foundation-lock](https://github.com/stellarwp/foundation-lock)
+- [stellarwp/foundation-lock-redis](https://github.com/stellarwp/foundation-lock-redis)
 - [stellarwp/foundation-database](https://github.com/stellarwp/foundation-database)
 - [stellarwp/foundation-identifier](https://github.com/stellarwp/foundation-identifier)
 - [stellarwp/foundation-wpcli](https://github.com/stellarwp/foundation-wpcli)
@@ -55,6 +56,7 @@ Run the Codeception suites with SLIC:
 ```bash
 slic run unit
 slic run feature
+composer test:redis
 composer test:integration
 composer test:wpunit
 composer test:wpcli
@@ -70,6 +72,7 @@ slic use foundation
 slic composer install
 slic cc build
 composer test:integration
+composer test:redis
 composer test:wpunit
 composer test:wpcli
 ```
@@ -82,7 +85,7 @@ slic composer update --with-all-dependencies
 
 Run `slic cc build` again after changing Codeception suite configuration or modules. Generated Codeception actor files are written to `tests/CodeceptionSupport/` and are intentionally ignored.
 
-The `unit` and `feature` SLIC suites run the same tests as `composer test:unit` and `composer test:feature`. The `integration` suite covers multi-provider/container behavior that needs WordPress runtime APIs. The `wpunit` suite runs lower-level WordPress-loaded tests through wp-browser. The `wpcli` suite is shared across the monorepo for WP-CLI command tests and uses wp-browser's WPCLI module without the full wpunit module stack.
+The `unit` and `feature` SLIC suites run the same tests as `composer test:unit` and `composer test:feature`. The `redis` suite runs client interoperability and lease behavior against SLIC's Redis service. The `integration` suite covers multi-provider/container behavior that needs WordPress runtime APIs. The `wpunit` suite runs lower-level WordPress-loaded tests through wp-browser. The `wpcli` suite is shared across the monorepo for WP-CLI command tests and uses wp-browser's WPCLI module without the full wpunit module stack.
 
 Generate the test coverage HTML dashboard:
 
