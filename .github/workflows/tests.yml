@@ -111,7 +111,7 @@ jobs:
         run: |
           "${SLIC_BIN}" run wpunit --ext DotReporter
 
-      - name: Enable Xdebug for coverage
+      - name: Enable PCOV for coverage
         if: github.event_name == 'pull_request'
         run: |
           "${SLIC_BIN}" pcov on
