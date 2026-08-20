@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\Database\Contracts;
 
 use StellarWP\Foundation\Database\Migration\Exceptions\InvalidMigrationId;
-use StellarWP\Foundation\Database\Migration\Record;
+use StellarWP\Foundation\Database\Migration\ValueObjects\Record;
 
 /**
  * Stores and retrieves the migration ledger.

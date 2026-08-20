@@ -1,6 +1,6 @@
 <?php declare(strict_types=1);
 
-namespace StellarWP\Foundation\Database\Migration;
+namespace StellarWP\Foundation\Database\Migration\ValueObjects;
 
 /**
  * Summary of migrations affected by a runner operation.

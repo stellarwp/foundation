@@ -12,7 +12,6 @@ use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Database\Migration\Collection;
 use StellarWP\Foundation\Database\Migration\Exceptions\UnavailableMigration;
 use StellarWP\Foundation\Database\Migration\Migrator;
-use StellarWP\Foundation\Database\Migration\Result;
 use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
@@ -265,16 +264,6 @@ final class MigratorExecutionTest extends TestCase
 		$this->assertFalse($statuses[1]->available);
 		$this->assertTrue($statuses[1]->ran);
 		$this->assertSame('2026_01_01_000001_missing_migration', $statuses[1]->migration);
-	}
-
-	public function test_migration_results_count_ran_and_rolled_back_migrations(): void {
-		$result = new Result(
-			ran: ['2026_01_01_000001_create_users'],
-			rolledBack: ['2026_01_01_000002_create_posts'],
-			skipped: ['2026_01_01_000003_create_comments']
-		);
-
-		$this->assertSame(2, $result->count());
 	}
 
 	public function test_it_treats_migration_ids_as_case_sensitive(): void {

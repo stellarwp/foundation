@@ -10,6 +10,9 @@ use StellarWP\Foundation\Database\Exceptions\MigrationFailed;
 use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Database\Migration\Exceptions\UnavailableMigration;
 use StellarWP\Foundation\Database\Migration\Exceptions\UninitializedStore;
+use StellarWP\Foundation\Database\Migration\ValueObjects\Record;
+use StellarWP\Foundation\Database\Migration\ValueObjects\Result;
+use StellarWP\Foundation\Database\Migration\ValueObjects\Status;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use Throwable;
 

@@ -7,6 +7,8 @@ use DateTimeZone;
 use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\Repository as RepositoryContract;
 use StellarWP\Foundation\Database\Migration\Exceptions\InvalidMigrationId;
+use StellarWP\Foundation\Database\Migration\ValueObjects\Id;
+use StellarWP\Foundation\Database\Migration\ValueObjects\Record;
 
 /**
  * Stores migration records in a WordPress database table.

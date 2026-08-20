@@ -87,6 +87,8 @@ Use contextual bindings with `$this->container->when()->needs()->give()` for sca
 
 Classes should take the dependencies they need directly. Do not make constructor dependencies nullable just to instantiate fallback concrete classes internally, for example `?Dependency $dependency = null` with `$this->dependency = $dependency ?? new Dependency()`. Register default implementations and aliases in a provider instead so consumers can replace them through container configuration.
 
+Classes should receive service collaborators through constructor injection. Direct `new` expressions inside application classes are reserved for immutable value or result objects, exceptions, PHP standard-library objects, and objects deliberately produced by an owning builder or factory. Keep feature-local value objects under that feature's `ValueObjects/` namespace. Value objects should be `final readonly` where possible and must not resolve or construct service dependencies.
+
 Organize provider registration by feature or capability, not by container mechanism. The main `register()` method should call focused private methods such as `registerConfiguration()`, `registerMigrations()`, `registerLocks()`, or `registerCliCommands()`. Keep each feature's contextual bindings beside the classes they configure. Avoid generic methods such as `configureContextualBindings()` that group unrelated bindings only because they use the same container API.
 
 ## Split Packages
