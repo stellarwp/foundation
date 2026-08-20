@@ -437,9 +437,11 @@ protected array $providers = [
 
 The table generator writes a Snake_Case table class under `src/Database/Tables` by default. The migration generator writes under `src/Database/Migrations` by default and references the matching table class.
 
+The migration generator never overwrites an existing file. Edit a migration only before it has been applied anywhere; otherwise create a new migration for the next schema change.
+
 Migration names matching `Create_*_Table`, or migrations generated with `--table-class`, use the table-backed migration stub and wrap the table in `CreateTable`. Other migration names use the generic migration stub.
 
-If `src/Database/Provider.php` exists and contains the generated provider registration points, the table and migration generators automatically add imports and registrations to that provider. Pass `--provider=path/to/Provider.php` to update a non-standard provider file. Re-running a generator does not duplicate existing provider imports or registrations, including after WordPress code formatting. If an existing conventional provider cannot be updated safely, the generator creates the requested class and prints a warning with the manual registration step. An explicitly requested `--provider` that cannot be updated fails before generating the class.
+If `src/Database/Provider.php` exists and contains the generated provider registration points, the table and migration generators automatically add imports and registrations to that provider. Pass `--provider=path/to/Provider.php` to update a non-standard provider file. Provider updates do not duplicate existing imports or registrations, including after WordPress code formatting. If an existing conventional provider cannot be updated safely, the generator creates the requested class and prints a warning with the manual registration step. An explicitly requested `--provider` that cannot be updated fails before generating the class.
 
 Common options:
 

@@ -158,6 +158,37 @@ final class DatabaseCommandTest extends TestCase
 		);
 	}
 
+	public function test_database_migrations_cannot_overwrite_existing_files(): void {
+		$root = $this->temporaryProject([
+			'require' => [
+				'stellarwp/foundation-database' => '^2.0',
+			],
+		]);
+		$command = $this->migrationCommand($root);
+		$path    = $root . '/src/Database/Migrations/Create_Reports_Table.php';
+
+		(new CommandTester($this->providerCommand($root)))->execute([]);
+		mkdir(dirname($path), 0777, true);
+		file_put_contents($path, 'existing migration');
+
+		$providerPath     = $root . '/src/Database/Provider.php';
+		$providerContents = (string) file_get_contents($providerPath);
+		$tester           = new CommandTester($command);
+		$status           = $tester->execute([
+			'name' => 'create-reports-table',
+			'--id' => '2026_06_27_000001_create_reports_table',
+		]);
+
+		$this->assertFalse($command->getDefinition()->hasOption('force'));
+		$this->assertSame(Command::FAILURE, $status);
+		$this->assertStringContainsString(
+			'Migration already exists: src/Database/Migrations/Create_Reports_Table.php. Edit it directly or create a new migration.',
+			$tester->getDisplay()
+		);
+		$this->assertSame('existing migration', (string) file_get_contents($path));
+		$this->assertSame($providerContents, (string) file_get_contents($providerPath));
+	}
+
 	public function test_database_generators_accept_generation_options(): void {
 		$root = $this->temporaryProject();
 
@@ -263,11 +294,6 @@ final class DatabaseCommandTest extends TestCase
 
 		(new CommandTester($this->tableCommand($root)))->execute([
 			'name'    => 'reports',
-			'--force' => true,
-		]);
-		(new CommandTester($this->migrationCommand($root)))->execute([
-			'name'    => 'create-reports-table',
-			'--id'    => '2026_06_26_000001_create_reports_table',
 			'--force' => true,
 		]);
 
@@ -955,7 +981,7 @@ PHP);
 		$this->assertSame($contents, (string) file_get_contents($providerPath));
 	}
 
-	public function test_database_generators_do_not_duplicate_wordpress_formatted_provider_registrations_when_forced(): void {
+	public function test_database_table_generator_does_not_duplicate_wordpress_formatted_provider_registrations_when_forced(): void {
 		$root = $this->temporaryProject([
 			'require' => [
 				'stellarwp/foundation-database' => '^1.2',
@@ -980,22 +1006,9 @@ PHP);
 			'--provider' => 'src/Database/Provider.php',
 		]);
 
-		$migrationTester = new CommandTester($this->migrationCommand($root));
-		$migrationTester->execute([
-			'name' => 'create-reports-table',
-			'--id' => '2026_06_26_000001_create_reports_table',
-		]);
-		$migrationStatus = $migrationTester->execute([
-			'name'       => 'create-reports-table',
-			'--id'       => '2026_06_26_000001_create_reports_table',
-			'--force'    => true,
-			'--provider' => 'src/Database/Provider.php',
-		]);
-
 		$contents = (string) file_get_contents($providerPath);
 
 		$this->assertSame(Command::SUCCESS, $tableStatus);
-		$this->assertSame(Command::SUCCESS, $migrationStatus);
 		$this->assertSame($providerContents, $contents);
 	}
 

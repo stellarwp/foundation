@@ -43,6 +43,8 @@ vendor/bin/foundation make:database-table Reports_Table
 vendor/bin/foundation make:database-migration Create_Reports_Table
 ```
 
+Database migrations are never overwritten by the generator. Edit a migration only before it has been applied anywhere; otherwise generate a new migration for the next schema change.
+
 Generated database providers, tables, and migrations require `stellarwp/foundation-database` as a normal runtime dependency when they ship with the project:
 
 ```bash

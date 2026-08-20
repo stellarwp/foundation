@@ -67,6 +67,8 @@ Generators that write references to Foundation classes should detect `extra.stra
 
 Generator stubs should use context-aware placeholders for PHP literals, such as `{{ description_php }}` instead of raw `{{ description }}` inside quoted PHP strings.
 
+Migration generators must not offer a force-overwrite option. Existing migrations are identity-bearing history: edit a migration only before it has been applied anywhere, or create a new migration for a new schema change.
+
 ## CLI Tooling Boundary
 
 `stellarwp/foundation-cli` is developer tooling and should normally be installed by split-package consumers with `composer require --dev stellarwp/foundation-cli`. It should not be packaged into production WordPress plugin zips when installed as a split package.

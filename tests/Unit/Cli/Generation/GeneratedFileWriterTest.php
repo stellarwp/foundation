@@ -2,6 +2,9 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Cli\Generation;
 
+use phpmock\mockery\PHPMockery;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use RuntimeException;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
@@ -36,7 +39,7 @@ final class GeneratedFileWriterTest extends TestCase
 		file_put_contents($path, 'existing');
 
 		$this->expectException(RuntimeException::class);
-		$this->expectExceptionMessage('File already exists: Generated.php. Use --force to overwrite it.');
+		$this->expectExceptionMessage('File already exists: Generated.php.');
 
 		(new GeneratedFileWriter())->write(new GeneratedFile(
 			path: $path,
@@ -57,6 +60,65 @@ final class GeneratedFileWriterTest extends TestCase
 		), force: true);
 
 		$this->assertSame('replacement', (string) file_get_contents($path));
+	}
+
+	#[RunInSeparateProcess]
+	#[PreserveGlobalState(false)]
+	public function test_it_fails_when_a_file_cannot_be_created_exclusively(): void {
+		$path = $this->tempDir . '/Generated.php';
+
+		PHPMockery::mock('StellarWP\Foundation\Cli\Generation', 'fopen')
+			->with($path, 'x')
+			->once()
+			->andReturn(false);
+
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('Could not write generated file "Generated.php".');
+
+		(new GeneratedFileWriter())->write(new GeneratedFile(
+			path: $path,
+			relativePath: 'Generated.php',
+			contents: 'content'
+		));
+	}
+
+	#[RunInSeparateProcess]
+	#[PreserveGlobalState(false)]
+	public function test_it_removes_partially_written_generated_files(): void {
+		$path   = $this->tempDir . '/Generated.php';
+		$handle = fopen('php://temp', 'w+');
+
+		$this->assertIsResource($handle);
+
+		PHPMockery::mock('StellarWP\Foundation\Cli\Generation', 'fopen')
+			->with($path, 'x')
+			->once()
+			->andReturn($handle);
+		PHPMockery::mock('StellarWP\Foundation\Cli\Generation', 'fwrite')
+			->with($handle, 'content')
+			->once()
+			->andReturn(3);
+		PHPMockery::mock('StellarWP\Foundation\Cli\Generation', 'fclose')
+			->with($handle)
+			->once()
+			->andReturn(true);
+		PHPMockery::mock('StellarWP\Foundation\Cli\Generation', 'unlink')
+			->with($path)
+			->once()
+			->andReturn(true);
+
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('Could not write generated file "Generated.php".');
+
+		try {
+			(new GeneratedFileWriter())->write(new GeneratedFile(
+				path: $path,
+				relativePath: 'Generated.php',
+				contents: 'content'
+			));
+		} finally {
+			\fclose($handle);
+		}
 	}
 
 	public function test_it_fails_when_the_target_directory_cannot_be_created(): void {

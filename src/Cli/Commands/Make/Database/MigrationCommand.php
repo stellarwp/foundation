@@ -48,15 +48,22 @@ final class MigrationCommand extends Command
 			->addOption('provider', null, InputOption::VALUE_REQUIRED, 'Database provider file to update when it exists.')
 			->addOption('id', null, InputOption::VALUE_REQUIRED, 'Stable migration identifier.')
 			->addOption('table-class', null, InputOption::VALUE_REQUIRED, 'Table class or base name used by a table-backed migration.')
-			->addOption('table-namespace', null, InputOption::VALUE_REQUIRED, 'Namespace containing the table class.')
-			->addOption('force', null, InputOption::VALUE_NONE, 'Overwrite the file if it already exists.');
+			->addOption('table-namespace', null, InputOption::VALUE_REQUIRED, 'Namespace containing the table class.');
 	}
 
 	protected function execute(InputInterface $input, OutputInterface $output): int {
 		try {
 			$this->validateExplicitProviderUpdate($input);
 			$file = $this->generatedFile($input);
-			$this->fileWriter->write($file, (bool) $input->getOption('force'));
+
+			if (file_exists($file->path)) {
+				throw new RuntimeException(sprintf(
+					'Migration already exists: %s. Edit it directly or create a new migration.',
+					$file->relativePath
+				));
+			}
+
+			$this->fileWriter->write($file);
 			$providerPath = $this->updateProvider($input, $output);
 		} catch (RuntimeException $exception) {
 			$output->writeln('<error>' . $exception->getMessage() . '</error>');
