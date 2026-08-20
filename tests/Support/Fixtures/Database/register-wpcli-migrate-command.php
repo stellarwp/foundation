@@ -13,7 +13,6 @@ use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository;
-use StellarWP\Foundation\Database\Migration\Runner;
 use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Schema;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
@@ -52,7 +51,9 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 	$exampleTable       = $wpdb->prefix . 'foundation_cli_example';
 	$migrationTable     = new MigrationTable($migrationTableName);
 	$lockTable          = new LockTable($lockTableName);
-	$store              = new Store($schema, $migrationTable, $lockTable);
+	$store              = new Store($migrationTable, $lockTable);
+	$repository         = new Repository($database, $migrationTableName);
+	$lock               = new DatabaseLock($database, $lockTableName);
 
 	$migration = new class($exampleTable) implements Migration {
 		public function __construct(
@@ -87,13 +88,11 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 		$container,
 		'foundation',
 		new Migrator(
-			new Runner(
-				new Repository($database, $migrationTableName),
-				$schema,
-				new DatabaseLock($database, $lockTableName),
-				$store
-			),
-			new MigrationCollection([$migration])
+			new MigrationCollection([$migration]),
+			$repository,
+			$schema,
+			$lock,
+			$store
 		)
 	);
 

@@ -9,11 +9,12 @@ use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 
 /**
  * Manages the database tables required by the migration subsystem itself.
+ *
+ * @internal Use Migrator as the supported migration lifecycle entry point.
  */
 final readonly class Store
 {
 	public function __construct(
-		private Schema $schema,
 		private MigrationTable $migrationTable,
 		private LockTable $lockTable
 	) {
@@ -24,8 +25,8 @@ final readonly class Store
 	 *
 	 * @throws DatabaseException When the lock table cannot be reconciled.
 	 */
-	public function prepareLock(): void {
-		$this->schema->createOrUpdate($this->lockTable);
+	public function prepareLock(Schema $schema): void {
+		$schema->createOrUpdate($this->lockTable);
 	}
 
 	/**
@@ -33,8 +34,8 @@ final readonly class Store
 	 *
 	 * @throws DatabaseException When the ledger cannot be reconciled.
 	 */
-	public function prepareLedger(): void {
-		$this->schema->createOrUpdate($this->migrationTable);
+	public function prepareLedger(Schema $schema): void {
+		$schema->createOrUpdate($this->migrationTable);
 	}
 
 	/**
@@ -42,8 +43,8 @@ final readonly class Store
 	 *
 	 * @throws DatabaseException When the ledger cannot be dropped.
 	 */
-	public function drop(): void {
-		$this->schema->drop($this->migrationTable);
+	public function drop(Schema $schema): void {
+		$schema->drop($this->migrationTable);
 	}
 
 	/**
@@ -51,8 +52,8 @@ final readonly class Store
 	 *
 	 * @throws DatabaseException When the ledger cannot be inspected.
 	 */
-	public function exists(): bool {
-		return $this->hasLedger() && $this->schema->hasTable($this->lockTable);
+	public function exists(Schema $schema): bool {
+		return $this->hasLedger($schema) && $schema->hasTable($this->lockTable);
 	}
 
 	/**
@@ -60,7 +61,7 @@ final readonly class Store
 	 *
 	 * @throws DatabaseException When the ledger cannot be inspected.
 	 */
-	public function hasLedger(): bool {
-		return $this->schema->hasTable($this->migrationTable);
+	public function hasLedger(Schema $schema): bool {
+		return $schema->hasTable($this->migrationTable);
 	}
 }

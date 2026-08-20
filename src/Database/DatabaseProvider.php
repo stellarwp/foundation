@@ -15,9 +15,6 @@ use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository as MigrationRecordRepository;
-use StellarWP\Foundation\Database\Migration\Runner;
-use StellarWP\Foundation\Database\Migration\Store;
-use StellarWP\Foundation\Database\Table\Collection;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
@@ -104,16 +101,8 @@ final class DatabaseProvider extends Provider
 			->needs('$table')
 			->give(static fn (C $c): string => $c->get(self::LOCKS_TABLE));
 
-		$this->container->when(Collection::class)
-			->needs('$tables')
-			->give(static fn (C $c): array => [
-				$c->get(MigrationTable::class),
-				$c->get(LockTable::class),
-			]);
-
 		$this->container->singleton(MigrationTable::class);
 		$this->container->singleton(LockTable::class);
-		$this->container->singleton(Collection::class);
 	}
 
 	private function registerMigrations(): void {
@@ -125,23 +114,21 @@ final class DatabaseProvider extends Provider
 			->needs('$table')
 			->give(static fn (C $c): string => $c->get(self::MIGRATIONS_TABLE));
 
-		$this->container->when(Runner::class)
+		$this->container->when(Migrator::class)
 			->needs('$lockName')
 			->give(static fn (C $c): string => $c->get(self::LOCK_NAME));
 
-		$this->container->when(Runner::class)
+		$this->container->when(Migrator::class)
 			->needs('$lockTtl')
 			->give(static fn (C $c): int => $c->get(self::LOCK_TTL));
 
-		$this->container->when(Runner::class)
+		$this->container->when(Migrator::class)
 			->needs(Lock::class)
 			->give(static fn (C $c): DatabaseLock => $c->get(DatabaseLock::class));
 
 		$this->container->singleton(MigrationCollection::class);
 		$this->container->singleton(MigrationRecordRepository::class);
 		$this->container->singleton(Repository::class, static fn (C $c): MigrationRecordRepository => $c->get(MigrationRecordRepository::class));
-		$this->container->singleton(Runner::class);
-		$this->container->singleton(Store::class);
 		$this->container->singleton(Migrator::class);
 	}
 

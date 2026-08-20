@@ -8,12 +8,14 @@ use StellarWP\ContainerContract\ContainerInterface;
 use StellarWP\Foundation\Container\ContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Database\Cli\Migrate;
+use StellarWP\Foundation\Database\Database;
 use StellarWP\Foundation\Database\DatabaseProvider;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Collection;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\NoopMigration;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
 use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
 use StellarWP\Foundation\WPCli\Command;
@@ -85,6 +87,37 @@ final class DatabaseProviderTest extends WPTestCase
 
 		$this->assertSame([$migration->id() => $migration], $container->get(Collection::class)->all());
 		$this->assertSame([$migration], $container->get(Collection::class)->values());
+	}
+
+	public function test_provider_built_migrator_executes_against_wordpress(): void {
+		$suffix          = str_replace('.', '_', uniqid('', true));
+		$migrationsTable = $GLOBALS['wpdb']->prefix . 'foundation_provider_migrations_' . $suffix;
+		$locksTable      = $GLOBALS['wpdb']->prefix . 'foundation_provider_locks_' . $suffix;
+		$migration       = new NoopMigration('2026_08_20_000001_provider_migration');
+		$container       = $this->newContainer([
+			'database' => [
+				'migrations_table' => $migrationsTable,
+				'locks_table'      => $locksTable,
+			],
+		]);
+		$container->mergeArrayVar(DatabaseProvider::MIGRATIONS, [$migration]);
+		$container->register(WPCliProvider::class);
+		$container->register(DatabaseProvider::class);
+
+		$database = $container->get(Database::class);
+
+		try {
+			$migrator = $container->get(Migrator::class);
+			$result   = $migrator->run();
+
+			$this->assertSame([$migration->id()], $result->ran);
+			$this->assertTrue($database->tableExists($migrationsTable));
+			$this->assertTrue($database->tableExists($locksTable));
+			$this->assertTrue($migrator->status()[0]->ran);
+		} finally {
+			$database->execute('DROP TABLE IF EXISTS %i', $migrationsTable);
+			$database->execute('DROP TABLE IF EXISTS %i', $locksTable);
+		}
 	}
 
 	/**

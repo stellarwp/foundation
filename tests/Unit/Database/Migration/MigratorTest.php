@@ -5,12 +5,10 @@ namespace StellarWP\Foundation\Tests\Unit\Database\Migration;
 use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Database\Migration\Collection;
 use StellarWP\Foundation\Database\Migration\Migrator;
-use StellarWP\Foundation\Database\Migration\Runner;
 use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\InMemoryLock;
-use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\InMemoryRepository;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchema;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
@@ -143,20 +141,22 @@ final class MigratorTest extends TestCase
 	 * @return array{Migrator, InMemoryRepository, RecordingSchema}
 	 */
 	private function newMigrator(?InMemoryLock $lock = null): array {
-		$database   = new FakeDatabase();
 		$schema     = new RecordingSchema();
 		$repository = new InMemoryRepository();
 		$lock ??= new InMemoryLock();
 		$migrationTable = new MigrationTable('wp_nexcess_foundation_migrations');
 		$lockTable      = new LockTable('wp_nexcess_foundation_locks');
-		$store          = new Store($schema, $migrationTable, $lockTable);
+		$store          = new Store($migrationTable, $lockTable);
 
 		return [
 			new Migrator(
-				new Runner($repository, $schema, $lock, $store),
 				new Collection([
 					new TestMigration('2026_06_23_000001_create_example'),
-				])
+				]),
+				$repository,
+				$schema,
+				$lock,
+				$store
 			),
 			$repository,
 			$schema,

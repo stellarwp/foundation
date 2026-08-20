@@ -7,13 +7,10 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use StellarWP\Foundation\Database\Cli\Migrate;
 use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
 use StellarWP\Foundation\Database\Migration\Migrator;
-use StellarWP\Foundation\Database\Migration\Runner;
 use StellarWP\Foundation\Database\Migration\Store;
-use StellarWP\Foundation\Database\Schema as DatabaseSchema;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\InMemoryLock;
-use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\InMemoryRepository;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchema;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
@@ -31,16 +28,20 @@ final class MigrateTest extends TestCase
 
 		$this->loadWpCliUtilities();
 
-		$database       = new FakeDatabase();
-		$wpSchema       = new DatabaseSchema($database, static fn (string $sql, bool $execute): array => []);
 		$migrationTable = new MigrationTable('wp_nexcess_foundation_migrations');
-		$store          = new Store($wpSchema, $migrationTable, new LockTable('wp_nexcess_foundation_locks'));
+		$repository     = new InMemoryRepository();
+		$schema         = new RecordingSchema();
+		$lock           = new InMemoryLock();
+		$store          = new Store($migrationTable, new LockTable('wp_nexcess_foundation_locks'));
 		$command        = new Migrate(
 			$this->container,
 			'foundation',
 			new Migrator(
-				new Runner(new InMemoryRepository(), new RecordingSchema(), new InMemoryLock(), $store),
-				new MigrationCollection()
+				new MigrationCollection(),
+				$repository,
+				$schema,
+				$lock,
+				$store
 			)
 		);
 
@@ -234,16 +235,19 @@ final class MigrateTest extends TestCase
 		$wpSchema       = new RecordingSchema();
 		$repository     = new InMemoryRepository();
 		$migrationTable = new MigrationTable('wp_nexcess_foundation_migrations');
-		$store          = new Store($wpSchema, $migrationTable, new LockTable('wp_nexcess_foundation_locks'));
-		$runner         = new Runner($repository, $wpSchema, new InMemoryLock(), $store);
+		$lock           = new InMemoryLock();
+		$store          = new Store($migrationTable, new LockTable('wp_nexcess_foundation_locks'));
 		$command        = new Migrate(
 			$this->container,
 			'foundation',
 			new Migrator(
-				$runner,
 				new MigrationCollection([
 					new TestMigration('2026_06_23_000001_create_example'),
-				])
+				]),
+				$repository,
+				$wpSchema,
+				$lock,
+				$store
 			)
 		);
 

@@ -15,8 +15,8 @@ use StellarWP\Foundation\Database\Database;
 use StellarWP\Foundation\Database\DatabaseProvider;
 use StellarWP\Foundation\Database\Exceptions\QueryException;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
+use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository;
-use StellarWP\Foundation\Database\Migration\Runner;
 use StellarWP\Foundation\Database\Schema;
 use StellarWP\Foundation\Database\Table\Collection as TableCollection;
 use StellarWP\Foundation\Database\Table\TableDefinition;
@@ -509,11 +509,10 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertInstanceOf(Database::class, $container->get(Database::class));
 		$this->assertInstanceOf(Database::class, $container->get(DatabaseContract::class));
 		$this->assertInstanceOf(Schema::class, $container->get(Schema::class));
-		$this->assertInstanceOf(TableCollection::class, $container->get(TableCollection::class));
 		$this->assertInstanceOf(MigrationTable::class, $container->get(MigrationTable::class));
 		$this->assertInstanceOf(LockTable::class, $container->get(LockTable::class));
 		$this->assertInstanceOf(Repository::class, $container->get(MigrationRecordRepositoryContract::class));
-		$this->assertInstanceOf(Runner::class, $container->get(Runner::class));
+		$this->assertInstanceOf(Migrator::class, $container->get(Migrator::class));
 		$this->assertFalse($container->has(Lock::class));
 	}
 

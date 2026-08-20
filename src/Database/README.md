@@ -11,7 +11,7 @@ composer require stellarwp/foundation-database
 
 ## Overview
 
-Foundation Database is a WordPress-backed database package. It provides a configured migrator, migration runner, migration and table collections, `wpdb`/`dbDelta` schema services, a database-backed lock, and a WP-CLI migration command.
+Foundation Database is a WordPress-backed database package. It provides a configured migrator, migration and table collections, `wpdb`/`dbDelta` schema services, a database-backed lock, and a WP-CLI migration command.
 
 This package intentionally targets WordPress runtime APIs instead of acting as a generic database abstraction. Migration classes depend on a small schema contract so application packages can define migration behavior without calling `wpdb` directly.
 
@@ -35,14 +35,11 @@ The provider registers:
 - `StellarWP\Foundation\Database\Database`
 - `StellarWP\Foundation\Database\Contracts\Database`
 - `StellarWP\Foundation\Database\Schema`
-- `StellarWP\Foundation\Database\Table\Collection`
 - `StellarWP\Foundation\Database\Table\Tables\MigrationTable`
 - `StellarWP\Foundation\Database\Table\Tables\LockTable`
 - `StellarWP\Foundation\Database\Contracts\Repository` for the migration ledger
-- `StellarWP\Foundation\Database\Migration\Store`
-- `StellarWP\Foundation\Database\Migration\Runner`
 - `StellarWP\Foundation\Database\Migration\Migrator`
-- `StellarWP\Foundation\Database\Lock\DatabaseLock` for the migration runner
+- `StellarWP\Foundation\Database\Lock\DatabaseLock` for the migrator
 
 By default, WordPress tables are named:
 
@@ -81,10 +78,10 @@ return [
 ];
 ```
 
-`database.lock_ttl` must cover the complete migration operation. The migration
-runner reports unconfirmed ownership if an otherwise successful operation
+`database.lock_ttl` must cover the complete migration operation. The migrator
+reports unconfirmed ownership if an otherwise successful operation
 cannot release its ownership token. Increase the TTL for long-running
-migrations; the runner does not refresh the lease while a migration is
+migrations; the migrator does not refresh the lease while a migration is
 executing.
 
 ## Using Database Locks
