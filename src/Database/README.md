@@ -256,6 +256,13 @@ $query->bindings();
 $query->toPreparedSql();
 ```
 
+NULL comparisons use SQL NULL semantics and do not add query bindings:
+
+```php
+$database->table('reports')->where('deleted_at', '=', null);  // IS NULL
+$database->table('reports')->where('deleted_at', '!=', null); // IS NOT NULL
+```
+
 `Database::insert()` returns the number of affected rows, which works for both
 auto-increment and application-assigned identifiers such as ULIDs. Use
 `Database::insertGetId()` only when the table has an auto-increment key and the

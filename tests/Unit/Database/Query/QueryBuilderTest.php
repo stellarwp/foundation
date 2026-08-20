@@ -37,6 +37,28 @@ final class QueryBuilderTest extends TestCase
 		(new FakeDatabase())->table('reports')->where('status', 'BETWEEN', ['a', 'z']);
 	}
 
+	public function test_it_builds_null_comparisons_without_bindings(): void {
+		$query = (new FakeDatabase())
+			->table('reports')
+			->where('deleted_at', '=', null)
+			->where('archived_at', '!=', null)
+			->where('expired_at', '<>', null)
+			->where('status', '=', 'published');
+
+		$this->assertSame(
+			'SELECT * FROM `wp_reports` WHERE `deleted_at` IS NULL AND `archived_at` IS NOT NULL AND `expired_at` IS NOT NULL AND `status` = %s',
+			$query->toSql()
+		);
+		$this->assertSame(['published'], $query->bindings());
+	}
+
+	public function test_it_rejects_invalid_null_comparisons(): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('NULL comparisons only support =, !=, and <> operators.');
+
+		(new FakeDatabase())->table('reports')->where('updated_at', '>', null);
+	}
+
 	public function test_it_rejects_invalid_order_directions(): void {
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('Order direction must be ASC or DESC.');

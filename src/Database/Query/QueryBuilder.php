@@ -49,8 +49,29 @@ final class QueryBuilder
 		return $this;
 	}
 
+	/**
+	 * Compare a column to a value. NULL values use IS NULL or IS NOT NULL semantics.
+	 *
+	 * @throws InvalidArgumentException When the operator is unsupported or cannot compare against NULL.
+	 */
 	public function where(string $column, string $operator, mixed $value): self {
-		$this->where[]    = sprintf('%s %s %%s', $this->database->quoteIdentifier($column), $this->operator($operator));
+		$operator = $this->operator($operator);
+
+		if ($value === null) {
+			if (! in_array($operator, ['=', '!=', '<>'], true)) {
+				throw new InvalidArgumentException('NULL comparisons only support =, !=, and <> operators.');
+			}
+
+			$this->where[] = sprintf(
+				'%s IS%s NULL',
+				$this->database->quoteIdentifier($column),
+				$operator === '=' ? '' : ' NOT'
+			);
+
+			return $this;
+		}
+
+		$this->where[]    = sprintf('%s %s %%s', $this->database->quoteIdentifier($column), $operator);
 		$this->bindings[] = $value;
 
 		return $this;
