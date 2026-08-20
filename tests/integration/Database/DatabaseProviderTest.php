@@ -32,7 +32,7 @@ final class DatabaseProviderTest extends WPTestCase
 		$commands = $this->container->get(WPCliProvider::COMMANDS);
 
 		$this->assertSame([], $this->container->get(DatabaseProvider::MIGRATIONS));
-		$this->assertSame('foundation-database-migrations', $this->container->get(DatabaseProvider::LOCK_NAME));
+		$this->assertSame('nx-foundation-database-migrations', $this->container->get(DatabaseProvider::LOCK_NAME));
 		$this->assertSame(300, $this->container->get(DatabaseProvider::LOCK_TTL));
 		$this->assertContainsOnlyInstancesOf(Command::class, $commands);
 		$this->assertTrue($this->containsMigrateCommand((array) $commands));
@@ -43,13 +43,16 @@ final class DatabaseProviderTest extends WPTestCase
 
 	public function test_it_registers_configured_database_configuration(): void {
 		$container = $this->newContainer([
-			'database' => [
+			'foundation' => [
+				'prefix' => 'your-plugin',
+			],
+			'database'   => [
 				'migrations_table' => 'custom_migrations',
 				'locks_table'      => 'custom_locks',
 				'lock_name'        => 'custom-migrations',
 				'lock_ttl'         => '120',
 			],
-			'wpcli'    => [
+			'wpcli'      => [
 				'command_prefix' => 'custom',
 			],
 		]);
@@ -64,6 +67,40 @@ final class DatabaseProviderTest extends WPTestCase
 		$this->assertSame('custom-migrations', $container->get(DatabaseProvider::LOCK_NAME));
 		$this->assertSame(120, $container->get(DatabaseProvider::LOCK_TTL));
 		$this->assertSame('custom', $container->get(WPCliProvider::COMMAND_PREFIX));
+	}
+
+	public function test_it_rejects_an_invalid_foundation_prefix_when_database_resources_are_overridden(): void {
+		$container = $this->newContainer([
+			'foundation' => [
+				'prefix' => 'Invalid Prefix',
+			],
+			'database'   => [
+				'migrations_table' => 'custom_migrations',
+				'locks_table'      => 'custom_locks',
+				'lock_name'        => 'custom-migrations',
+			],
+		]);
+
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('lowercase kebab-case');
+
+		$container->register(DatabaseProvider::class);
+	}
+
+	public function test_it_scopes_default_resources_with_the_foundation_prefix(): void {
+		$container = $this->newContainer([
+			'foundation' => [
+				'prefix' => 'your-plugin',
+			],
+		]);
+
+		$container->register(WPCliProvider::class);
+		$container->register(DatabaseProvider::class);
+
+		$this->assertSame($GLOBALS['wpdb']->prefix . 'your_plugin_foundation_migrations', $container->get(DatabaseProvider::MIGRATIONS_TABLE));
+		$this->assertSame($GLOBALS['wpdb']->prefix . 'your_plugin_foundation_locks', $container->get(DatabaseProvider::LOCKS_TABLE));
+		$this->assertSame('your-plugin-foundation-database-migrations', $container->get(DatabaseProvider::LOCK_NAME));
+		$this->assertSame('your-plugin', $container->get(WPCliProvider::COMMAND_PREFIX));
 	}
 
 	public function test_it_applies_configured_lock_policy_to_the_migration_store(): void {

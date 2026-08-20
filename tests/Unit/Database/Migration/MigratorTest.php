@@ -84,16 +84,16 @@ final class MigratorTest extends TestCase
 		$migrator->dropStore();
 
 		$this->assertFalse($migrator->isInitialized());
-		$this->assertContains('drop:wp_nexcess_foundation_migrations', $schema->statements);
-		$this->assertNotContains('drop:wp_nexcess_foundation_locks', $schema->statements);
-		$this->assertTrue($schema->tables['wp_nexcess_foundation_locks']);
+		$this->assertContains('drop:wp_nx_foundation_migrations', $schema->statements);
+		$this->assertNotContains('drop:wp_nx_foundation_locks', $schema->statements);
+		$this->assertTrue($schema->tables['wp_nx_foundation_locks']);
 	}
 
 	public function test_it_does_not_drop_the_store_while_another_migration_owns_the_lock(): void {
 		$lock                  = new InMemoryLock();
 		[$migrator, , $schema] = $this->newMigrator($lock);
 
-		$token = $lock->acquire('foundation-database-migrations', 300);
+		$token = $lock->acquire('nx-foundation-database-migrations', 300);
 
 		$this->assertNotNull($token);
 		$this->expectException(MigrationLockFailed::class);
@@ -101,14 +101,14 @@ final class MigratorTest extends TestCase
 		try {
 			$migrator->dropStore();
 		} finally {
-			$this->assertTrue($schema->tables['wp_nexcess_foundation_migrations']);
+			$this->assertTrue($schema->tables['wp_nx_foundation_migrations']);
 		}
 	}
 
 	public function test_it_does_not_initialize_the_ledger_while_another_migration_owns_the_lock(): void {
 		$lock                  = new InMemoryLock();
 		[$migrator, , $schema] = $this->newMigrator($lock, false);
-		$token                 = $lock->acquire('foundation-database-migrations', 300);
+		$token                 = $lock->acquire('nx-foundation-database-migrations', 300);
 
 		$this->assertNotNull($token);
 		$this->expectException(MigrationLockFailed::class);
@@ -116,8 +116,8 @@ final class MigratorTest extends TestCase
 		try {
 			$migrator->initialize();
 		} finally {
-			$this->assertTrue($schema->tables['wp_nexcess_foundation_locks']);
-			$this->assertArrayNotHasKey('wp_nexcess_foundation_migrations', $schema->tables);
+			$this->assertTrue($schema->tables['wp_nx_foundation_locks']);
+			$this->assertArrayNotHasKey('wp_nx_foundation_migrations', $schema->tables);
 		}
 	}
 
@@ -125,7 +125,7 @@ final class MigratorTest extends TestCase
 		[$migrator, , $schema] = $this->newMigrator();
 
 		$migrator->run();
-		unset($schema->tables['wp_nexcess_foundation_locks']);
+		unset($schema->tables['wp_nx_foundation_locks']);
 
 		$this->assertFalse($migrator->isInitialized());
 		$this->assertTrue($migrator->status()[0]->ran);
@@ -150,8 +150,8 @@ final class MigratorTest extends TestCase
 		$schema     = new RecordingSchema();
 		$repository = new InMemoryRepository();
 		$lock ??= new InMemoryLock();
-		$migrationTable = new MigrationTable('wp_nexcess_foundation_migrations');
-		$lockTable      = new LockTable('wp_nexcess_foundation_locks');
+		$migrationTable = new MigrationTable('wp_nx_foundation_migrations');
+		$lockTable      = new LockTable('wp_nx_foundation_locks');
 		$store          = new Store($schema, $lock, $migrationTable, $lockTable);
 
 		$migrator = new Migrator(

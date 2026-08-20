@@ -69,8 +69,11 @@ it is not a substitute for rollback because it does not call migration `down()`
 methods. Use only one operation flag at a time. `--yes` only skips confirmation
 for destructive operations.
 
-These examples use the default `nx` command prefix. Change
-`wpcli.command_prefix` in `config.php` when the application uses another prefix.
+These examples use the default `nx` command prefix. A distributable plugin must
+set `foundation.prefix` to scope all supported Foundation resources with one
+stable value. For example, `your-plugin` changes this command to
+`wp your-plugin migrate`. Set `wpcli.command_prefix` when only the WP-CLI prefix
+needs a different value.
 
 ## Database Configuration
 
@@ -97,10 +100,23 @@ The provider registers:
 
 By default, WordPress tables are named:
 
-- `<wp_prefix>nexcess_foundation_migrations`
-- `<wp_prefix>nexcess_foundation_locks`
+- `<wp_prefix>nx_foundation_migrations`
+- `<wp_prefix>nx_foundation_locks`
+- migration lock name `nx-foundation-database-migrations`
 
-Configure these through the Foundation config keys `database.migrations_table` and `database.locks_table` when an application needs different table names. Configured table names are treated as exact full table names and are not passed through `Database::tableName()`, so include the WordPress prefix yourself when overriding them.
+When `foundation.prefix` is `your-plugin`, the defaults become:
+
+- `<wp_prefix>your_plugin_foundation_migrations`
+- `<wp_prefix>your_plugin_foundation_locks`
+- migration lock name `your-plugin-foundation-database-migrations`
+
+Because the prefix participates in database table names, the final table name,
+including the WordPress table prefix, must fit MySQL's 64-character identifier limit.
+
+The configured Foundation prefix must be a stable lowercase kebab-case value.
+Changing it later points the application at a different migration ledger.
+
+Configure these through the Foundation config keys `database.migrations_table` and `database.locks_table` when an application needs different table names. Configured table names are treated as exact full table names: `Database::tableName()` validates them but does not add the WordPress prefix again, so include that prefix yourself when overriding them.
 
 Example `config.php` values:
 
@@ -108,18 +124,26 @@ Example `config.php` values:
 <?php declare(strict_types=1);
 
 return [
+	'foundation' => [
+		// For example, "your-plugin" in a distributable plugin.
+		'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? '',
+	],
 	'database' => [
 		// Leave empty or omit these keys to use the default WordPress-prefixed names.
 		'migrations_table' => $_ENV['FOUNDATION_DATABASE_MIGRATIONS_TABLE'] ?? '',
 		'locks_table'      => $_ENV['FOUNDATION_DATABASE_LOCKS_TABLE'] ?? '',
-		'lock_name'        => $_ENV['FOUNDATION_DATABASE_LOCK_NAME'] ?? 'foundation-database-migrations',
+		'lock_name'        => $_ENV['FOUNDATION_DATABASE_LOCK_NAME'] ?? null,
 		'lock_ttl'         => (int) ($_ENV['FOUNDATION_DATABASE_LOCK_TTL'] ?? 300),
 	],
 	'wpcli'    => [
-		'command_prefix' => $_ENV['FOUNDATION_WPCLI_COMMAND_PREFIX'] ?? 'nx',
+		// Optional package-specific override for foundation.prefix.
+		'command_prefix' => $_ENV['FOUNDATION_WPCLI_COMMAND_PREFIX'] ?? null,
 	],
 ];
 ```
+
+Replace `your-plugin` with the plugin's own stable prefix. Leaving
+`foundation.prefix` unset uses the default `nx` prefix.
 
 If overriding table names, provide the full table name:
 

@@ -13,6 +13,9 @@ interface Database
 {
 	public function table(Table|string $table, ?string $alias = null): QueryBuilder;
 
+	/**
+	 * @throws DatabaseException When the resulting WordPress table name exceeds MySQL's identifier limit.
+	 */
 	public function tableName(Table|string $table): string;
 
 	/**
@@ -62,7 +65,8 @@ interface Database
 	/**
 	 * @param array<string, mixed> $data
 	 *
-	 * @throws QueryException When the insert fails.
+	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws QueryException    When the insert fails.
 	 *
 	 * @return int Number of inserted rows.
 	 */
@@ -73,7 +77,8 @@ interface Database
 	 *
 	 * @param array<string, mixed> $data
 	 *
-	 * @throws QueryException When the insert fails.
+	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws QueryException    When the insert fails.
 	 */
 	public function insertGetId(Table|string $table, array $data): int;
 
@@ -81,14 +86,16 @@ interface Database
 	 * @param array<string, mixed> $data
 	 * @param array<string, mixed> $where
 	 *
-	 * @throws QueryException When the update fails.
+	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws QueryException    When the update fails.
 	 */
 	public function update(Table|string $table, array $data, array $where): int;
 
 	/**
 	 * @param array<string, mixed> $where
 	 *
-	 * @throws QueryException When the delete fails.
+	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws QueryException    When the delete fails.
 	 */
 	public function delete(Table|string $table, array $where): int;
 

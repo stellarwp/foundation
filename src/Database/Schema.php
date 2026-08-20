@@ -42,14 +42,23 @@ final readonly class Schema implements SchemaContract
 		$this->database->execute($sql);
 	}
 
+	/**
+	 * @throws DatabaseException When table inspection fails.
+	 */
 	public function hasTable(Table|string $table): bool {
 		return $this->database->tableExists($table);
 	}
 
+	/**
+	 * @throws DatabaseException When index inspection fails.
+	 */
 	public function hasIndex(Table|string $table, string $index): bool {
 		return $this->database->indexExists($table, $index);
 	}
 
+	/**
+	 * @throws DatabaseException When the table name is invalid or the statement cannot be executed.
+	 */
 	public function dropIndex(Table|string $table, string $index): void {
 		$this->database->execute(sprintf(
 			'ALTER TABLE %s DROP INDEX %s',
@@ -58,6 +67,9 @@ final readonly class Schema implements SchemaContract
 		));
 	}
 
+	/**
+	 * @throws DatabaseException When the table name is invalid or the statement cannot be executed.
+	 */
 	public function drop(Table|string $table): void {
 		$this->database->execute(sprintf(
 			'DROP TABLE IF EXISTS %s',
@@ -82,7 +94,7 @@ final readonly class Schema implements SchemaContract
 
 		return sprintf(
 			"CREATE TABLE %s (\n%s\n) %s;",
-			$this->database->quoteIdentifier($table->name()),
+			$this->database->quoteIdentifier($this->database->tableName($table)),
 			implode(",\n", $parts),
 			$this->database->charsetCollate()
 		);
@@ -98,7 +110,7 @@ final readonly class Schema implements SchemaContract
 
 			$this->database->execute(sprintf(
 				'ALTER TABLE %s ALTER COLUMN %s SET DEFAULT %s',
-				$this->database->quoteIdentifier($table->name()),
+				$this->database->quoteIdentifier($this->database->tableName($table)),
 				$this->database->quoteIdentifier($column->name),
 				$default
 			));

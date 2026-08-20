@@ -28,11 +28,11 @@ final class MigrateTest extends TestCase
 
 		$this->loadWpCliUtilities();
 
-		$migrationTable = new MigrationTable('wp_nexcess_foundation_migrations');
+		$migrationTable = new MigrationTable('wp_nx_foundation_migrations');
 		$repository     = new InMemoryRepository();
 		$schema         = new RecordingSchema();
 		$lock           = new InMemoryLock();
-		$store          = new Store($schema, $lock, $migrationTable, new LockTable('wp_nexcess_foundation_locks'));
+		$store          = new Store($schema, $lock, $migrationTable, new LockTable('wp_nx_foundation_locks'));
 		$command        = new Migrate(
 			$this->container,
 			'foundation',
@@ -103,8 +103,8 @@ final class MigrateTest extends TestCase
 
 		$this->assertSame([], $repository->all());
 		$this->assertSame([
-			'createOrUpdate:wp_nexcess_foundation_locks',
-			'createOrUpdate:wp_nexcess_foundation_migrations',
+			'createOrUpdate:wp_nx_foundation_locks',
+			'createOrUpdate:wp_nx_foundation_migrations',
 		], $schema->statements);
 	}
 
@@ -161,9 +161,9 @@ final class MigrateTest extends TestCase
 			'yes'        => true,
 		]));
 
-		$this->assertSame(['wp_nexcess_foundation_locks' => true], $schema->tables);
-		$this->assertContains('drop:wp_nexcess_foundation_migrations', $schema->statements);
-		$this->assertNotContains('drop:wp_nexcess_foundation_locks', $schema->statements);
+		$this->assertSame(['wp_nx_foundation_locks' => true], $schema->tables);
+		$this->assertContains('drop:wp_nx_foundation_migrations', $schema->statements);
+		$this->assertNotContains('drop:wp_nx_foundation_locks', $schema->statements);
 	}
 
 	public function test_it_shows_a_warning_when_status_tables_do_not_exist(): void {
@@ -204,9 +204,9 @@ final class MigrateTest extends TestCase
 
 		$wpSchema       = new RecordingSchema();
 		$repository     = new InMemoryRepository();
-		$migrationTable = new MigrationTable('wp_nexcess_foundation_migrations');
+		$migrationTable = new MigrationTable('wp_nx_foundation_migrations');
 		$lock           = new InMemoryLock();
-		$store          = new Store($wpSchema, $lock, $migrationTable, new LockTable('wp_nexcess_foundation_locks'));
+		$store          = new Store($wpSchema, $lock, $migrationTable, new LockTable('wp_nx_foundation_locks'));
 		$command        = new Migrate(
 			$this->container,
 			'foundation',

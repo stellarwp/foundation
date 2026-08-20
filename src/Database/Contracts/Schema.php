@@ -30,12 +30,24 @@ interface Schema
 	 */
 	public function execute(string $sql): void;
 
+	/**
+	 * @throws DatabaseException When table inspection fails.
+	 */
 	public function hasTable(Table|string $table): bool;
 
+	/**
+	 * @throws DatabaseException When index inspection fails.
+	 */
 	public function hasIndex(Table|string $table, string $index): bool;
 
+	/**
+	 * @throws DatabaseException When the table name is invalid or the statement cannot be executed.
+	 */
 	public function dropIndex(Table|string $table, string $index): void;
 
+	/**
+	 * @throws DatabaseException When the table name is invalid or the statement cannot be executed.
+	 */
 	public function drop(Table|string $table): void;
 
 	/**

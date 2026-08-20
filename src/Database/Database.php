@@ -24,16 +24,23 @@ final readonly class Database implements DatabaseContract
 		return new QueryBuilder($this, $table, $alias);
 	}
 
+	/**
+	 * @throws DatabaseException When the resulting WordPress table name exceeds MySQL's identifier limit.
+	 */
 	public function tableName(Table|string $table): string {
 		if ($table instanceof Table) {
-			return $table->name();
+			$tableName = $table->name();
+		} else {
+			$tableName = str_starts_with($table, $this->wpdb->prefix) ? $table : $this->wpdb->prefix . $table;
 		}
 
-		if (str_starts_with($table, $this->wpdb->prefix)) {
-			return $table;
+		$length = preg_match_all('/./us', $tableName);
+
+		if (($length === false ? strlen($tableName) : $length) > 64) {
+			throw new DatabaseException(sprintf('Database table name "%s" exceeds MySQL\'s 64-character identifier limit.', $tableName));
 		}
 
-		return $this->wpdb->prefix . $table;
+		return $tableName;
 	}
 
 	public function tableExists(Table|string $table): bool {
@@ -142,6 +149,9 @@ final readonly class Database implements DatabaseContract
 
 	/**
 	 * @param array<string, mixed> $data
+	 *
+	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws QueryException    When the insert fails.
 	 */
 	public function insert(Table|string $table, array $data): int {
 		$result = $this->wpdb->insert($this->tableName($table), $data);
@@ -155,6 +165,9 @@ final readonly class Database implements DatabaseContract
 
 	/**
 	 * @param array<string, mixed> $data
+	 *
+	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws QueryException    When the insert fails.
 	 */
 	public function insertGetId(Table|string $table, array $data): int {
 		$this->insert($table, $data);
@@ -165,6 +178,9 @@ final readonly class Database implements DatabaseContract
 	/**
 	 * @param array<string, mixed> $data
 	 * @param array<string, mixed> $where
+	 *
+	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws QueryException    When the update fails.
 	 */
 	public function update(Table|string $table, array $data, array $where): int {
 		$result = $this->wpdb->update($this->tableName($table), $data, $where);
@@ -178,6 +194,9 @@ final readonly class Database implements DatabaseContract
 
 	/**
 	 * @param array<string, mixed> $where
+	 *
+	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws QueryException    When the delete fails.
 	 */
 	public function delete(Table|string $table, array $where): int {
 		$result = $this->wpdb->delete($this->tableName($table), $where);

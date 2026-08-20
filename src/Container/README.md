@@ -95,8 +95,12 @@ A sample config.php for a project. Note: we fall back to sane defaults if the en
 <?php declare(strict_types=1);
 
 return [
-	'some_key'    => $_ENV['SOME_KEY'] ?? '',
-	'log'             => [
+	'foundation' => [
+		// For example, "your-plugin" in a distributable plugin.
+		'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? '',
+	],
+	'some_key'  => $_ENV['SOME_KEY'] ?? '',
+	'log'       => [
 		'level'    => $_ENV['LOG_LEVEL'] ?? 'debug',
 		'channel'  => $_ENV['LOG_CHANNEL'] ?? 'null',
 		'channels' => [
@@ -110,6 +114,19 @@ return [
 	],
 ];
 ```
+
+`foundation.prefix` is optional and defaults to `nx`. Set it to a stable, unique
+lowercase kebab-case value when Foundation is bundled into a distributable
+plugin. Foundation Database and Foundation WP-CLI use it to scope database
+tables, lock names, and WP-CLI commands. Package-specific configuration
+continues to override values derived from this prefix. The shared prefix must
+still be valid when package-specific overrides are configured. Replace
+`your-plugin` with the plugin's own stable prefix.
+
+> [!IMPORTANT]
+> The `nx` default provides a zero-configuration starting point. A distributable
+> plugin must set its own stable, unique prefix to avoid sharing tables, locks,
+> or WP-CLI command names with another Foundation consumer.
 
 Inside a Provider, we can then access deep variables with dot notation, e.g.
 
@@ -131,4 +148,3 @@ $_ENV['SOME_KEY'] = 'abcd-1234';
 $_ENV['LOG_LEVEL'] = 'info';
 $_ENV['LOG_CHANNEL'] = 'errorlog';
 ```
-

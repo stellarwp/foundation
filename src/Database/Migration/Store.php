@@ -30,7 +30,7 @@ final readonly class Store
 		private Lock $lock,
 		private MigrationTable $migrationTable,
 		private LockTable $lockTable,
-		private string $lockName = 'foundation-database-migrations',
+		private string $lockName = 'nx-foundation-database-migrations',
 		private int $lockTtl = 300
 	) {
 		if (trim($this->lockName) === '') {

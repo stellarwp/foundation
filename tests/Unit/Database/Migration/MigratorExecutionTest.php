@@ -44,8 +44,8 @@ final class MigratorExecutionTest extends TestCase
 		(new Store(
 			$this->schema,
 			$this->lock,
-			new MigrationTable('wp_nexcess_foundation_migrations'),
-			new LockTable('wp_nexcess_foundation_locks')
+			new MigrationTable('wp_nx_foundation_migrations'),
+			new LockTable('wp_nx_foundation_locks')
 		))->initialize();
 
 		$this->schema->statements = [];
@@ -58,8 +58,8 @@ final class MigratorExecutionTest extends TestCase
 		new Store(
 			$this->schema,
 			$this->lock,
-			new MigrationTable('wp_nexcess_foundation_migrations'),
-			new LockTable('wp_nexcess_foundation_locks'),
+			new MigrationTable('wp_nx_foundation_migrations'),
+			new LockTable('wp_nx_foundation_locks'),
 			lockName: '   '
 		);
 	}
@@ -71,8 +71,8 @@ final class MigratorExecutionTest extends TestCase
 		new Store(
 			$this->schema,
 			$this->lock,
-			new MigrationTable('wp_nexcess_foundation_migrations'),
-			new LockTable('wp_nexcess_foundation_locks'),
+			new MigrationTable('wp_nx_foundation_migrations'),
+			new LockTable('wp_nx_foundation_locks'),
 			lockTtl: 0
 		);
 	}
@@ -277,7 +277,7 @@ final class MigratorExecutionTest extends TestCase
 	}
 
 	public function test_it_fails_when_the_migration_lock_is_already_owned(): void {
-		$this->lock->acquire('foundation-database-migrations', 300);
+		$this->lock->acquire('nx-foundation-database-migrations', 300);
 
 		$this->expectException(MigrationLockFailed::class);
 		$this->expectExceptionMessage('Could not acquire migration lock');
@@ -320,8 +320,8 @@ final class MigratorExecutionTest extends TestCase
 		$store = new Store(
 			$storeSchema,
 			$this->lock,
-			new MigrationTable('wp_nexcess_foundation_migrations'),
-			new LockTable('wp_nexcess_foundation_locks')
+			new MigrationTable('wp_nx_foundation_migrations'),
+			new LockTable('wp_nx_foundation_locks')
 		);
 
 		$this->expectException(DatabaseException::class);
@@ -329,7 +329,7 @@ final class MigratorExecutionTest extends TestCase
 		try {
 			$store->initialize();
 		} finally {
-			$this->assertNotNull($this->lock->acquire('foundation-database-migrations', 300));
+			$this->assertNotNull($this->lock->acquire('nx-foundation-database-migrations', 300));
 		}
 	}
 
@@ -338,7 +338,7 @@ final class MigratorExecutionTest extends TestCase
 		$lock  = $this->createMock(Lock::class);
 		$lock->expects($this->once())
 			->method('acquire')
-			->with('foundation-database-migrations', 300)
+			->with('nx-foundation-database-migrations', 300)
 			->willReturn($token);
 		$lock->expects($this->once())
 			->method('release')
@@ -460,7 +460,7 @@ final class MigratorExecutionTest extends TestCase
 	}
 
 	private function lockToken(): LockToken {
-		$token = $this->lock->acquire('foundation-database-migrations', 300);
+		$token = $this->lock->acquire('nx-foundation-database-migrations', 300);
 
 		$this->assertNotNull($token);
 
@@ -475,7 +475,7 @@ final class MigratorExecutionTest extends TestCase
 		Collection $migrations,
 		?Lock $lock = null,
 		?Schema $schema = null,
-		string $lockName = 'foundation-database-migrations',
+		string $lockName = 'nx-foundation-database-migrations',
 		int $lockTtl = 300
 	): Migrator {
 		$schema ??= $this->schema;
@@ -483,8 +483,8 @@ final class MigratorExecutionTest extends TestCase
 		$store = new Store(
 			$schema,
 			$lock,
-			new MigrationTable('wp_nexcess_foundation_migrations'),
-			new LockTable('wp_nexcess_foundation_locks'),
+			new MigrationTable('wp_nx_foundation_migrations'),
+			new LockTable('wp_nx_foundation_locks'),
 			$lockName,
 			$lockTtl
 		);

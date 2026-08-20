@@ -5,6 +5,7 @@ namespace StellarWP\Foundation\Database\Query;
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 
 /**
  * Builds small, inspectable SELECT queries for WordPress database tables.
@@ -82,10 +83,16 @@ final class QueryBuilder
 		return $this;
 	}
 
+	/**
+	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 */
 	public function query(): Query {
 		return new Query($this->database, $this->toSql(), $this->bindings());
 	}
 
+	/**
+	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 */
 	public function toSql(): string {
 		$sql = sprintf(
 			'SELECT %s FROM %s%s',
@@ -130,11 +137,16 @@ final class QueryBuilder
 		return $bindings;
 	}
 
+	/**
+	 * @throws DatabaseException When table-name resolution or query preparation fails.
+	 */
 	public function toPreparedSql(): string {
 		return $this->database->prepare($this->toSql(), ...$this->bindings());
 	}
 
 	/**
+	 * @throws DatabaseException When table-name resolution or query execution fails.
+	 *
 	 * @return list<array<string, mixed>>
 	 */
 	public function get(): array {
@@ -142,6 +154,8 @@ final class QueryBuilder
 	}
 
 	/**
+	 * @throws DatabaseException When table-name resolution or query execution fails.
+	 *
 	 * @return array<string, mixed>|null
 	 */
 	public function first(): ?array {
@@ -151,6 +165,9 @@ final class QueryBuilder
 		return $query->queryWithLimitBindings()->first();
 	}
 
+	/**
+	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 */
 	private function queryWithLimitBindings(): Query {
 		return new Query($this->database, $this->toSql(), $this->bindings());
 	}

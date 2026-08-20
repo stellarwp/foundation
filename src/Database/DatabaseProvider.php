@@ -2,8 +2,10 @@
 
 namespace StellarWP\Foundation\Database;
 
+use InvalidArgumentException;
 use lucatume\DI52\Container as C;
 use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Traits\ResolvesFoundationPrefix;
 use StellarWP\Foundation\Database\Cli\Migrate;
 use StellarWP\Foundation\Database\Contracts\Database as DatabaseContract;
 use StellarWP\Foundation\Database\Contracts\Repository;
@@ -26,12 +28,17 @@ use StellarWP\Foundation\WPCli\WPCliProvider;
  */
 final class DatabaseProvider extends Provider
 {
+	use ResolvesFoundationPrefix;
+
 	public const string MIGRATIONS       = 'foundation.database.migrations';
 	public const string MIGRATIONS_TABLE = 'foundation.database.migrations_table';
 	public const string LOCKS_TABLE      = 'foundation.database.locks_table';
 	public const string LOCK_NAME        = 'foundation.database.lock_name';
 	public const string LOCK_TTL         = 'foundation.database.lock_ttl';
 
+	/**
+	 * @throws InvalidArgumentException When the configured Foundation prefix is invalid.
+	 */
 	public function register(): void {
 		$this->registerConfiguration();
 		$this->registerDatabase();
@@ -42,10 +49,23 @@ final class DatabaseProvider extends Provider
 	}
 
 	private function registerConfiguration(): void {
+		$foundationPrefix = $this->foundationPrefix();
+		$databasePrefix   = str_replace('-', '_', $foundationPrefix);
+		$migrationsTable  = $this->tableName(
+			$this->config->get('database.migrations_table'),
+			$databasePrefix . '_foundation_migrations'
+		);
+		$locksTable = $this->tableName(
+			$this->config->get('database.locks_table'),
+			$databasePrefix . '_foundation_locks'
+		);
+		$lockName = $this->config->get('database.lock_name')
+			?? $foundationPrefix . '-foundation-database-migrations';
+
 		$this->container->mergeArrayVar(self::MIGRATIONS, []);
-		$this->container->singleton(self::MIGRATIONS_TABLE, $this->tableName('migrations_table', 'nexcess_foundation_migrations'));
-		$this->container->singleton(self::LOCKS_TABLE, $this->tableName('locks_table', 'nexcess_foundation_locks'));
-		$this->container->singleton(self::LOCK_NAME, $this->config->get('database.lock_name', 'foundation-database-migrations'));
+		$this->container->singleton(self::MIGRATIONS_TABLE, $migrationsTable);
+		$this->container->singleton(self::LOCKS_TABLE, $locksTable);
+		$this->container->singleton(self::LOCK_NAME, $lockName);
 		$this->container->singleton(self::LOCK_TTL, (int) $this->config->get('database.lock_ttl', 300));
 	}
 
@@ -124,9 +144,7 @@ final class DatabaseProvider extends Provider
 		]);
 	}
 
-	private function tableName(string $key, string $default): mixed {
-		$configured = $this->config->get('database.' . $key);
-
+	private function tableName(mixed $configured, string $default): mixed {
 		if (is_string($configured) && $configured !== '') {
 			return $configured;
 		}

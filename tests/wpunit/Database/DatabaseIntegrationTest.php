@@ -13,6 +13,7 @@ use StellarWP\Foundation\Database\Contracts\Repository as MigrationRecordReposit
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Database;
 use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\QueryException;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Migrator;
@@ -25,6 +26,7 @@ use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\LockToken;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestTable;
 use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
 
 final class DatabaseIntegrationTest extends WPTestCase
@@ -98,6 +100,24 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertSame([
 			['name' => 'first'],
 		], $this->database->table($table)->select('name')->where('id', '=', 1)->get());
+	}
+
+	public function test_database_rejects_table_names_beyond_the_mysql_identifier_limit(): void {
+		$maximum = str_repeat('a', 64 - strlen($GLOBALS['wpdb']->prefix));
+
+		$this->assertSame($GLOBALS['wpdb']->prefix . $maximum, $this->database->tableName($maximum));
+
+		$this->expectException(DatabaseException::class);
+		$this->expectExceptionMessage('64-character identifier limit');
+
+		$this->database->tableName(str_repeat('a', 65 - strlen($GLOBALS['wpdb']->prefix)));
+	}
+
+	public function test_schema_rejects_table_objects_beyond_the_mysql_identifier_limit(): void {
+		$this->expectException(DatabaseException::class);
+		$this->expectExceptionMessage('64-character identifier limit');
+
+		$this->schema->createOrUpdate(new TestTable('too_long', str_repeat('a', 65)));
 	}
 
 	public function test_database_crud_helpers_and_schema_inspection_use_wordpress(): void {
@@ -504,8 +524,8 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 		$container->register(DatabaseProvider::class);
 
-		$this->assertSame($GLOBALS['wpdb']->prefix . 'nexcess_foundation_migrations', $container->get(DatabaseProvider::MIGRATIONS_TABLE));
-		$this->assertSame($GLOBALS['wpdb']->prefix . 'nexcess_foundation_locks', $container->get(DatabaseProvider::LOCKS_TABLE));
+		$this->assertSame($GLOBALS['wpdb']->prefix . 'nx_foundation_migrations', $container->get(DatabaseProvider::MIGRATIONS_TABLE));
+		$this->assertSame($GLOBALS['wpdb']->prefix . 'nx_foundation_locks', $container->get(DatabaseProvider::LOCKS_TABLE));
 		$this->assertInstanceOf(Database::class, $container->get(Database::class));
 		$this->assertInstanceOf(Database::class, $container->get(DatabaseContract::class));
 		$this->assertInstanceOf(Schema::class, $container->get(Schema::class));

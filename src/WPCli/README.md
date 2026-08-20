@@ -162,14 +162,24 @@ $container->register( Wp_Cli_Provider::class );
 
 The Foundation WP-CLI provider uses `cli_init` internally so commands are registered only during WP-CLI command bootstrap, after all application providers have had a chance to add command classes.
 
-Set `wpcli.command_prefix` in the application's Foundation configuration when it needs a prefix other than `nx`:
+Set a stable, unique application-wide Foundation prefix when packaging
+Foundation in a distributable plugin. The shared prefix defaults to `nx`. When
+`wpcli.command_prefix` is omitted, WP-CLI uses the shared prefix:
 
 ```php
 return [
+	'foundation' => [
+		'prefix' => 'your-plugin',
+	],
+	// Optional package-specific override:
 	'wpcli' => [
-		'command_prefix' => 'acme',
+		'command_prefix' => 'your-command',
 	],
 ];
 ```
+
+With only `foundation.prefix` configured, commands are registered under
+`wp your-plugin`. Replace `your-plugin` with the plugin's own stable lowercase
+kebab-case prefix.
 
 See [Foundation Container configuration](https://github.com/stellarwp/foundation-container#container-configuration) for loading the `config.php` array into the container's `Dot` binding.

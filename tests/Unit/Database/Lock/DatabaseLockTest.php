@@ -179,7 +179,7 @@ final class DatabaseLockTest extends TestCase
 		$database->shouldReceive($databaseMethod)->andThrow(new QueryException('Query failed.', 'SELECT 1'));
 
 		try {
-			$operation(new DatabaseLock($database, 'wp_nexcess_foundation_locks'));
+			$operation(new DatabaseLock($database, 'wp_nx_foundation_locks'));
 			$this->fail('Expected the database failure to be normalized.');
 		} catch (LockUnavailableException $exception) {
 			$this->assertInstanceOf(QueryException::class, $exception->getPrevious());
