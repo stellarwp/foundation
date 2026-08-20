@@ -2,6 +2,7 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Database\Migration;
 
+use DateTimeImmutable;
 use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Database\Migration\Collection;
 use StellarWP\Foundation\Database\Migration\Exceptions\UninitializedStore;
@@ -9,7 +10,9 @@ use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
+use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\InMemoryLock;
+use StellarWP\Foundation\Lock\LockToken;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\InMemoryRepository;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchema;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
@@ -143,10 +146,59 @@ final class MigratorTest extends TestCase
 		}
 	}
 
+	public function test_it_does_not_acquire_the_migration_lock_without_lock_storage(): void {
+		$lock = $this->createMock(Lock::class);
+		$lock->expects($this->never())->method('acquire');
+
+		[$migrator, , $schema]                         = $this->newMigrator($lock, initialize: false);
+		$schema->tables['wp_nx_foundation_migrations'] = true;
+
+		$this->expectException(UninitializedStore::class);
+
+		$migrator->run();
+	}
+
+	public function test_it_rechecks_storage_after_acquiring_the_migration_lock(): void {
+		$schema         = new RecordingSchema();
+		$migrationTable = new MigrationTable('wp_nx_foundation_migrations');
+		$lockTable      = new LockTable('wp_nx_foundation_locks');
+		$token          = new LockToken(
+			'nx-foundation-database-migrations',
+			'owner',
+			new DateTimeImmutable('+5 minutes')
+		);
+		$lock = $this->createMock(Lock::class);
+
+		$schema->tables[$migrationTable->name()] = true;
+		$schema->tables[$lockTable->name()]      = true;
+
+		$lock->expects($this->once())
+			->method('acquire')
+			->willReturnCallback(static function () use ($schema, $migrationTable, $token): LockToken {
+				unset($schema->tables[$migrationTable->name()]);
+
+				return $token;
+			});
+		$lock->expects($this->once())
+			->method('release')
+			->with($token)
+			->willReturn(true);
+
+		$migrator = new Migrator(
+			new Collection([new TestMigration('2026_06_23_000001_create_example')]),
+			new InMemoryRepository(),
+			new Store($schema, $lock, $migrationTable, $lockTable)
+		);
+
+		$this->expectException(UninitializedStore::class);
+
+		$migrator->run();
+	}
+
 	/**
 	 * @return array{Migrator, InMemoryRepository, RecordingSchema}
 	 */
-	private function newMigrator(?InMemoryLock $lock = null, bool $initialize = true): array {
+	private function newMigrator(?Lock $lock = null, bool $initialize = true): array {
 		$schema     = new RecordingSchema();
 		$repository = new InMemoryRepository();
 		$lock ??= new InMemoryLock();

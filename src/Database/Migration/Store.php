@@ -104,9 +104,17 @@ final readonly class Store
 	 * @return T
 	 */
 	public function withMigrationLock(callable $operation): mixed {
-		$this->assertInitialized();
+		// Migration lock storage must exist before lock acquisition.
+		if (! $this->schema->hasTable($this->lockTable)) {
+			throw new UninitializedStore();
+		}
 
-		return $this->withLock(fn (): mixed => $operation($this->schema));
+		return $this->withLock(function () use ($operation): mixed {
+			// The ledger may have changed before this process acquired the lock.
+			$this->assertInitialized();
+
+			return $operation($this->schema);
+		});
 	}
 
 	/**

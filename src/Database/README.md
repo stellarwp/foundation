@@ -393,6 +393,10 @@ Call `initialize()` before `run()`, `rollback()`, `refresh()`, or `dropStore()`.
 Migration operations fail with `UninitializedStore` rather than changing
 internal table definitions implicitly.
 
+`rollback()` rolls back only the latest recorded batch. Its optional batch
+argument is an expected-latest guard; passing an older batch throws
+`InvalidRollbackBatch` instead of leaving newer migrations applied above it.
+
 Recorded migration implementations must remain registered for as long as their
 ledger entries may be rolled back. `rollback()` and `refresh()` validate every
 selected ledger entry before changing schema and fail without a partial rollback

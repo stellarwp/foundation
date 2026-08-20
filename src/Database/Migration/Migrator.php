@@ -8,6 +8,7 @@ use StellarWP\Foundation\Database\Contracts\Schema;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\MigrationFailed;
 use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
+use StellarWP\Foundation\Database\Migration\Exceptions\InvalidRollbackBatch;
 use StellarWP\Foundation\Database\Migration\Exceptions\UnavailableMigration;
 use StellarWP\Foundation\Database\Migration\Exceptions\UninitializedStore;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Record;
@@ -78,11 +79,12 @@ final readonly class Migrator
 	}
 
 	/**
-	 * Roll back the latest configured migration batch.
+	 * Roll back the latest recorded migration batch.
 	 *
-	 * @param int|null $batch A migration ledger batch number, available as Status::$batch from status(). Pass null to roll back the latest recorded batch.
+	 * @param int|null $batch The expected latest batch, available as Status::$batch from status(). Pass null to roll back whichever batch is latest.
 	 *
 	 * @throws DatabaseException        When migration storage or schema access fails.
+	 * @throws InvalidRollbackBatch     When the requested batch does not match the latest recorded batch.
 	 * @throws MigrationFailed          When a migration fails while rolling back.
 	 * @throws MigrationLockFailed      When the lock cannot be acquired or ownership cannot be confirmed during release.
 	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
@@ -93,7 +95,13 @@ final readonly class Migrator
 		$configured = $this->migrations->all();
 
 		return $this->store->withMigrationLock(function (Schema $schema) use ($configured, $batch): Result {
-			$batch ??= $this->repository->latestBatch();
+			$latestBatch = $this->repository->latestBatch();
+
+			if ($batch !== null && $batch !== $latestBatch) {
+				throw new InvalidRollbackBatch($batch, $latestBatch);
+			}
+
+			$batch ??= $latestBatch;
 
 			if ($batch === null) {
 				return new Result();

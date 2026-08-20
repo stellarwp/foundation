@@ -10,6 +10,7 @@ use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\MigrationFailed;
 use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Database\Migration\Collection;
+use StellarWP\Foundation\Database\Migration\Exceptions\InvalidRollbackBatch;
 use StellarWP\Foundation\Database\Migration\Exceptions\UnavailableMigration;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Store;
@@ -139,6 +140,49 @@ final class MigratorExecutionTest extends TestCase
 		$this->assertFalse($this->repository->hasRun('2026_01_01_000002_create_posts'));
 	}
 
+	public function test_it_rolls_back_an_explicit_batch_when_it_is_still_latest(): void {
+		$this->configured(
+			new TestMigration('2026_01_01_000001_create_users'),
+		)->run();
+		$this->configured(
+			new TestMigration('2026_01_01_000002_create_posts'),
+		)->run();
+
+		$result = $this->configured(
+			new TestMigration('2026_01_01_000001_create_users'),
+			new TestMigration('2026_01_01_000002_create_posts'),
+		)->rollback(2);
+
+		$this->assertSame(['2026_01_01_000002_create_posts'], $result->rolledBack);
+		$this->assertTrue($this->repository->hasRun('2026_01_01_000001_create_users'));
+		$this->assertFalse($this->repository->hasRun('2026_01_01_000002_create_posts'));
+	}
+
+	public function test_it_rejects_rolling_back_an_older_batch(): void {
+		$this->configured(
+			new TestMigration('2026_01_01_000001_create_users'),
+		)->run();
+		$this->configured(
+			new TestMigration('2026_01_01_000002_create_posts'),
+		)->run();
+
+		$this->schema->statements = [];
+
+		$this->expectException(InvalidRollbackBatch::class);
+		$this->expectExceptionMessage('batch 1 cannot be rolled back because the latest recorded batch is 2');
+
+		try {
+			$this->configured(
+				new TestMigration('2026_01_01_000001_create_users'),
+				new TestMigration('2026_01_01_000002_create_posts'),
+			)->rollback(1);
+		} finally {
+			$this->assertSame([], $this->schema->statements);
+			$this->assertTrue($this->repository->hasRun('2026_01_01_000001_create_users'));
+			$this->assertTrue($this->repository->hasRun('2026_01_01_000002_create_posts'));
+		}
+	}
+
 	public function test_it_returns_an_empty_result_when_there_is_no_batch_to_roll_back(): void {
 		$result = $this->configured(
 			new TestMigration('2026_01_01_000001_create_users'),
@@ -146,6 +190,15 @@ final class MigratorExecutionTest extends TestCase
 
 		$this->assertSame([], $result->rolledBack);
 		$this->assertSame(0, $result->count());
+	}
+
+	public function test_it_rejects_an_explicit_batch_when_no_batch_remains(): void {
+		$this->expectException(InvalidRollbackBatch::class);
+		$this->expectExceptionMessage('batch 1 cannot be rolled back because the latest recorded batch is none');
+
+		$this->configured(
+			new TestMigration('2026_01_01_000001_create_users'),
+		)->rollback(1);
 	}
 
 	public function test_it_rejects_unavailable_rollback_records_before_changing_schema(): void {
