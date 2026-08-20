@@ -13,7 +13,8 @@ final readonly class Status
 		public string $migration,
 		public bool $ran,
 		public ?int $batch = null,
-		public ?DateTimeImmutable $ranAt = null
+		public ?DateTimeImmutable $ranAt = null,
+		public bool $available = true
 	) {
 	}
 
@@ -27,6 +28,16 @@ final readonly class Status
 			ran: true,
 			batch: $record->batch,
 			ranAt: $record->ranAt
+		);
+	}
+
+	public static function unavailable(Record $record): self {
+		return new self(
+			migration: $record->migration,
+			ran: true,
+			batch: $record->batch,
+			ranAt: $record->ranAt,
+			available: false
 		);
 	}
 }

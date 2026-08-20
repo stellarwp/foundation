@@ -25,7 +25,7 @@ final class CreateTableTest extends TestCase
 		$this->assertTrue($schema->hasTable($table));
 	}
 
-	public function test_it_does_not_create_existing_tables(): void {
+	public function test_it_reconciles_existing_tables(): void {
 		$table     = new TestTable('foundation_example_table', 'wp_example');
 		$migration = new CreateTable($table);
 		$schema    = new RecordingSchema();
@@ -34,7 +34,7 @@ final class CreateTableTest extends TestCase
 
 		$migration->up($schema);
 
-		$this->assertSame([], $schema->statements);
+		$this->assertSame(['createOrUpdate:wp_example'], $schema->statements);
 	}
 
 	public function test_it_drops_tables_when_rolled_back(): void {

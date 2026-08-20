@@ -40,6 +40,8 @@ final class FakeDatabase implements Database
 
 	public int $insertId = 1;
 
+	public int $insertResult = 1;
+
 	public function table(Table|string $table, ?string $alias = null): QueryBuilder {
 		return new QueryBuilder($this, $table, $alias);
 	}
@@ -111,6 +113,12 @@ final class FakeDatabase implements Database
 
 	public function insert(Table|string $table, array $data): int {
 		$this->executed[] = 'INSERT ' . $this->tableName($table);
+
+		return $this->insertResult;
+	}
+
+	public function insertGetId(Table|string $table, array $data): int {
+		$this->insert($table, $data);
 
 		return $this->insertId;
 	}

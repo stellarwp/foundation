@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Identifier\Ulid;
 
 use OutOfRangeException;
+use Random\RandomException;
 use RuntimeException;
 use StellarWP\Foundation\Identifier\Ulid\Contracts\Entropy;
 use StellarWP\Foundation\Identifier\Ulid\Contracts\MillisecondClock;
@@ -24,6 +25,11 @@ final readonly class UlidGenerator implements UlidGeneratorContract
 	) {
 	}
 
+	/**
+	 * @throws OutOfRangeException When the current timestamp is outside the ULID range.
+	 * @throws RandomException     When secure random bytes cannot be generated.
+	 * @throws RuntimeException    When the entropy source returns an invalid byte count.
+	 */
 	public function generate(): string {
 		return $this->encodeTimestamp($this->clock->milliseconds())
 			. $this->encodeRandomness($this->entropy->bytes(self::RANDOM_BYTES));

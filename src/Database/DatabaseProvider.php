@@ -10,6 +10,7 @@ use StellarWP\Foundation\Database\Contracts\Database as DatabaseContract;
 use StellarWP\Foundation\Database\Contracts\Repository;
 use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
+use StellarWP\Foundation\Database\Exceptions\QueryException;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
 use StellarWP\Foundation\Database\Migration\Migrator;
@@ -73,7 +74,21 @@ final class DatabaseProvider extends Provider
 					throw new DatabaseException('WordPress dbDelta() is not available.');
 				}
 
-				return dbDelta(...);
+				return static function (string $sql, bool $execute): array {
+					$wpdb = $GLOBALS['wpdb'] ?? null;
+
+					if (! $wpdb instanceof \wpdb) {
+						throw new DatabaseException('The global wpdb instance is not available.');
+					}
+
+					$result = dbDelta($sql, $execute);
+
+					if ($execute && $wpdb->last_error !== '') {
+						throw new QueryException($wpdb->last_error, $sql, [], $wpdb->last_error);
+					}
+
+					return $result;
+				};
 			});
 
 		$this->container->singleton(Schema::class);

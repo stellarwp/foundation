@@ -49,7 +49,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 		$this->database = new Database($GLOBALS['wpdb']);
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-		$this->schema = new Schema($this->database, dbDelta(...));
+		$this->schema = new Schema($this->database, static fn (string $sql, bool $execute): array => dbDelta($sql, $execute));
 	}
 
 	protected function tearDown(): void {
@@ -121,7 +121,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertFalse($this->database->columnExists($table, 'missing'));
 		$this->assertFalse($this->database->indexExists($table, 'missing'));
 
-		$id = $this->database->insert($table, [
+		$id = $this->database->insertGetId($table, [
 			'name'   => 'draft report',
 			'status' => 'draft',
 		]);
@@ -132,6 +132,25 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertSame('published', $this->database->value('SELECT status FROM %i WHERE id = %d', $table, $id));
 		$this->assertSame(1, $this->database->delete($table, ['id' => $id]));
 		$this->assertSame('0', (string) $this->database->value('SELECT COUNT(*) FROM %i', $table));
+	}
+
+	public function test_database_insert_returns_affected_rows_for_string_identifiers(): void {
+		$table = $this->table('string_ids');
+
+		$this->database->execute(sprintf(
+			'CREATE TABLE %s (
+				id varchar(26) NOT NULL,
+				name varchar(191) NOT NULL,
+				PRIMARY KEY  (id)
+			) %s',
+			$this->database->quoteIdentifier($table),
+			$this->database->charsetCollate()
+		));
+
+		$this->assertSame(1, $this->database->insert($table, [
+			'id'   => '01J2Z3Y4X5W6V7T8S9R0Q1P2N3',
+			'name' => 'report',
+		]));
 	}
 
 	public function test_database_returns_null_for_missing_values_without_query_errors(): void {
@@ -165,11 +184,34 @@ final class DatabaseIntegrationTest extends WPTestCase
 		}
 	}
 
+	public function test_provider_schema_reports_db_delta_query_failures(): void {
+		$table     = $this->table('invalid_schema');
+		$container = $this->newContainer();
+		$container->register(DatabaseProvider::class);
+		$schema   = $container->get(Schema::class);
+		$previous = $GLOBALS['wpdb']->suppress_errors(true);
+
+		try {
+			$this->assertQueryFails(function () use ($schema, $table): void {
+				$schema->createOrUpdateSql(sprintf(
+					'CREATE TABLE %s (
+						id definitely_invalid NOT NULL,
+						PRIMARY KEY  (id)
+					) %s;',
+					$this->database->quoteIdentifier($table),
+					$this->database->charsetCollate()
+				));
+			});
+		} finally {
+			$GLOBALS['wpdb']->suppress_errors($previous);
+		}
+	}
+
 	public function test_schema_creates_inspects_and_changes_tables_through_wordpress(): void {
 		$table  = $this->table('schema');
 		$schema = $this->schema;
 
-		$schema->createOrUpdate(sprintf(
+		$schema->createOrUpdateSql(sprintf(
 			'CREATE TABLE %s (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				name varchar(191) NOT NULL,
@@ -241,6 +283,41 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertTrue($schema->hasIndex($queue, 'taken_failed_done'));
 	}
 
+	public function test_schema_preserves_quote_and_backslash_string_defaults(): void {
+		$tableName = $this->table('string_default');
+		$default   = "customer's \\ path";
+		$table     = static function (string $columnDefault) use ($tableName): Table {
+			return new class($tableName, $columnDefault) implements Table {
+				public function __construct(
+					private string $table,
+					private string $default
+				) {
+				}
+
+				public function id(): string {
+					return 'string_default_table';
+				}
+
+				public function name(): string {
+					return $this->table;
+				}
+
+				public function definition(): TableDefinition {
+					return TableDefinition::for($this)
+						->bigIncrements('id')
+						->string('label', 100)->default($this->default);
+				}
+			};
+		};
+
+		$this->schema->createOrUpdate($table('initial'));
+		$this->schema->createOrUpdate($table($default));
+		$this->schema->createOrUpdate($table($default));
+		$this->database->execute('INSERT INTO %i () VALUES ()', $tableName);
+
+		$this->assertSame($default, $this->database->value('SELECT label FROM %i LIMIT 1', $tableName));
+	}
+
 	public function test_migration_repository_persists_records_in_wordpress(): void {
 		$table          = $this->table('migrations');
 		$schema         = $this->schema;
@@ -265,6 +342,13 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertCount(1, $repository->recordsForBatch(1));
 		$this->assertTrue($repository->deleteRun('2026_06_23_000001_create_example_table'));
 		$this->assertFalse($repository->hasRun('2026_06_23_000001_create_example_table'));
+
+		$repository->recordRun('CreateReports', 2);
+		$repository->recordRun('createreports', 2);
+
+		$this->assertTrue($repository->hasRun('CreateReports'));
+		$this->assertTrue($repository->hasRun('createreports'));
+		$this->assertCount(2, $repository->recordsForBatch(2));
 
 		$schema->drop($migrationTable);
 
@@ -385,6 +469,34 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertSame('datetime(6)', strtolower((string) ($expiration['Type'] ?? '')));
 
 		$wpSchema->drop($lockTable);
+	}
+
+	public function test_migration_table_reconciles_case_insensitive_identifiers(): void {
+		$table          = $this->table('previous_migration_schema');
+		$wpSchema       = $this->schema;
+		$migrationTable = new MigrationTable($table);
+
+		$this->database->execute(sprintf(
+			'CREATE TABLE %s (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				migration varchar(191) NOT NULL,
+				batch int(10) unsigned NOT NULL,
+				ran_at datetime NOT NULL,
+				PRIMARY KEY  (id),
+				UNIQUE KEY migration (migration),
+				KEY batch (batch)
+			) %s',
+			$this->database->quoteIdentifier($table),
+			$this->database->charsetCollate()
+		));
+
+		(new TableCollection($wpSchema, [$migrationTable]))->create();
+
+		$migration = $this->database->row('SHOW COLUMNS FROM %i WHERE Field = %s', $table, 'migration');
+
+		$this->assertSame('varbinary(191)', strtolower((string) ($migration['Type'] ?? '')));
+
+		$wpSchema->drop($migrationTable);
 	}
 
 	public function test_provider_registers_wordpress_prefixed_database_services(): void {

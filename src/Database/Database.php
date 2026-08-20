@@ -150,6 +150,15 @@ final readonly class Database implements DatabaseContract
 			throw new QueryException($this->message('Unable to insert database row.'), 'INSERT', [], $this->lastError());
 		}
 
+		return (int) $result;
+	}
+
+	/**
+	 * @param array<string, mixed> $data
+	 */
+	public function insertGetId(Table|string $table, array $data): int {
+		$this->insert($table, $data);
+
 		return (int) $this->wpdb->insert_id;
 	}
 

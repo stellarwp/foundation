@@ -56,4 +56,15 @@ final class ColumnTest extends TestCase
 			(new Column('id', 'bigint', 20))->autoIncrement()->autoIncrement()->sql()
 		);
 	}
+
+	public function test_it_escapes_string_defaults_as_sql_literals(): void {
+		$column = (new Column('label', 'varchar', 50))->default("customer's \\ path");
+
+		$this->assertSame(
+			"`label` varchar(50) NOT NULL DEFAULT X'637573746f6d65722773205c2070617468'",
+			$column->sql()
+		);
+		$this->assertSame("X'637573746f6d65722773205c2070617468'", $column->defaultSql());
+		$this->assertNull((new Column('label', 'varchar', 50))->defaultSql());
+	}
 }

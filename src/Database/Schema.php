@@ -6,6 +6,8 @@ use Closure;
 use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
 use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
+use StellarWP\Foundation\Database\Table\TableDefinition;
 
 /**
  * WordPress schema operations backed by wpdb and dbDelta.
@@ -13,7 +15,7 @@ use StellarWP\Foundation\Database\Contracts\Table;
 final readonly class Schema implements SchemaContract
 {
 	/**
-	 * @param Closure(string): mixed $dbDelta
+	 * @param Closure(string, bool): array<string, string> $dbDelta
 	 */
 	public function __construct(
 		private Database $database,
@@ -21,8 +23,22 @@ final readonly class Schema implements SchemaContract
 	) {
 	}
 
-	public function createOrUpdate(Table|string $table, ?string $sql = null): void {
-		($this->dbDelta)($sql ?? $this->createTableSql($table));
+	/**
+	 * @throws DatabaseException When WordPress cannot reconcile the table definition.
+	 */
+	public function createOrUpdate(Table $table): void {
+		$definition = $table->definition();
+		$definition->assertValid();
+
+		$this->applyDelta($this->createTableSql($table, $definition));
+		$this->reconcileComplexDefaults($table, $definition);
+	}
+
+	/**
+	 * @throws DatabaseException When WordPress cannot reconcile the SQL definition.
+	 */
+	public function createOrUpdateSql(string $sql): void {
+		$this->applyDelta($sql);
 	}
 
 	public function execute(string $sql): void {
@@ -56,14 +72,7 @@ final readonly class Schema implements SchemaContract
 		return $this->database->quoteIdentifier($identifier);
 	}
 
-	private function createTableSql(Table|string $table): string {
-		if (is_string($table)) {
-			return $table;
-		}
-
-		$definition = $table->definition();
-		$definition->assertValid();
-
+	private function createTableSql(Table $table, TableDefinition $definition): string {
 		$parts = [];
 
 		foreach ($definition->columns() as $column) {
@@ -80,5 +89,34 @@ final readonly class Schema implements SchemaContract
 			implode(",\n", $parts),
 			$this->database->charsetCollate()
 		);
+	}
+
+	private function reconcileComplexDefaults(Table $table, TableDefinition $definition): void {
+		foreach ($definition->columns() as $column) {
+			$default = $column->defaultSql();
+
+			if ($default === null || ! str_starts_with($default, "X'")) {
+				continue;
+			}
+
+			$this->database->execute(sprintf(
+				'ALTER TABLE %s ALTER COLUMN %s SET DEFAULT %s',
+				$this->database->quoteIdentifier($table->name()),
+				$this->database->quoteIdentifier($column->name),
+				$default
+			));
+		}
+	}
+
+	private function applyDelta(string $sql): void {
+		($this->dbDelta)($sql, true);
+		$pending = ($this->dbDelta)($sql, false);
+
+		if ($pending !== []) {
+			throw new DatabaseException(sprintf(
+				'Database schema reconciliation did not complete: %s',
+				implode('; ', $pending)
+			));
+		}
 	}
 }

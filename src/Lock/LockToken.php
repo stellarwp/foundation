@@ -14,6 +14,8 @@ final readonly class LockToken
 	 * @param string            $name      The lock name this token owns.
 	 * @param string            $owner     Opaque owner identifier used to prove ownership.
 	 * @param DateTimeImmutable $expiresAt The instant this token stops owning the lock.
+	 *
+	 * @throws InvalidArgumentException When the lock name or owner is blank.
 	 */
 	public function __construct(
 		public string $name,

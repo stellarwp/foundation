@@ -40,26 +40,39 @@ final class DatabaseMigrateCest
 		$I->seeResultCodeIs(0);
 		$I->seeInShellOutput('Rolled back 1 migrations and ran 1 migrations.');
 
-		$I->cli(['foundation', 'migrate', '--drop', '--yes']);
+		$I->cli(['foundation', 'migrate', '--drop-store', '--yes']);
 		$I->seeResultCodeIs(0);
-		$I->seeInShellOutput('Foundation database tables were dropped.');
+		$I->seeInShellOutput('The migration ledger was dropped. Application tables were not changed, and shared lock storage remains available.');
+
+		$I->cli([
+			'db',
+			'query',
+			sprintf("SHOW TABLES LIKE '%sfoundation_cli_example'", $this->prefix($I)),
+		]);
+		$I->seeResultCodeIs(0);
+		$I->seeInShellOutput('foundation_cli_example');
+
+		$I->cli([
+			'db',
+			'query',
+			sprintf("SHOW TABLES LIKE '%sfoundation_cli_locks'", $this->prefix($I)),
+		]);
+		$I->seeResultCodeIs(0);
+		$I->seeInShellOutput('foundation_cli_locks');
 
 		$I->cli(['foundation', 'migrate']);
 		$I->seeResultCodeIs(0);
-		Assert::assertStringContainsString('The Foundation database tables do not exist.', $I->grabLastShellErrorOutput());
+		Assert::assertStringContainsString('The Foundation migration ledger does not exist.', $I->grabLastShellErrorOutput());
 	}
 
 	public function test_it_warns_when_showing_status_before_tables_exist(WPCLITester $I): void {
 		$I->cli(['foundation', 'migrate']);
 		$I->seeResultCodeIs(0);
-		Assert::assertStringContainsString('The Foundation database tables do not exist.', $I->grabLastShellErrorOutput());
+		Assert::assertStringContainsString('The Foundation migration ledger does not exist.', $I->grabLastShellErrorOutput());
 	}
 
 	private function dropTables(WPCLITester $I): void {
-		$I->cli(['db', 'prefix']);
-		$I->seeResultCodeIs(0);
-
-		$prefix = trim($I->grabLastShellOutput());
+		$prefix = $this->prefix($I);
 
 		$I->cli([
 			'db',
@@ -72,5 +85,12 @@ final class DatabaseMigrateCest
 			),
 		]);
 		$I->seeResultCodeIs(0);
+	}
+
+	private function prefix(WPCLITester $I): string {
+		$I->cli(['db', 'prefix']);
+		$I->seeResultCodeIs(0);
+
+		return trim($I->grabLastShellOutput());
 	}
 }

@@ -3,11 +3,19 @@
 namespace StellarWP\Foundation\Tests\Unit\Database\Migration;
 
 use InvalidArgumentException;
-use StellarWP\Foundation\Database\Exceptions\DuplicateMigration;
+use StellarWP\Foundation\Database\Contracts\Migration;
+use StellarWP\Foundation\Database\Contracts\Schema;
+use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\MigrationFailed;
 use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
+use StellarWP\Foundation\Database\Migration\Collection;
+use StellarWP\Foundation\Database\Migration\Exceptions\UnavailableMigration;
 use StellarWP\Foundation\Database\Migration\Result;
 use StellarWP\Foundation\Database\Migration\Runner;
+use StellarWP\Foundation\Database\Migration\Store;
+use StellarWP\Foundation\Database\Table\Tables\LockTable;
+use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use StellarWP\Foundation\Lock\InMemoryLock;
@@ -27,6 +35,8 @@ final class RunnerTest extends TestCase
 
 	private InMemoryLock $lock;
 
+	private Store $store;
+
 	private Runner $runner;
 
 	protected function setUp(): void {
@@ -35,28 +45,33 @@ final class RunnerTest extends TestCase
 		$this->repository = new InMemoryRepository();
 		$this->schema     = new RecordingSchema();
 		$this->lock       = new InMemoryLock(new MutableClock(new \DateTimeImmutable('2026-01-01 00:00:00')));
-		$this->runner     = new Runner($this->repository, $this->schema, $this->lock);
+		$this->store      = new Store(
+			new RecordingSchema(),
+			new MigrationTable('wp_nexcess_foundation_migrations'),
+			new LockTable('wp_nexcess_foundation_locks')
+		);
+		$this->runner = new Runner($this->repository, $this->schema, $this->lock, $this->store);
 	}
 
 	public function test_it_rejects_a_blank_migration_lock_name(): void {
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('lock name cannot be empty');
 
-		new Runner($this->repository, $this->schema, $this->lock, lockName: '   ');
+		new Runner($this->repository, $this->schema, $this->lock, $this->store, lockName: '   ');
 	}
 
 	public function test_it_rejects_an_invalid_migration_lock_ttl(): void {
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('TTL must be at least one second');
 
-		new Runner($this->repository, $this->schema, $this->lock, lockTtl: 0);
+		new Runner($this->repository, $this->schema, $this->lock, $this->store, lockTtl: 0);
 	}
 
 	public function test_it_runs_pending_migrations_in_order(): void {
-		$result = $this->runner->run([
+		$result = $this->runner->run($this->collection(
 			new TestMigration('2026_01_01_000001_create_users'),
 			new TestMigration('2026_01_01_000002_create_posts'),
-		]);
+		));
 
 		$this->assertSame([
 			'2026_01_01_000001_create_users',
@@ -71,14 +86,14 @@ final class RunnerTest extends TestCase
 	}
 
 	public function test_it_skips_migrations_that_have_already_run(): void {
-		$this->runner->run([
+		$this->runner->run($this->collection(
 			new TestMigration('2026_01_01_000001_create_users'),
-		]);
+		));
 
-		$result = $this->runner->run([
+		$result = $this->runner->run($this->collection(
 			new TestMigration('2026_01_01_000001_create_users'),
 			new TestMigration('2026_01_01_000002_create_posts'),
-		]);
+		));
 
 		$this->assertSame(['2026_01_01_000002_create_posts'], $result->ran);
 		$this->assertSame(['2026_01_01_000001_create_users'], $result->skipped);
@@ -86,21 +101,21 @@ final class RunnerTest extends TestCase
 	}
 
 	public function test_it_rolls_back_the_latest_batch_in_reverse_order(): void {
-		$this->runner->run([
+		$this->runner->run($this->collection(
 			new TestMigration('2026_01_01_000001_create_users'),
-		]);
-		$this->runner->run([
+		));
+		$this->runner->run($this->collection(
 			new TestMigration('2026_01_01_000002_create_posts'),
 			new TestMigration('2026_01_01_000003_create_comments'),
-		]);
+		));
 
 		$this->schema->statements = [];
 
-		$result = $this->runner->rollback([
+		$result = $this->runner->rollback($this->collection(
 			new TestMigration('2026_01_01_000001_create_users'),
 			new TestMigration('2026_01_01_000002_create_posts'),
 			new TestMigration('2026_01_01_000003_create_comments'),
-		]);
+		));
 
 		$this->assertSame([
 			'2026_01_01_000003_create_comments',
@@ -115,30 +130,52 @@ final class RunnerTest extends TestCase
 	}
 
 	public function test_it_returns_an_empty_result_when_there_is_no_batch_to_roll_back(): void {
-		$result = $this->runner->rollback([
+		$result = $this->runner->rollback($this->collection(
 			new TestMigration('2026_01_01_000001_create_users'),
-		]);
+		));
 
 		$this->assertSame([], $result->rolledBack);
 		$this->assertSame(0, $result->count());
 	}
 
-	public function test_it_skips_rollback_records_without_a_matching_migration(): void {
+	public function test_it_rejects_unavailable_rollback_records_before_changing_schema(): void {
+		$this->repository->recordRun('2026_01_01_000001_create_users', 1);
 		$this->repository->recordRun('2026_01_01_000001_missing_migration', 1);
 
-		$result = $this->runner->rollback([
-			new TestMigration('2026_01_01_000002_create_posts'),
-		]);
+		$this->expectException(UnavailableMigration::class);
+		$this->expectExceptionMessage('2026_01_01_000001_missing_migration');
 
-		$this->assertSame([], $result->rolledBack);
-		$this->assertSame(['2026_01_01_000001_missing_migration'], $result->skipped);
+		try {
+			$this->runner->rollback($this->collection(
+				new TestMigration('2026_01_01_000001_create_users'),
+			));
+		} finally {
+			$this->assertSame([], $this->schema->statements);
+			$this->assertTrue($this->repository->hasRun('2026_01_01_000001_create_users'));
+		}
+	}
+
+	public function test_it_rejects_unavailable_refresh_records_before_changing_schema(): void {
+		$this->repository->recordRun('2026_01_01_000001_create_users', 1);
+		$this->repository->recordRun('2026_01_01_000002_missing_migration', 1);
+
+		$this->expectException(UnavailableMigration::class);
+
+		try {
+			$this->runner->refresh($this->collection(
+				new TestMigration('2026_01_01_000001_create_users'),
+			));
+		} finally {
+			$this->assertSame([], $this->schema->statements);
+			$this->assertTrue($this->repository->hasRun('2026_01_01_000001_create_users'));
+		}
 	}
 
 	public function test_it_refreshes_all_ran_migrations_then_runs_them_again(): void {
-		$migrations = [
+		$migrations = $this->collection(
 			new TestMigration('2026_01_01_000001_create_users'),
 			new TestMigration('2026_01_01_000002_create_posts'),
-		];
+		);
 
 		$this->runner->run($migrations);
 		$this->schema->statements = [];
@@ -161,20 +198,60 @@ final class RunnerTest extends TestCase
 		], $this->schema->statements);
 	}
 
-	public function test_it_returns_status_for_configured_migrations(): void {
-		$this->runner->run([
-			new TestMigration('2026_01_01_000001_create_users'),
-		]);
+	public function test_refresh_uses_one_migration_snapshot_for_rollback_and_run(): void {
+		$collection = new Collection();
+		$late       = new TestMigration('2026_01_01_000002_create_posts');
+		$migration  = $this->createMock(Migration::class);
 
-		$statuses = $this->runner->status([
+		$migration->method('id')->willReturn('2026_01_01_000001_create_users');
+		$migration->method('up')
+			->willReturnCallback(static function (Schema $schema): void {
+				$schema->execute('up:2026_01_01_000001_create_users');
+			});
+		$migration->method('down')
+			->willReturnCallback(static function (Schema $schema) use ($collection, $late): void {
+				$schema->execute('down:2026_01_01_000001_create_users');
+				$collection->add($late);
+			});
+
+		$collection->add($migration);
+		$this->runner->run($collection);
+		$result = $this->runner->refresh($collection);
+
+		$this->assertSame(['2026_01_01_000001_create_users'], $result->rolledBack);
+		$this->assertSame(['2026_01_01_000001_create_users'], $result->ran);
+		$this->assertSame([$migration, $late], $collection->values());
+	}
+
+	public function test_it_returns_status_for_configured_migrations(): void {
+		$this->runner->run($this->collection(
+			new TestMigration('2026_01_01_000001_create_users'),
+		));
+
+		$statuses = $this->runner->status($this->collection(
 			new TestMigration('2026_01_01_000001_create_users'),
 			new TestMigration('2026_01_01_000002_create_posts'),
-		]);
+		));
 
 		$this->assertTrue($statuses[0]->ran);
 		$this->assertSame(1, $statuses[0]->batch);
 		$this->assertFalse($statuses[1]->ran);
 		$this->assertNull($statuses[1]->batch);
+	}
+
+	public function test_it_returns_status_for_unavailable_recorded_migrations(): void {
+		$this->runner->prepareStore();
+		$this->repository->recordRun('2026_01_01_000001_missing_migration', 1);
+
+		$statuses = $this->runner->status($this->collection(
+			new TestMigration('2026_01_01_000002_create_posts'),
+		));
+
+		$this->assertTrue($statuses[0]->available);
+		$this->assertFalse($statuses[0]->ran);
+		$this->assertFalse($statuses[1]->available);
+		$this->assertTrue($statuses[1]->ran);
+		$this->assertSame('2026_01_01_000001_missing_migration', $statuses[1]->migration);
 	}
 
 	public function test_migration_results_count_ran_and_rolled_back_migrations(): void {
@@ -187,14 +264,14 @@ final class RunnerTest extends TestCase
 		$this->assertSame(2, $result->count());
 	}
 
-	public function test_it_rejects_duplicate_migration_ids(): void {
-		$this->expectException(DuplicateMigration::class);
-		$this->expectExceptionMessage('Duplicate migration ID');
+	public function test_it_treats_migration_ids_as_case_sensitive(): void {
+		$result = $this->runner->run($this->collection(
+			new TestMigration('CreateReports'),
+			new TestMigration('createreports'),
+		));
 
-		$this->runner->run([
-			new TestMigration('2026_01_01_000001_create_users'),
-			new TestMigration('2026_01_01_000001_create_users'),
-		]);
+		$this->assertSame(['CreateReports', 'createreports'], $result->ran);
+		$this->assertCount(2, $this->repository->all());
 	}
 
 	public function test_it_fails_when_the_migration_lock_is_already_owned(): void {
@@ -203,9 +280,40 @@ final class RunnerTest extends TestCase
 		$this->expectException(MigrationLockFailed::class);
 		$this->expectExceptionMessage('Could not acquire migration lock');
 
-		$this->runner->run([
+		$this->runner->run($this->collection(
 			new TestMigration('2026_01_01_000001_create_users'),
-		]);
+		));
+	}
+
+	public function test_it_releases_the_lock_when_ledger_preparation_fails(): void {
+		$storeSchema = $this->createMock(Schema::class);
+		$storeSchema->method('createOrUpdate')
+			->willReturnCallback(static function (Table $table): void {
+				if ($table instanceof MigrationTable) {
+					throw new DatabaseException('Could not prepare the migration ledger.');
+				}
+			});
+
+		$runner = new Runner(
+			$this->repository,
+			$this->schema,
+			$this->lock,
+			new Store(
+				$storeSchema,
+				new MigrationTable('wp_nexcess_foundation_migrations'),
+				new LockTable('wp_nexcess_foundation_locks')
+			)
+		);
+
+		$this->expectException(DatabaseException::class);
+
+		try {
+			$runner->run($this->collection(
+				new TestMigration('2026_01_01_000001_create_users'),
+			));
+		} finally {
+			$this->assertNotNull($this->lock->acquire('foundation-database-migrations', 300));
+		}
 	}
 
 	public function test_it_fails_when_migration_lock_ownership_cannot_be_confirmed_during_release(): void {
@@ -220,15 +328,15 @@ final class RunnerTest extends TestCase
 			->with($token)
 			->willReturn(false);
 
-		$runner = new Runner($this->repository, $this->schema, $lock);
+		$runner = new Runner($this->repository, $this->schema, $lock, $this->store);
 
 		$this->expectException(MigrationLockFailed::class);
 		$this->expectExceptionMessage('Could not confirm ownership');
 
 		try {
-			$runner->run([
+			$runner->run($this->collection(
 				new TestMigration('2026_01_01_000001_create_users'),
-			]);
+			));
 		} finally {
 			$this->assertTrue($this->repository->hasRun('2026_01_01_000001_create_users'));
 		}
@@ -245,14 +353,14 @@ final class RunnerTest extends TestCase
 			->with($token)
 			->willThrowException(new LockUnavailableException('Lock backend unavailable.'));
 
-		$runner = new Runner($this->repository, $this->schema, $lock);
+		$runner = new Runner($this->repository, $this->schema, $lock, $this->store);
 
 		$this->expectException(MigrationFailed::class);
 		$this->expectExceptionMessage('failed while running');
 
-		$runner->run([
+		$runner->run($this->collection(
 			new FailingMigration('2026_01_01_000001_create_users', failUp: true),
-		]);
+		));
 	}
 
 	public function test_it_preserves_the_migration_failure_when_release_cannot_confirm_ownership(): void {
@@ -266,14 +374,14 @@ final class RunnerTest extends TestCase
 			->with($token)
 			->willReturn(false);
 
-		$runner = new Runner($this->repository, $this->schema, $lock);
+		$runner = new Runner($this->repository, $this->schema, $lock, $this->store);
 
 		$this->expectException(MigrationFailed::class);
 		$this->expectExceptionMessage('failed while running');
 
-		$runner->run([
+		$runner->run($this->collection(
 			new FailingMigration('2026_01_01_000001_create_users', failUp: true),
-		]);
+		));
 	}
 
 	public function test_it_does_not_record_a_failed_migration(): void {
@@ -281,26 +389,26 @@ final class RunnerTest extends TestCase
 		$this->expectExceptionMessage('failed while running');
 
 		try {
-			$this->runner->run([
+			$this->runner->run($this->collection(
 				new FailingMigration('2026_01_01_000001_create_users', failUp: true),
-			]);
+			));
 		} finally {
 			$this->assertFalse($this->repository->hasRun('2026_01_01_000001_create_users'));
 		}
 	}
 
 	public function test_it_does_not_delete_a_record_when_rollback_fails(): void {
-		$this->runner->run([
+		$this->runner->run($this->collection(
 			new TestMigration('2026_01_01_000001_create_users'),
-		]);
+		));
 
 		$this->expectException(MigrationFailed::class);
 		$this->expectExceptionMessage('failed while rolling back');
 
 		try {
-			$this->runner->rollback([
+			$this->runner->rollback($this->collection(
 				new FailingMigration('2026_01_01_000001_create_users', failDown: true),
-			]);
+			));
 		} finally {
 			$this->assertTrue($this->repository->hasRun('2026_01_01_000001_create_users'));
 		}
@@ -312,5 +420,9 @@ final class RunnerTest extends TestCase
 		$this->assertNotNull($token);
 
 		return $token;
+	}
+
+	private function collection(Migration ...$migrations): Collection {
+		return new Collection($migrations);
 	}
 }

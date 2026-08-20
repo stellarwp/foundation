@@ -2,11 +2,11 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Database\Migration;
 
+use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Database\Migration\Collection;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Runner;
 use StellarWP\Foundation\Database\Migration\Store;
-use StellarWP\Foundation\Database\Table\Collection as TableCollection;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\InMemoryLock;
@@ -26,8 +26,8 @@ final class MigratorTest extends TestCase
 		$this->assertSame(['2026_06_23_000001_create_example'], $result->ran);
 		$this->assertTrue($repository->hasRun('2026_06_23_000001_create_example'));
 		$this->assertSame([
-			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'createOrUpdate:wp_nexcess_foundation_locks',
+			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'up:2026_06_23_000001_create_example',
 		], $schema->statements);
 	}
@@ -36,7 +36,6 @@ final class MigratorTest extends TestCase
 		[$migrator, $repository, $schema] = $this->newMigrator();
 
 		$migrator->run();
-		$migrator->drop();
 		$schema->statements = [];
 
 		$result = $migrator->rollback();
@@ -44,8 +43,8 @@ final class MigratorTest extends TestCase
 		$this->assertSame(['2026_06_23_000001_create_example'], $result->rolledBack);
 		$this->assertFalse($repository->hasRun('2026_06_23_000001_create_example'));
 		$this->assertSame([
-			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'createOrUpdate:wp_nexcess_foundation_locks',
+			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'down:2026_06_23_000001_create_example',
 		], $schema->statements);
 	}
@@ -54,7 +53,6 @@ final class MigratorTest extends TestCase
 		[$migrator, $repository, $schema] = $this->newMigrator();
 
 		$migrator->run();
-		$migrator->drop();
 		$schema->statements = [];
 
 		$result = $migrator->refresh();
@@ -63,8 +61,8 @@ final class MigratorTest extends TestCase
 		$this->assertSame(['2026_06_23_000001_create_example'], $result->ran);
 		$this->assertTrue($repository->hasRun('2026_06_23_000001_create_example'));
 		$this->assertSame([
-			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'createOrUpdate:wp_nexcess_foundation_locks',
+			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'down:2026_06_23_000001_create_example',
 			'up:2026_06_23_000001_create_example',
 		], $schema->statements);
@@ -90,28 +88,72 @@ final class MigratorTest extends TestCase
 
 		$this->assertTrue($migrator->exists());
 
-		$migrator->drop();
+		$migrator->dropStore();
 
 		$this->assertFalse($migrator->exists());
 		$this->assertContains('drop:wp_nexcess_foundation_migrations', $schema->statements);
-		$this->assertContains('drop:wp_nexcess_foundation_locks', $schema->statements);
+		$this->assertNotContains('drop:wp_nexcess_foundation_locks', $schema->statements);
+		$this->assertTrue($schema->tables['wp_nexcess_foundation_locks']);
+	}
+
+	public function test_it_does_not_drop_the_store_while_another_migration_owns_the_lock(): void {
+		$lock                  = new InMemoryLock();
+		[$migrator, , $schema] = $this->newMigrator($lock);
+
+		$migrator->prepare();
+		$token = $lock->acquire('foundation-database-migrations', 300);
+
+		$this->assertNotNull($token);
+		$this->expectException(MigrationLockFailed::class);
+
+		try {
+			$migrator->dropStore();
+		} finally {
+			$this->assertTrue($schema->tables['wp_nexcess_foundation_migrations']);
+		}
+	}
+
+	public function test_it_does_not_prepare_the_ledger_while_another_migration_owns_the_lock(): void {
+		$lock                  = new InMemoryLock();
+		[$migrator, , $schema] = $this->newMigrator($lock);
+		$token                 = $lock->acquire('foundation-database-migrations', 300);
+
+		$this->assertNotNull($token);
+		$this->expectException(MigrationLockFailed::class);
+
+		try {
+			$migrator->prepare();
+		} finally {
+			$this->assertTrue($schema->tables['wp_nexcess_foundation_locks']);
+			$this->assertArrayNotHasKey('wp_nexcess_foundation_migrations', $schema->tables);
+		}
+	}
+
+	public function test_status_uses_the_existing_ledger_when_shared_lock_storage_is_missing(): void {
+		[$migrator, , $schema] = $this->newMigrator();
+
+		$migrator->run();
+		unset($schema->tables['wp_nexcess_foundation_locks']);
+
+		$this->assertFalse($migrator->exists());
+		$this->assertTrue($migrator->status()[0]->ran);
 	}
 
 	/**
 	 * @return array{Migrator, InMemoryRepository, RecordingSchema}
 	 */
-	private function newMigrator(): array {
+	private function newMigrator(?InMemoryLock $lock = null): array {
 		$database   = new FakeDatabase();
 		$schema     = new RecordingSchema();
 		$repository = new InMemoryRepository();
+		$lock ??= new InMemoryLock();
+		$migrationTable = new MigrationTable('wp_nexcess_foundation_migrations');
+		$lockTable      = new LockTable('wp_nexcess_foundation_locks');
+		$store          = new Store($schema, $migrationTable, $lockTable);
 
 		return [
 			new Migrator(
-				new Store(new TableCollection($schema, [
-					new MigrationTable('wp_nexcess_foundation_migrations'),
-					new LockTable('wp_nexcess_foundation_locks'),
-				])),
-				new Runner($repository, $schema, new InMemoryLock()),
+				new Runner($repository, $schema, $lock, $store),
 				new Collection([
 					new TestMigration('2026_06_23_000001_create_example'),
 				])

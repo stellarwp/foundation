@@ -21,9 +21,7 @@ final readonly class CreateTable implements Migration
 	}
 
 	public function up(Schema $schema): void {
-		if (! $schema->hasTable($this->table)) {
-			$schema->createOrUpdate($this->table);
-		}
+		$schema->createOrUpdate($this->table);
 	}
 
 	public function down(Schema $schema): void {

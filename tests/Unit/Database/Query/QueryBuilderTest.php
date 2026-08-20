@@ -66,6 +66,18 @@ final class QueryBuilderTest extends TestCase
 			['name' => 'first'],
 			$database->table('reports')->where('id', '=', 1)->first()
 		);
+		$this->assertStringEndsWith('LIMIT 1', $database->rowQueries[0]);
+	}
+
+	public function test_reading_the_first_row_does_not_mutate_the_builder_and_preserves_its_offset(): void {
+		$database               = new FakeDatabase();
+		$database->rowResults[] = ['name' => 'sixth'];
+		$query                  = $database->table('reports')->limit(25, 5);
+
+		$this->assertSame(['name' => 'sixth'], $query->first());
+		$this->assertStringEndsWith('LIMIT 1 OFFSET 5', $database->rowQueries[0]);
+		$this->assertSame('SELECT * FROM `wp_reports` LIMIT %d OFFSET %d', $query->toSql());
+		$this->assertSame([25, 5], $query->bindings());
 	}
 
 	public function test_it_selects_all_columns_by_default(): void {

@@ -6,6 +6,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\Repository as RepositoryContract;
+use StellarWP\Foundation\Database\Migration\Exceptions\InvalidMigrationId;
 
 /**
  * Stores migration records in a WordPress database table.
@@ -19,6 +20,8 @@ final readonly class Repository implements RepositoryContract
 	}
 
 	/**
+	 * @throws InvalidMigrationId When a stored migration identifier is invalid.
+	 *
 	 * @return array<string, Record>
 	 */
 	public function all(): array {
@@ -36,7 +39,12 @@ final readonly class Repository implements RepositoryContract
 		return $records;
 	}
 
+	/**
+	 * @throws InvalidMigrationId When the migration identifier is invalid.
+	 */
 	public function hasRun(string $migration): bool {
+		$migration = (new Id($migration))->value;
+
 		return $this->database->row(
 			'SELECT id FROM %i WHERE migration = %s LIMIT 1',
 			$this->table,
@@ -44,8 +52,12 @@ final readonly class Repository implements RepositoryContract
 		) !== null;
 	}
 
+	/**
+	 * @throws InvalidMigrationId When the migration identifier is invalid.
+	 */
 	public function recordRun(string $migration, int $batch): Record {
-		$ranAt = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+		$migration = (new Id($migration))->value;
+		$ranAt     = new DateTimeImmutable('now', new DateTimeZone('UTC'));
 
 		$this->database->execute(
 			'INSERT INTO %i (migration, batch, ran_at) VALUES (%s, %d, %s)',
@@ -68,7 +80,12 @@ final readonly class Repository implements RepositoryContract
 		return $this->recordFromRow($row);
 	}
 
+	/**
+	 * @throws InvalidMigrationId When the migration identifier is invalid.
+	 */
 	public function deleteRun(string $migration): bool {
+		$migration = (new Id($migration))->value;
+
 		return $this->database->execute(
 			'DELETE FROM %i WHERE migration = %s',
 			$this->table,
@@ -96,6 +113,8 @@ final readonly class Repository implements RepositoryContract
 	}
 
 	/**
+	 * @throws InvalidMigrationId When a stored migration identifier is invalid.
+	 *
 	 * @return list<Record>
 	 */
 	public function recordsForBatch(int $batch): array {
@@ -111,11 +130,13 @@ final readonly class Repository implements RepositoryContract
 
 	/**
 	 * @param array<string, mixed> $row
+	 *
+	 * @throws InvalidMigrationId When the stored migration identifier is invalid.
 	 */
 	private function recordFromRow(array $row): Record {
 		return new Record(
 			id: (int) $row['id'],
-			migration: (string) $row['migration'],
+			migration: (new Id((string) $row['migration']))->value,
 			batch: (int) $row['batch'],
 			ranAt: new DateTimeImmutable((string) $row['ran_at'], new DateTimeZone('UTC'))
 		);

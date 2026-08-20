@@ -22,10 +22,14 @@ final class RecordingSchema implements Schema
 	 */
 	public array $indexes = [];
 
-	public function createOrUpdate(Table|string $table, ?string $sql = null): void {
-		$name                = $table instanceof Table ? $table->name() : $table;
+	public function createOrUpdate(Table $table): void {
+		$name                = $table->name();
 		$this->tables[$name] = true;
-		$this->statements[]  = 'createOrUpdate:' . ($sql ?? $name);
+		$this->statements[]  = 'createOrUpdate:' . $name;
+	}
+
+	public function createOrUpdateSql(string $sql): void {
+		$this->statements[] = 'createOrUpdateSql:' . $sql;
 	}
 
 	public function execute(string $sql): void {

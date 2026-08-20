@@ -71,7 +71,8 @@ final class DatabaseProviderTest extends WPTestCase
 		$container->register(DatabaseProvider::class);
 
 		$this->assertSame([$migration], $container->get(DatabaseProvider::MIGRATIONS));
-		$this->assertSame([$migration], $container->get(Collection::class)->all());
+		$this->assertSame([$migration->id() => $migration], $container->get(Collection::class)->all());
+		$this->assertSame([$migration], $container->get(Collection::class)->values());
 	}
 
 	public function test_it_collects_migrations_added_after_provider_registration(): void {
@@ -82,7 +83,8 @@ final class DatabaseProviderTest extends WPTestCase
 		$container->register(DatabaseProvider::class);
 		$container->mergeArrayVar(DatabaseProvider::MIGRATIONS, [$migration]);
 
-		$this->assertSame([$migration], $container->get(Collection::class)->all());
+		$this->assertSame([$migration->id() => $migration], $container->get(Collection::class)->all());
+		$this->assertSame([$migration], $container->get(Collection::class)->values());
 	}
 
 	/**

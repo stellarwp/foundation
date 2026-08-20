@@ -2,6 +2,8 @@
 
 namespace StellarWP\Foundation\Database\Contracts;
 
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
+
 /**
  * Applies and inspects WordPress database schema state for migrations.
  */
@@ -9,11 +11,22 @@ interface Schema
 {
 	/**
 	 * Create or update a table.
+	 *
+	 * @throws DatabaseException When WordPress cannot reconcile the table definition.
 	 */
-	public function createOrUpdate(Table|string $table, ?string $sql = null): void;
+	public function createOrUpdate(Table $table): void;
+
+	/**
+	 * Create or update a table from explicit dbDelta-compatible SQL.
+	 *
+	 * @throws DatabaseException When WordPress cannot reconcile the SQL definition.
+	 */
+	public function createOrUpdateSql(string $sql): void;
 
 	/**
 	 * Execute explicit schema SQL.
+	 *
+	 * @throws DatabaseException When the statement cannot be executed.
 	 */
 	public function execute(string $sql): void;
 

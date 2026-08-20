@@ -12,8 +12,12 @@ final class LockTableTest extends TestCase
 	public function test_it_creates_the_lock_table(): void {
 		$database   = new FakeDatabase();
 		$statements = [];
-		$schema     = new DatabaseSchema($database, static function (string $sql) use (&$statements): void {
-			$statements[] = $sql;
+		$schema     = new DatabaseSchema($database, static function (string $sql, bool $execute) use (&$statements): array {
+			if ($execute) {
+				$statements[] = $sql;
+			}
+
+			return [];
 		});
 		$table = new LockTable('network_foundation_locks');
 
@@ -33,7 +37,7 @@ final class LockTableTest extends TestCase
 
 	public function test_it_drops_the_lock_table(): void {
 		$database = new FakeDatabase();
-		$schema   = new DatabaseSchema($database, static fn (string $sql): array => []);
+		$schema   = new DatabaseSchema($database, static fn (string $sql, bool $execute): array => []);
 		$table    = new LockTable('network_foundation_locks');
 
 		$schema->drop($table);

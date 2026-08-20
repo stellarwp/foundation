@@ -12,8 +12,12 @@ final class MigrationTableTest extends TestCase
 	public function test_it_creates_the_migration_table(): void {
 		$database   = new FakeDatabase();
 		$statements = [];
-		$schema     = new DatabaseSchema($database, static function (string $sql) use (&$statements): void {
-			$statements[] = $sql;
+		$schema     = new DatabaseSchema($database, static function (string $sql, bool $execute) use (&$statements): array {
+			if ($execute) {
+				$statements[] = $sql;
+			}
+
+			return [];
 		});
 		$table = new MigrationTable('network_foundation_migrations');
 
@@ -22,12 +26,13 @@ final class MigrationTableTest extends TestCase
 		$this->assertSame(MigrationTable::ID, $table->id());
 		$this->assertSame('network_foundation_migrations', $table->name());
 		$this->assertStringContainsString('CREATE TABLE `network_foundation_migrations`', $statements[0]);
+		$this->assertStringContainsString('`migration` varbinary(191)', $statements[0]);
 		$this->assertStringContainsString('UNIQUE KEY `migration`', $statements[0]);
 	}
 
 	public function test_it_drops_the_migration_table(): void {
 		$database = new FakeDatabase();
-		$schema   = new DatabaseSchema($database, static fn (string $sql): array => []);
+		$schema   = new DatabaseSchema($database, static fn (string $sql, bool $execute): array => []);
 		$table    = new MigrationTable('network_foundation_migrations');
 
 		$schema->drop($table);

@@ -115,6 +115,10 @@ final class {{ class }} extends Command
 
 Applications should register `StellarWP\Foundation\WPCli\WPCliProvider` once, before feature providers that contribute commands. Feature providers can then add resolved command instances to the shared command list with `mergeArrayVar()`.
 
+Every contributed value must extend `StellarWP\Foundation\WPCli\Command`. The
+provider validates the complete list before registering anything and throws a
+descriptive exception when a contribution is invalid.
+
 Do not register `StellarWP\Foundation\Cli\CliProvider` in a WordPress plugin. That provider belongs to the developer-facing `foundation` console binary, not plugin runtime bootstrap.
 
 Generated command classes use Strauss-prefixed Foundation imports automatically when `extra.strauss.namespace_prefix` is configured. Handwritten provider code is still application code, so projects using Strauss with `update_call_sites=false` may need to prefix the Foundation and third-party imports shown below, including `lucatume\DI52\Container`.

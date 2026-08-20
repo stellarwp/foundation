@@ -2,6 +2,7 @@
 
 namespace StellarWP\Foundation\Identifier\Ulid;
 
+use Random\RandomException;
 use Random\Randomizer;
 use StellarWP\Foundation\Identifier\Ulid\Contracts\Entropy;
 
@@ -15,6 +16,9 @@ final readonly class RandomizerEntropy implements Entropy
 	) {
 	}
 
+	/**
+	 * @throws RandomException When secure random bytes cannot be generated.
+	 */
 	public function bytes(int $length): string {
 		return $this->randomizer->getBytes($length);
 	}

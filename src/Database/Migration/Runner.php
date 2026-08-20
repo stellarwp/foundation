@@ -7,9 +7,9 @@ use StellarWP\Foundation\Database\Contracts\Migration;
 use StellarWP\Foundation\Database\Contracts\Repository;
 use StellarWP\Foundation\Database\Contracts\Schema;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
-use StellarWP\Foundation\Database\Exceptions\DuplicateMigration;
 use StellarWP\Foundation\Database\Exceptions\MigrationFailed;
 use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
+use StellarWP\Foundation\Database\Migration\Exceptions\UnavailableMigration;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use Throwable;
@@ -26,6 +26,7 @@ final readonly class Runner
 		private Repository $repository,
 		private Schema $schema,
 		private Lock $lock,
+		private Store $store,
 		private string $lockName = 'foundation-database-migrations',
 		private int $lockTtl = 300
 	) {
@@ -39,52 +40,30 @@ final readonly class Runner
 	}
 
 	/**
-	 * @param iterable<Migration> $migrations
-	 *
 	 * @throws DatabaseException        When migration storage or schema access fails.
-	 * @throws DuplicateMigration       When configured migrations share an identifier.
 	 * @throws MigrationFailed          When a migration fails while running.
 	 * @throws MigrationLockFailed      When the lock cannot be acquired or ownership cannot be confirmed during release.
 	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
 	 */
-	public function run(iterable $migrations): Result {
-		return $this->locked(function () use ($migrations): Result {
-			$ran        = [];
-			$skipped    = [];
-			$batch      = $this->repository->nextBatch();
-			$migrations = $this->normalize($migrations);
+	public function run(Collection $migrations): Result {
+		$configured = $migrations->all();
 
-			foreach ($migrations as $migration) {
-				if ($this->repository->hasRun($migration->id())) {
-					$skipped[] = $migration->id();
-					continue;
-				}
-
-				try {
-					$migration->up($this->schema);
-				} catch (Throwable $throwable) {
-					throw MigrationFailed::whileRunning($migration->id(), $throwable);
-				}
-
-				$this->repository->recordRun($migration->id(), $batch);
-				$ran[] = $migration->id();
-			}
-
-			return new Result(ran: $ran, skipped: $skipped);
-		});
+		return $this->withPreparedStore(
+			fn (): Result => $this->runWithoutLock($configured)
+		);
 	}
 
 	/**
-	 * @param iterable<Migration> $migrations
-	 *
 	 * @throws DatabaseException        When migration storage or schema access fails.
-	 * @throws DuplicateMigration       When configured migrations share an identifier.
 	 * @throws MigrationFailed          When a migration fails while rolling back.
 	 * @throws MigrationLockFailed      When the lock cannot be acquired or ownership cannot be confirmed during release.
 	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
+	 * @throws UnavailableMigration     When a recorded migration implementation is unavailable.
 	 */
-	public function rollback(iterable $migrations, ?int $batch = null): Result {
-		return $this->locked(function () use ($migrations, $batch): Result {
+	public function rollback(Collection $migrations, ?int $batch = null): Result {
+		$configured = $migrations->all();
+
+		return $this->withPreparedStore(function () use ($configured, $batch): Result {
 			$batch ??= $this->repository->latestBatch();
 
 			if ($batch === null) {
@@ -92,26 +71,25 @@ final readonly class Runner
 			}
 
 			return $this->rollbackRecords(
-				$this->normalize($migrations),
+				$configured,
 				$this->repository->recordsForBatch($batch)
 			);
 		});
 	}
 
 	/**
-	 * @param iterable<Migration> $migrations
-	 *
 	 * @throws DatabaseException        When migration storage or schema access fails.
-	 * @throws DuplicateMigration       When configured migrations share an identifier.
 	 * @throws MigrationFailed          When a migration fails while running or rolling back.
 	 * @throws MigrationLockFailed      When the lock cannot be acquired or ownership cannot be confirmed during release.
 	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
+	 * @throws UnavailableMigration     When a recorded migration implementation is unavailable.
 	 */
-	public function refresh(iterable $migrations): Result {
-		return $this->locked(function () use ($migrations): Result {
-			$normalized = $this->normalize($migrations);
-			$rollback   = $this->rollbackRecords($normalized, array_values($this->repository->all()));
-			$run        = $this->runWithoutLock($normalized);
+	public function refresh(Collection $migrations): Result {
+		$configured = $migrations->all();
+
+		return $this->withPreparedStore(function () use ($configured): Result {
+			$rollback = $this->rollbackRecords($configured, array_values($this->repository->all()));
+			$run      = $this->runWithoutLock($configured);
 
 			return new Result(
 				ran: $run->ran,
@@ -122,21 +100,76 @@ final readonly class Runner
 	}
 
 	/**
-	 * @param iterable<Migration> $migrations
+	 * Prepare the migration ledger while holding the migration lock.
 	 *
-	 * @throws DatabaseException  When migration storage access fails.
-	 * @throws DuplicateMigration When configured migrations share an identifier.
+	 * @throws DatabaseException        When migration storage cannot be prepared.
+	 * @throws MigrationLockFailed      When the lock cannot be acquired or ownership cannot be confirmed during release.
+	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
+	 */
+	public function prepareStore(): void {
+		$this->withPreparedStore(static function (): void {
+		});
+	}
+
+	/**
+	 * Drop the migration ledger while holding the migration lock.
+	 *
+	 * @throws DatabaseException        When migration storage cannot be dropped.
+	 * @throws MigrationLockFailed      When the lock cannot be acquired or ownership cannot be confirmed during release.
+	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
+	 */
+	public function dropStore(): void {
+		$this->withLock(function (): void {
+			$this->store->drop();
+		});
+	}
+
+	/**
+	 * Determine whether the complete migration store is ready.
+	 *
+	 * @throws DatabaseException When migration storage cannot be inspected.
+	 */
+	public function storeExists(): bool {
+		return $this->store->exists();
+	}
+
+	/**
+	 * Determine whether recorded migration state can be read.
+	 *
+	 * @throws DatabaseException When migration storage cannot be inspected.
+	 */
+	public function hasLedger(): bool {
+		return $this->store->hasLedger();
+	}
+
+	/**
+	 * @throws DatabaseException When migration storage access fails.
 	 *
 	 * @return list<Status>
 	 */
-	public function status(iterable $migrations): array {
+	public function status(Collection $migrations): array {
+		$configured = $migrations->all();
+
+		if (! $this->store->hasLedger()) {
+			return array_map(
+				static fn (Migration $migration): Status => Status::pending($migration->id()),
+				array_values($configured)
+			);
+		}
+
 		$records  = $this->repository->all();
 		$statuses = [];
 
-		foreach ($this->normalize($migrations) as $migration) {
+		foreach ($configured as $migration) {
 			$statuses[] = isset($records[$migration->id()])
 				? Status::fromRecord($records[$migration->id()])
 				: Status::pending($migration->id());
+
+			unset($records[$migration->id()]);
+		}
+
+		foreach ($records as $record) {
+			$statuses[] = Status::unavailable($record);
 		}
 
 		return $statuses;
@@ -145,20 +178,24 @@ final readonly class Runner
 	/**
 	 * @param array<string, Migration> $migrations
 	 * @param list<Record>             $records
+	 *
+	 * @throws UnavailableMigration When a recorded migration implementation is unavailable.
 	 */
 	private function rollbackRecords(array $migrations, array $records): Result {
 		usort($records, static fn (Record $a, Record $b): int => $b->id <=> $a->id);
+		$unavailable = array_values(array_map(
+			static fn (Record $record): string => $record->migration,
+			array_filter($records, static fn (Record $record): bool => ! isset($migrations[$record->migration]))
+		));
+
+		if ($unavailable !== []) {
+			throw new UnavailableMigration($unavailable);
+		}
 
 		$rolledBack = [];
-		$skipped    = [];
 
 		foreach ($records as $record) {
-			$migration = $migrations[$record->migration] ?? null;
-
-			if ($migration === null) {
-				$skipped[] = $record->migration;
-				continue;
-			}
+			$migration = $migrations[$record->migration];
 
 			try {
 				$migration->down($this->schema);
@@ -170,7 +207,7 @@ final readonly class Runner
 			$rolledBack[] = $migration->id();
 		}
 
-		return new Result(rolledBack: $rolledBack, skipped: $skipped);
+		return new Result(rolledBack: $rolledBack);
 	}
 
 	/**
@@ -201,22 +238,22 @@ final readonly class Runner
 	}
 
 	/**
-	 * @param iterable<Migration> $migrations
+	 * @template T
 	 *
-	 * @return array<string, Migration>
+	 * @param callable(): T $callback
+	 *
+	 * @throws DatabaseException        When migration storage cannot be prepared.
+	 * @throws MigrationLockFailed      When the lock cannot be acquired or ownership cannot be confirmed during release.
+	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
+	 *
+	 * @return T
 	 */
-	private function normalize(iterable $migrations): array {
-		$normalized = [];
+	private function withPreparedStore(callable $callback): mixed {
+		return $this->withLock(function () use ($callback): mixed {
+			$this->store->prepareLedger();
 
-		foreach ($migrations as $migration) {
-			if (isset($normalized[$migration->id()])) {
-				throw DuplicateMigration::forMigration($migration->id());
-			}
-
-			$normalized[$migration->id()] = $migration;
-		}
-
-		return $normalized;
+			return $callback();
+		});
 	}
 
 	/**
@@ -224,12 +261,14 @@ final readonly class Runner
 	 *
 	 * @param callable(): T $callback
 	 *
+	 * @throws DatabaseException        When lock storage cannot be prepared.
 	 * @throws MigrationLockFailed      When the lock cannot be acquired or ownership cannot be confirmed during release.
 	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
 	 *
 	 * @return T
 	 */
-	private function locked(callable $callback): mixed {
+	private function withLock(callable $callback): mixed {
+		$this->store->prepareLock();
 		$token = $this->lock->acquire($this->lockName, $this->lockTtl);
 
 		if ($token === null) {

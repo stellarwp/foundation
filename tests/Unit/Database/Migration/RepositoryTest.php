@@ -2,6 +2,7 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Database\Migration;
 
+use StellarWP\Foundation\Database\Migration\Exceptions\InvalidMigrationId;
 use StellarWP\Foundation\Database\Migration\Repository;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\TestCase;
@@ -47,6 +48,25 @@ final class RepositoryTest extends TestCase
 
 		$this->assertSame(2, $record->batch);
 		$this->assertStringContainsString('INSERT INTO `network_foundation_migrations`', $this->database->executed[0]);
+	}
+
+	public function test_it_rejects_invalid_migration_ids_before_writing_to_the_ledger(): void {
+		$this->expectException(InvalidMigrationId::class);
+
+		$this->repository->recordRun(' invalid', 2);
+	}
+
+	public function test_it_rejects_invalid_migration_ids_read_from_the_ledger(): void {
+		$this->database->rowsResults[] = [[
+			'id'        => 1,
+			'migration' => '123',
+			'batch'     => 1,
+			'ran_at'    => '2026-01-01 00:00:00',
+		]];
+
+		$this->expectException(InvalidMigrationId::class);
+
+		$this->repository->all();
 	}
 
 	public function test_it_deletes_a_migration_run(): void {

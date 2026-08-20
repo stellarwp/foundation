@@ -29,8 +29,10 @@ final readonly class Column
 			$this->nullable ? ' NULL' : ' NOT NULL'
 		);
 
-		if ($this->default !== null || $this->hasDefault) {
-			$sql .= sprintf(' DEFAULT %s', $this->formatDefault($this->default));
+		$default = $this->defaultSql();
+
+		if ($default !== null) {
+			$sql .= sprintf(' DEFAULT %s', $default);
 		}
 
 		if ($this->extra !== '') {
@@ -38,6 +40,17 @@ final readonly class Column
 		}
 
 		return $sql;
+	}
+
+	/**
+	 * Return the SQL literal for an explicit default value.
+	 */
+	public function defaultSql(): ?string {
+		if ($this->default === null && ! $this->hasDefault) {
+			return null;
+		}
+
+		return $this->formatDefault($this->default);
 	}
 
 	public function unsigned(bool $unsigned = true): self {
@@ -113,6 +126,12 @@ final readonly class Column
 			return (string) $default;
 		}
 
-		return "'" . addslashes((string) $default) . "'";
+		$default = (string) $default;
+
+		if (preg_match("/['\\\\\x00-\x1F\x7F]/", $default) === 1) {
+			return "X'" . bin2hex($default) . "'";
+		}
+
+		return "'" . $default . "'";
 	}
 }

@@ -180,44 +180,61 @@ $query->bindings();
 $query->toPreparedSql();
 ```
 
+`Database::insert()` returns the number of affected rows, which works for both
+auto-increment and application-assigned identifiers such as ULIDs. Use
+`Database::insertGetId()` only when the table has an auto-increment key and the
+generated integer identifier is needed.
+
 ## Defining Migrations
 
 Migrations implement `StellarWP\Foundation\Database\Contracts\Migration`:
 
 ```php
+use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\Migration;
 use StellarWP\Foundation\Database\Contracts\Schema;
 
 final readonly class CreateReportsTable implements Migration
 {
-    public function id(): string
-    {
-        return '2026_06_23_000001_create_reports_table';
-    }
+	public function __construct(
+		private Database $database
+	) {
+	}
 
-    public function up(Schema $schema): void
-    {
-        $schema->createOrUpdate(
-            sprintf(
-                'CREATE TABLE %s (
-                id bigint unsigned NOT NULL AUTO_INCREMENT,
-                title varchar(191) NOT NULL,
-                PRIMARY KEY  (id)
-            );',
-                $schema->quoteIdentifier('wp_reports')
-            )
-        );
-    }
+	public function id(): string {
+		return '2026_06_23_000001_create_reports_table';
+	}
 
-    public function down(Schema $schema): void
-    {
-        $schema->execute(sprintf(
-            'DROP TABLE IF EXISTS %s',
-            $schema->quoteIdentifier('wp_reports')
-        ));
-    }
+	public function up(Schema $schema): void {
+		$table = $this->database->tableName('reports');
+
+		$schema->createOrUpdateSql(
+			sprintf(
+				'CREATE TABLE %s (
+				id bigint unsigned NOT NULL AUTO_INCREMENT,
+				title varchar(191) NOT NULL,
+				PRIMARY KEY  (id)
+			);',
+				$schema->quoteIdentifier($table)
+			)
+		);
+	}
+
+	public function down(Schema $schema): void {
+		$table = $this->database->tableName('reports');
+
+		$schema->execute(sprintf(
+			'DROP TABLE IF EXISTS %s',
+			$schema->quoteIdentifier($table)
+		));
+	}
 }
 ```
+
+Migration IDs are byte-exact and case-sensitive. They must be nonblank, contain
+no surrounding whitespace, fit within 191 bytes, and not be an integer-like
+string such as `123`; these rules keep PHP collection keys and the MySQL ledger
+consistent.
 
 Applications should add migrations to `DatabaseProvider::MIGRATIONS` with `mergeArrayVar()` so multiple providers/packages can contribute migrations:
 
@@ -280,7 +297,7 @@ $this->container->mergeArrayVar(DatabaseProvider::MIGRATIONS, static fn (C $c): 
 ]);
 ```
 
-Application code that needs to run migrations should inject `StellarWP\Foundation\Database\Migration\Migrator`. It is the configured entry point for preparing the migration store, running pending migrations, rolling back, refreshing, dropping migration storage, and reading migration status.
+Application code that needs to run migrations should inject `StellarWP\Foundation\Database\Migration\Migrator`. It is the configured entry point for preparing the migration store, running pending migrations, rolling back, refreshing, dropping only the internal migration store, and reading migration status.
 
 ```php
 use StellarWP\Foundation\Database\Migration\Migrator;
@@ -300,11 +317,22 @@ final readonly class PluginUpdater
 
 `run()`, `rollback()`, and `refresh()` prepare the migration store automatically before executing migrations.
 
+`dropStore()` acquires the migration lock and removes only the migration ledger.
+It preserves application tables and shared lock storage. After the ledger is
+removed, every configured migration appears pending and may run again after the
+store is prepared. It is not a substitute for rollback because it does not call
+any migration's `down()` method.
+
+Recorded migration implementations must remain registered for as long as their
+ledger entries may be rolled back. `rollback()` and `refresh()` validate every
+selected ledger entry before changing schema and fail without a partial rollback
+when an implementation is unavailable.
+
 Registering `DatabaseProvider` does not execute migrations. Call `Migrator::run()` from the application's activation or version-update lifecycle, or run `wp nx migrate --run` during deployment. Completed migration IDs are skipped on later runs. Because migration changes and their ledger updates are not one atomic operation, write `up()` and `down()` methods so they can recover from retries after partial work or failed ledger writes.
 
 ## Evolving Tables
 
-`TableDefinition` and `Schema::createOrUpdate()` use WordPress `dbDelta()` to create tables and reconcile changes that `dbDelta()` supports, such as adding columns and indexes. They should not be relied on to remove or rename columns, replace indexes, manage foreign keys, or backfill data.
+`TableDefinition` and `Schema::createOrUpdate()` use WordPress `dbDelta()` to create tables and reconcile changes that `dbDelta()` supports, such as adding columns and indexes. Use `Schema::createOrUpdateSql()` when a migration must provide explicit dbDelta-compatible SQL. They should not be relied on to remove or rename columns, replace indexes, manage foreign keys, or backfill data.
 
 Use an explicit, versioned migration for destructive or data-dependent changes. Such migrations can inspect table and index state with `Schema::hasTable()` and `Schema::hasIndex()`; inject `Database` when column inspection through `Database::columnExists()` is required. Use `Schema::execute()` or focused helpers such as `dropIndex()` for the required SQL. Make rollback behavior explicit; throw `IrreversibleMigration::forMigration(self::ID)` when a migration cannot be safely reversed.
 
@@ -395,7 +423,7 @@ Available flags:
 - `--run` runs pending migrations.
 - `--rollback` rolls back the latest migration batch.
 - `--refresh` rolls back all known migrations and runs them again.
-- `--drop` drops the migrations and lock tables after confirmation.
+- `--drop-store` drops only the migration ledger after confirmation. Application tables and shared lock storage remain, and all migrations appear pending afterward.
 - `--prepare` prepares the migration store without running migrations.
 - `--create-table` is an alias for `--prepare`.
 - `--yes` skips confirmation prompts for destructive actions.

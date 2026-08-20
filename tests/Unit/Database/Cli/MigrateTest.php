@@ -10,7 +10,6 @@ use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Runner;
 use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Schema as DatabaseSchema;
-use StellarWP\Foundation\Database\Table\Collection as TableCollection;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\InMemoryLock;
@@ -32,17 +31,15 @@ final class MigrateTest extends TestCase
 
 		$this->loadWpCliUtilities();
 
-		$database = new FakeDatabase();
-		$wpSchema = new DatabaseSchema($database, static fn (string $sql): array => []);
-		$command  = new Migrate(
+		$database       = new FakeDatabase();
+		$wpSchema       = new DatabaseSchema($database, static fn (string $sql, bool $execute): array => []);
+		$migrationTable = new MigrationTable('wp_nexcess_foundation_migrations');
+		$store          = new Store($wpSchema, $migrationTable, new LockTable('wp_nexcess_foundation_locks'));
+		$command        = new Migrate(
 			$this->container,
 			'foundation',
 			new Migrator(
-				new Store(new TableCollection($wpSchema, [
-					new MigrationTable('wp_nexcess_foundation_migrations'),
-					new LockTable('wp_nexcess_foundation_locks'),
-				])),
-				new Runner(new InMemoryRepository(), new RecordingSchema(), new InMemoryLock()),
+				new Runner(new InMemoryRepository(), new RecordingSchema(), new InMemoryLock(), $store),
 				new MigrationCollection()
 			)
 		);
@@ -78,8 +75,8 @@ final class MigrateTest extends TestCase
 			],
 			[
 				'type'        => 'flag',
-				'name'        => 'drop',
-				'description' => 'Drop Foundation database tables.',
+				'name'        => 'drop-store',
+				'description' => 'Drop only the migration ledger.',
 				'optional'    => true,
 				'default'     => false,
 			],
@@ -114,8 +111,8 @@ final class MigrateTest extends TestCase
 
 		$this->assertSame([], $repository->all());
 		$this->assertSame([
-			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'createOrUpdate:wp_nexcess_foundation_locks',
+			'createOrUpdate:wp_nexcess_foundation_migrations',
 		], $schema->statements);
 	}
 
@@ -126,8 +123,8 @@ final class MigrateTest extends TestCase
 
 		$this->assertSame([], $repository->all());
 		$this->assertSame([
-			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'createOrUpdate:wp_nexcess_foundation_locks',
+			'createOrUpdate:wp_nexcess_foundation_migrations',
 		], $schema->statements);
 	}
 
@@ -150,8 +147,8 @@ final class MigrateTest extends TestCase
 
 		$this->assertTrue($repository->hasRun('2026_06_23_000001_create_example'));
 		$this->assertSame([
-			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'createOrUpdate:wp_nexcess_foundation_locks',
+			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'up:2026_06_23_000001_create_example',
 		], $schema->statements);
 	}
@@ -184,19 +181,19 @@ final class MigrateTest extends TestCase
 		$this->assertContains('up:2026_06_23_000001_create_example', $schema->statements);
 	}
 
-	public function test_it_drops_database_tables(): void {
+	public function test_it_drops_the_migration_store(): void {
 		[$command, , $schema] = $this->newCommand();
 
 		$command->runCommand([], ['create-table' => true]);
 
 		$this->assertSame(0, $command->runCommand([], [
-			'drop' => true,
-			'yes'  => true,
+			'drop-store' => true,
+			'yes'        => true,
 		]));
 
-		$this->assertSame([], $schema->tables);
+		$this->assertSame(['wp_nexcess_foundation_locks' => true], $schema->tables);
 		$this->assertContains('drop:wp_nexcess_foundation_migrations', $schema->statements);
-		$this->assertContains('drop:wp_nexcess_foundation_locks', $schema->statements);
+		$this->assertNotContains('drop:wp_nexcess_foundation_locks', $schema->statements);
 	}
 
 	public function test_it_shows_a_warning_when_status_tables_do_not_exist(): void {
@@ -217,24 +214,32 @@ final class MigrateTest extends TestCase
 		$this->assertSame(0, $command->runCommand());
 	}
 
+	public function test_it_shows_unavailable_recorded_migrations(): void {
+		[$command, $repository] = $this->newCommand();
+
+		$command->runCommand([], ['prepare' => true]);
+		$repository->recordRun('2026_06_23_000002_missing_migration', 1);
+
+		$this->expectOutputRegex('/2026_06_23_000002_missing_migration\s+unavailable/');
+
+		$this->assertSame(0, $command->runCommand());
+	}
+
 	/**
 	 * @return array{Migrate, InMemoryRepository, RecordingSchema}
 	 */
 	private function newCommand(): array {
 		$this->loadWpCliUtilities();
 
-		$database   = new FakeDatabase();
-		$wpSchema   = new RecordingSchema();
-		$repository = new InMemoryRepository();
-		$runner     = new Runner($repository, $wpSchema, new InMemoryLock());
-		$command    = new Migrate(
+		$wpSchema       = new RecordingSchema();
+		$repository     = new InMemoryRepository();
+		$migrationTable = new MigrationTable('wp_nexcess_foundation_migrations');
+		$store          = new Store($wpSchema, $migrationTable, new LockTable('wp_nexcess_foundation_locks'));
+		$runner         = new Runner($repository, $wpSchema, new InMemoryLock(), $store);
+		$command        = new Migrate(
 			$this->container,
 			'foundation',
 			new Migrator(
-				new Store(new TableCollection($wpSchema, [
-					new MigrationTable('wp_nexcess_foundation_migrations'),
-					new LockTable('wp_nexcess_foundation_locks'),
-				])),
 				$runner,
 				new MigrationCollection([
 					new TestMigration('2026_06_23_000001_create_example'),

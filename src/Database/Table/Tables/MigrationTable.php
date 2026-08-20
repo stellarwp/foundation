@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Database\Table\Tables;
 
 use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Table\Column;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 
 /**
@@ -28,7 +29,7 @@ final readonly class MigrationTable implements Table
 	public function definition(): TableDefinition {
 		return TableDefinition::for($this)
 			->bigIncrements('id')
-			->string('migration', 191)
+			->column(new Column('migration', 'varbinary', 191))
 			->unsignedInteger('batch')
 			->dateTime('ran_at')
 			->unique('migration', 'migration')

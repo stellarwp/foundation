@@ -145,7 +145,10 @@ final class QueryBuilder
 	 * @return array<string, mixed>|null
 	 */
 	public function first(): ?array {
-		return $this->queryWithLimitBindings()->first();
+		$query        = clone $this;
+		$query->limit = 1;
+
+		return $query->queryWithLimitBindings()->first();
 	}
 
 	private function queryWithLimitBindings(): Query {

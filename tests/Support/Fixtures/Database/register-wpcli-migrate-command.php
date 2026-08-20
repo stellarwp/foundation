@@ -16,7 +16,6 @@ use StellarWP\Foundation\Database\Migration\Repository;
 use StellarWP\Foundation\Database\Migration\Runner;
 use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Schema;
-use StellarWP\Foundation\Database\Table\Collection as TableCollection;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 
@@ -46,11 +45,14 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 	}
 
-	$database       = new Database($wpdb);
-	$schema         = new Schema($database, dbDelta(...));
-	$migrationTable = $wpdb->prefix . 'foundation_cli_migrations';
-	$lockTable      = $wpdb->prefix . 'foundation_cli_locks';
-	$exampleTable   = $wpdb->prefix . 'foundation_cli_example';
+	$database           = new Database($wpdb);
+	$schema             = new Schema($database, static fn (string $sql, bool $execute): array => dbDelta($sql, $execute));
+	$migrationTableName = $wpdb->prefix . 'foundation_cli_migrations';
+	$lockTableName      = $wpdb->prefix . 'foundation_cli_locks';
+	$exampleTable       = $wpdb->prefix . 'foundation_cli_example';
+	$migrationTable     = new MigrationTable($migrationTableName);
+	$lockTable          = new LockTable($lockTableName);
+	$store              = new Store($schema, $migrationTable, $lockTable);
 
 	$migration = new class($exampleTable) implements Migration {
 		public function __construct(
@@ -63,7 +65,7 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 		}
 
 		public function up(SchemaContract $schema): void {
-			$schema->createOrUpdate(sprintf(
+			$schema->createOrUpdateSql(sprintf(
 				'CREATE TABLE %s (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				name varchar(191) NOT NULL,
@@ -85,14 +87,11 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 		$container,
 		'foundation',
 		new Migrator(
-			new Store(new TableCollection($schema, [
-				new MigrationTable($migrationTable),
-				new LockTable($lockTable),
-			])),
 			new Runner(
-				new Repository($database, $migrationTable),
+				new Repository($database, $migrationTableName),
 				$schema,
-				new DatabaseLock($database, $lockTable)
+				new DatabaseLock($database, $lockTableName),
+				$store
 			),
 			new MigrationCollection([$migration])
 		)
