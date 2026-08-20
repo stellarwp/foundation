@@ -2,20 +2,20 @@
 
 namespace StellarWP\Foundation\Database;
 
-use Closure;
 use lucatume\DI52\Container as C;
 use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Database\Cli\Migrate;
 use StellarWP\Foundation\Database\Contracts\Database as DatabaseContract;
 use StellarWP\Foundation\Database\Contracts\Repository;
 use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
+use StellarWP\Foundation\Database\Contracts\SchemaExecutor;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
-use StellarWP\Foundation\Database\Exceptions\QueryException;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository as MigrationRecordRepository;
 use StellarWP\Foundation\Database\Migration\Store;
+use StellarWP\Foundation\Database\Schema\DbDelta;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
@@ -60,35 +60,8 @@ final class DatabaseProvider extends Provider
 			return new Database($wpdb);
 		});
 		$this->container->singleton(DatabaseContract::class, static fn (C $c): Database => $c->get(Database::class));
-
-		$this->container->when(Schema::class)
-			->needs(Closure::class)
-			->give(static function (): Closure {
-				if (! function_exists('dbDelta') && defined('ABSPATH')) {
-					require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-				}
-
-				if (! function_exists('dbDelta')) {
-					throw new DatabaseException('WordPress dbDelta() is not available.');
-				}
-
-				return static function (string $sql, bool $execute): array {
-					$wpdb = $GLOBALS['wpdb'] ?? null;
-
-					if (! $wpdb instanceof \wpdb) {
-						throw new DatabaseException('The global wpdb instance is not available.');
-					}
-
-					$result = dbDelta($sql, $execute);
-
-					if ($execute && $wpdb->last_error !== '') {
-						throw new QueryException($wpdb->last_error, $sql, [], $wpdb->last_error);
-					}
-
-					return $result;
-				};
-			});
-
+		$this->container->singleton(DbDelta::class);
+		$this->container->singleton(SchemaExecutor::class, static fn (C $c): DbDelta => $c->get(DbDelta::class));
 		$this->container->singleton(Schema::class);
 		$this->container->singleton(SchemaContract::class, static fn (C $c): Schema => $c->get(Schema::class));
 	}

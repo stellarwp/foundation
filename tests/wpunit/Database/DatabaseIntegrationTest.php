@@ -18,6 +18,7 @@ use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository;
 use StellarWP\Foundation\Database\Schema;
+use StellarWP\Foundation\Database\Schema\DbDelta;
 use StellarWP\Foundation\Database\Table\Collection as TableCollection;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
@@ -48,8 +49,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 		}
 
 		$this->database = new Database($GLOBALS['wpdb']);
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-		$this->schema = new Schema($this->database, static fn (string $sql, bool $execute): array => dbDelta($sql, $execute));
+		$this->schema   = new Schema($this->database, new DbDelta());
 	}
 
 	protected function tearDown(): void {

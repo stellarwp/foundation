@@ -15,6 +15,7 @@ use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository;
 use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Schema;
+use StellarWP\Foundation\Database\Schema\DbDelta;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 
@@ -40,12 +41,8 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 	$container->bind(ContainerInterface::class, $container);
 	$container->singleton(Dot::class, new Dot());
 
-	if (! function_exists('dbDelta')) {
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-	}
-
 	$database           = new Database($wpdb);
-	$schema             = new Schema($database, static fn (string $sql, bool $execute): array => dbDelta($sql, $execute));
+	$schema             = new Schema($database, new DbDelta());
 	$migrationTableName = $wpdb->prefix . 'foundation_cli_migrations';
 	$lockTableName      = $wpdb->prefix . 'foundation_cli_locks';
 	$exampleTable       = $wpdb->prefix . 'foundation_cli_example';

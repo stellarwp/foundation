@@ -2,9 +2,9 @@
 
 namespace StellarWP\Foundation\Database;
 
-use Closure;
 use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
+use StellarWP\Foundation\Database\Contracts\SchemaExecutor;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Table\TableDefinition;
@@ -14,12 +14,9 @@ use StellarWP\Foundation\Database\Table\TableDefinition;
  */
 final readonly class Schema implements SchemaContract
 {
-	/**
-	 * @param Closure(string, bool): array<string, string> $dbDelta
-	 */
 	public function __construct(
 		private Database $database,
-		private Closure $dbDelta
+		private SchemaExecutor $executor
 	) {
 	}
 
@@ -30,7 +27,7 @@ final readonly class Schema implements SchemaContract
 		$definition = $table->definition();
 		$definition->assertValid();
 
-		$this->applyDelta($this->createTableSql($table, $definition));
+		$this->executor->execute($this->createTableSql($table, $definition));
 		$this->reconcileComplexDefaults($table, $definition);
 	}
 
@@ -38,7 +35,7 @@ final readonly class Schema implements SchemaContract
 	 * @throws DatabaseException When WordPress cannot reconcile the SQL definition.
 	 */
 	public function createOrUpdateSql(string $sql): void {
-		$this->applyDelta($sql);
+		$this->executor->execute($sql);
 	}
 
 	public function execute(string $sql): void {
@@ -104,18 +101,6 @@ final readonly class Schema implements SchemaContract
 				$this->database->quoteIdentifier($table->name()),
 				$this->database->quoteIdentifier($column->name),
 				$default
-			));
-		}
-	}
-
-	private function applyDelta(string $sql): void {
-		($this->dbDelta)($sql, true);
-		$pending = ($this->dbDelta)($sql, false);
-
-		if ($pending !== []) {
-			throw new DatabaseException(sprintf(
-				'Database schema reconciliation did not complete: %s',
-				implode('; ', $pending)
 			));
 		}
 	}
