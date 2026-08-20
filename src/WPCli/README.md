@@ -140,7 +140,6 @@ final class Wp_Cli_Provider extends Provider
 			->needs( '$commandPrefix' )
 			->give( static fn ( C $c ): string => $c->get( WPCliProvider::COMMAND_PREFIX ) );
 
-		$this->container->singleton( Sync_Command::class );
 		$this->container->mergeArrayVar(
 			WPCliProvider::COMMANDS,
 			static fn ( C $c ): array => [
