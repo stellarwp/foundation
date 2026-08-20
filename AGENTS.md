@@ -77,6 +77,16 @@ Do not instruct consuming WordPress plugins to register `StellarWP\Foundation\Cl
 
 When generated code depends on runtime APIs, require the runtime package normally. For WP-CLI commands, install `stellarwp/foundation-wpcli` in `require` if the plugin ships those commands, and install `stellarwp/foundation-cli` in `require-dev` only for generation.
 
+Do not register WP-CLI command classes directly with `$this->container->bind(CommandClass::class)` or `$this->container->singleton(CommandClass::class)` from providers loaded during normal WordPress bootstrap. DI52 creates the binding lazily, but its builder factory immediately calls `class_exists()` for string implementations. That autoloads the command class and its `WP_CLI_Command` parent before WP-CLI is available. Keep any contextual bindings for the command, then contribute it lazily through `WPCliProvider::COMMANDS` without separately binding it:
+
+```php
+$this->container->mergeArrayVar(WPCliProvider::COMMANDS, static fn (C $c): array => [
+	$c->get(CommandClass::class),
+]);
+```
+
+The command class will then be autowired only when `WPCliProvider` resolves the command collection during `cli_init`.
+
 If local scaffolding assets such as `foundation/stubs/` should not be included in a consuming project's release archive, add them to that project's `.gitattributes` production zip exclusions.
 
 ## Container Providers

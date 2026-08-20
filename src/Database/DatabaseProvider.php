@@ -119,8 +119,6 @@ final class DatabaseProvider extends Provider
 			->needs('$commandPrefix')
 			->give(static fn (C $c): string => $c->get(WPCliProvider::COMMAND_PREFIX));
 
-		$this->container->singleton(Migrate::class);
-
 		$this->container->mergeArrayVar(WPCliProvider::COMMANDS, static fn (C $c): array => [
 			$c->get(Migrate::class),
 		]);
