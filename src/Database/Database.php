@@ -69,6 +69,10 @@ final readonly class Database implements DatabaseContract
 	}
 
 	public function prepare(string $sql, mixed ...$bindings): string {
+		if (trim($sql) === '') {
+			throw new QueryException('SQL statement cannot be empty.', $sql, array_values($bindings));
+		}
+
 		if ($bindings === []) {
 			return $sql;
 		}
@@ -90,10 +94,9 @@ final readonly class Database implements DatabaseContract
 		$bindings = array_values($bindings);
 		$query    = $this->prepare($sql, ...$bindings);
 		$result   = $this->wpdb->get_row($query, self::ARRAY_A);
+		$this->throwIfLastError($sql, $bindings);
 
 		if ($result === null) {
-			$this->throwIfLastError('Unable to retrieve database row.', $sql, $bindings);
-
 			return null;
 		}
 
@@ -107,11 +110,10 @@ final readonly class Database implements DatabaseContract
 		$bindings = array_values($bindings);
 		$query    = $this->prepare($sql, ...$bindings);
 		$results  = $this->wpdb->get_results($query, self::ARRAY_A);
+		$this->throwIfLastError($sql, $bindings);
 
 		if ($results === null) {
-			$this->throwIfLastError('Unable to retrieve database rows.', $sql, $bindings);
-
-			return [];
+			throw new QueryException('Unable to retrieve database rows.', $sql, $bindings);
 		}
 
 		$rows = [];
@@ -127,10 +129,7 @@ final readonly class Database implements DatabaseContract
 		$bindings = array_values($bindings);
 		$query    = $this->prepare($sql, ...$bindings);
 		$result   = $this->wpdb->get_var($query);
-
-		if ($result === null) {
-			$this->throwIfLastError('Unable to retrieve database value.', $sql, $bindings);
-		}
+		$this->throwIfLastError($sql, $bindings);
 
 		return $result;
 	}
@@ -223,7 +222,7 @@ final readonly class Database implements DatabaseContract
 	/**
 	 * @param list<mixed> $bindings
 	 */
-	private function throwIfLastError(string $fallback, string $sql, array $bindings): void {
+	private function throwIfLastError(string $sql, array $bindings): void {
 		$error = $this->lastError();
 
 		if ($error !== null) {

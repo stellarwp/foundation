@@ -173,7 +173,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 		]));
 	}
 
-	public function test_database_returns_null_for_missing_values_without_query_errors(): void {
+	public function test_database_returns_empty_results_without_query_errors(): void {
 		$table = $this->table('missing_value');
 
 		$this->database->execute(sprintf(
@@ -187,14 +187,27 @@ final class DatabaseIntegrationTest extends WPTestCase
 		));
 
 		$this->assertNull($this->database->value('SELECT name FROM %i WHERE id = %d', $table, 999));
+		$this->assertSame([], $this->database->rows('SELECT name FROM %i WHERE id = %d', $table, 999));
+	}
+
+	public function test_database_rejects_blank_sql(): void {
+		$this->expectException(QueryException::class);
+		$this->expectExceptionMessage('SQL statement cannot be empty.');
+
+		$this->database->prepare(' ');
 	}
 
 	public function test_database_wraps_wordpress_query_failures(): void {
 		$previous = $GLOBALS['wpdb']->suppress_errors(true);
 
 		try {
+			$exception = $this->assertQueryFails(fn (): mixed => $this->database->rows('SELECT * FROM %i', 'missing_foundation_table'));
+
+			$this->assertSame('SELECT * FROM %i', $exception->sql());
+			$this->assertSame(['missing_foundation_table'], $exception->bindings());
+			$this->assertNotNull($exception->databaseError());
+
 			$this->assertQueryFails(fn (): mixed => $this->database->row('SELECT * FROM %i', 'missing_foundation_table'));
-			$this->assertSame([], $this->database->rows('SELECT * FROM %i', 'missing_foundation_table'));
 			$this->assertQueryFails(fn (): mixed => $this->database->execute('SELECT * FROM %i', 'missing_foundation_table'));
 			$this->assertQueryFails(fn (): mixed => $this->database->insert('missing_foundation_table', ['name' => 'test']));
 			$this->assertQueryFails(fn (): mixed => $this->database->update('missing_foundation_table', ['name' => 'updated'], ['id' => 1]));
@@ -547,13 +560,13 @@ final class DatabaseIntegrationTest extends WPTestCase
 	/**
 	 * @param callable(): mixed $callback
 	 */
-	private function assertQueryFails(callable $callback): void {
+	private function assertQueryFails(callable $callback): QueryException {
 		try {
 			$callback();
 		} catch (QueryException $exception) {
 			$this->assertNotSame('', $exception->getMessage());
 
-			return;
+			return $exception;
 		}
 
 		$this->fail('Expected the database operation to throw a query exception.');
