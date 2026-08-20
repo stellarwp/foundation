@@ -15,13 +15,12 @@ use function WP_CLI\Utils\get_flag_value;
  */
 final class Migrate extends Command
 {
-	private const string FLAG_RUN          = 'run';
-	private const string FLAG_ROLLBACK     = 'rollback';
-	private const string FLAG_REFRESH      = 'refresh';
-	private const string FLAG_DROP_STORE   = 'drop-store';
-	private const string FLAG_PREPARE      = 'prepare';
-	private const string FLAG_CREATE_TABLE = 'create-table';
-	private const string FLAG_YES          = 'yes';
+	private const string FLAG_RUN        = 'run';
+	private const string FLAG_ROLLBACK   = 'rollback';
+	private const string FLAG_REFRESH    = 'refresh';
+	private const string FLAG_DROP_STORE = 'drop-store';
+	private const string FLAG_INITIALIZE = 'initialize';
+	private const string FLAG_YES        = 'yes';
 
 	public function __construct(
 		protected Container $container,
@@ -36,21 +35,25 @@ final class Migrate extends Command
 	 * @param array<string,mixed> $assocArgs
 	 */
 	public function runCommand(array $args = [], array $assocArgs = []): int {
-		$run         = (bool) get_flag_value($assocArgs, self::FLAG_RUN, false);
-		$rollback    = (bool) get_flag_value($assocArgs, self::FLAG_ROLLBACK, false);
-		$refresh     = (bool) get_flag_value($assocArgs, self::FLAG_REFRESH, false);
-		$dropStore   = (bool) get_flag_value($assocArgs, self::FLAG_DROP_STORE, false);
-		$prepare     = (bool) get_flag_value($assocArgs, self::FLAG_PREPARE, false);
-		$createTable = (bool) get_flag_value($assocArgs, self::FLAG_CREATE_TABLE, false);
+		$run        = (bool) get_flag_value($assocArgs, self::FLAG_RUN, false);
+		$rollback   = (bool) get_flag_value($assocArgs, self::FLAG_ROLLBACK, false);
+		$refresh    = (bool) get_flag_value($assocArgs, self::FLAG_REFRESH, false);
+		$dropStore  = (bool) get_flag_value($assocArgs, self::FLAG_DROP_STORE, false);
+		$initialize = (bool) get_flag_value($assocArgs, self::FLAG_INITIALIZE, false);
 
-		if (! $this->hasSingleOperation([
+		$this->assertSingleOperation([
 			self::FLAG_RUN        => $run,
 			self::FLAG_ROLLBACK   => $rollback,
 			self::FLAG_REFRESH    => $refresh,
 			self::FLAG_DROP_STORE => $dropStore,
-			self::FLAG_PREPARE    => $prepare || $createTable,
-		])) {
-			return self::ERROR;
+			self::FLAG_INITIALIZE => $initialize,
+		]);
+
+		if (($run || $rollback || $refresh || $dropStore) && ! $this->migrator->isInitialized()) {
+			WP_CLI::error(sprintf(
+				'Migration storage is not initialized. Run `wp %s --initialize` first.',
+				$this->command()
+			));
 		}
 
 		if ($dropStore) {
@@ -61,9 +64,9 @@ final class Migrate extends Command
 			return self::SUCCESS;
 		}
 
-		if ($prepare || $createTable) {
-			$this->migrator->prepare();
-			WP_CLI::success('Foundation database tables are ready.');
+		if ($initialize) {
+			$this->migrator->initialize();
+			WP_CLI::success('Foundation migration storage is initialized.');
 
 			return self::SUCCESS;
 		}
@@ -135,15 +138,8 @@ final class Migrate extends Command
 			],
 			[
 				'type'        => self::FLAG,
-				'name'        => self::FLAG_PREPARE,
-				'description' => 'Prepare Foundation migration storage without running migrations.',
-				'optional'    => true,
-				'default'     => false,
-			],
-			[
-				'type'        => self::FLAG,
-				'name'        => self::FLAG_CREATE_TABLE,
-				'description' => 'Alias for --prepare.',
+				'name'        => self::FLAG_INITIALIZE,
+				'description' => 'Initialize or reconcile Foundation migration storage.',
 				'optional'    => true,
 				'default'     => false,
 			],
@@ -158,8 +154,11 @@ final class Migrate extends Command
 	}
 
 	private function showStatus(): void {
-		if (! $this->migrator->hasLedger()) {
-			WP_CLI::warning('The Foundation migration ledger does not exist. Run this command with --prepare or --run.');
+		if (! $this->migrator->isInitialized()) {
+			WP_CLI::warning(sprintf(
+				'Migration storage is not initialized. Run `wp %s --initialize` first.',
+				$this->command()
+			));
 		}
 
 		format_items('table', array_map(
@@ -181,18 +180,16 @@ final class Migrate extends Command
 	/**
 	 * @param array<string, bool> $operations
 	 */
-	private function hasSingleOperation(array $operations): bool {
+	private function assertSingleOperation(array $operations): void {
 		$selected = array_keys(array_filter($operations));
 
 		if (count($selected) <= 1) {
-			return true;
+			return;
 		}
 
 		WP_CLI::error(sprintf(
 			'Only one migration operation can be used at a time. Received: --%s.',
 			implode(', --', $selected)
-		), false);
-
-		return false;
+		));
 	}
 }

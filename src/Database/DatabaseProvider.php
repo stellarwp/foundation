@@ -15,6 +15,7 @@ use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository as MigrationRecordRepository;
+use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
@@ -114,15 +115,15 @@ final class DatabaseProvider extends Provider
 			->needs('$table')
 			->give(static fn (C $c): string => $c->get(self::MIGRATIONS_TABLE));
 
-		$this->container->when(Migrator::class)
+		$this->container->when(Store::class)
 			->needs('$lockName')
 			->give(static fn (C $c): string => $c->get(self::LOCK_NAME));
 
-		$this->container->when(Migrator::class)
+		$this->container->when(Store::class)
 			->needs('$lockTtl')
 			->give(static fn (C $c): int => $c->get(self::LOCK_TTL));
 
-		$this->container->when(Migrator::class)
+		$this->container->when(Store::class)
 			->needs(Lock::class)
 			->give(static fn (C $c): DatabaseLock => $c->get(DatabaseLock::class));
 

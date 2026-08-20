@@ -3,7 +3,9 @@
 namespace StellarWP\Foundation\Tests\Integration\Database;
 
 use Adbar\Dot;
+use InvalidArgumentException;
 use lucatume\DI52\Container as DI52Container;
+use lucatume\DI52\ContainerException;
 use StellarWP\ContainerContract\ContainerInterface;
 use StellarWP\Foundation\Container\ContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Container;
@@ -64,6 +66,27 @@ final class DatabaseProviderTest extends WPTestCase
 		$this->assertSame('custom', $container->get(WPCliProvider::COMMAND_PREFIX));
 	}
 
+	public function test_it_applies_configured_lock_policy_to_the_migration_store(): void {
+		$configurations = [
+			[['database' => ['lock_name' => '   ']], 'lock name cannot be empty'],
+			[['database' => ['lock_ttl' => 0]], 'TTL must be at least one second'],
+		];
+
+		foreach ($configurations as [$config, $message]) {
+			$container = $this->newContainer($config);
+			$container->register(WPCliProvider::class);
+			$container->register(DatabaseProvider::class);
+
+			try {
+				$container->get(Migrator::class);
+				$this->fail('Expected invalid migration lock configuration to be rejected.');
+			} catch (ContainerException $exception) {
+				$this->assertInstanceOf(InvalidArgumentException::class, $exception->getPrevious());
+				$this->assertStringContainsString($message, $exception->getMessage());
+			}
+		}
+	}
+
 	public function test_it_preserves_preconfigured_migrations(): void {
 		$migration = new TestMigration('2026_06_23_000001_create_example');
 		$container = $this->newContainer();
@@ -108,7 +131,8 @@ final class DatabaseProviderTest extends WPTestCase
 
 		try {
 			$migrator = $container->get(Migrator::class);
-			$result   = $migrator->run();
+			$migrator->initialize();
+			$result = $migrator->run();
 
 			$this->assertSame([$migration->id()], $result->ran);
 			$this->assertTrue($database->tableExists($migrationsTable));

@@ -35,32 +35,47 @@ final class MigratorExecutionTest extends TestCase
 
 	private InMemoryLock $lock;
 
-	private Store $store;
-
 	protected function setUp(): void {
 		parent::setUp();
 
 		$this->repository = new InMemoryRepository();
 		$this->schema     = new RecordingSchema();
 		$this->lock       = new InMemoryLock(new MutableClock(new \DateTimeImmutable('2026-01-01 00:00:00')));
-		$this->store      = new Store(
+
+		(new Store(
+			$this->schema,
+			$this->lock,
 			new MigrationTable('wp_nexcess_foundation_migrations'),
 			new LockTable('wp_nexcess_foundation_locks')
-		);
+		))->initialize();
+
+		$this->schema->statements = [];
 	}
 
 	public function test_it_rejects_a_blank_migration_lock_name(): void {
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('lock name cannot be empty');
 
-		new Migrator(new Collection(), $this->repository, $this->schema, $this->lock, $this->store, lockName: '   ');
+		new Store(
+			$this->schema,
+			$this->lock,
+			new MigrationTable('wp_nexcess_foundation_migrations'),
+			new LockTable('wp_nexcess_foundation_locks'),
+			lockName: '   '
+		);
 	}
 
 	public function test_it_rejects_an_invalid_migration_lock_ttl(): void {
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('TTL must be at least one second');
 
-		new Migrator(new Collection(), $this->repository, $this->schema, $this->lock, $this->store, lockTtl: 0);
+		new Store(
+			$this->schema,
+			$this->lock,
+			new MigrationTable('wp_nexcess_foundation_migrations'),
+			new LockTable('wp_nexcess_foundation_locks'),
+			lockTtl: 0
+		);
 	}
 
 	public function test_it_runs_pending_migrations_in_order(): void {
@@ -74,8 +89,6 @@ final class MigratorExecutionTest extends TestCase
 			'2026_01_01_000002_create_posts',
 		], $result->ran);
 		$this->assertSame([
-			'createOrUpdate:wp_nexcess_foundation_locks',
-			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'up:2026_01_01_000001_create_users',
 			'up:2026_01_01_000002_create_posts',
 		], $this->schema->statements);
@@ -120,8 +133,6 @@ final class MigratorExecutionTest extends TestCase
 			'2026_01_01_000002_create_posts',
 		], $result->rolledBack);
 		$this->assertSame([
-			'createOrUpdate:wp_nexcess_foundation_locks',
-			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'down:2026_01_01_000003_create_comments',
 			'down:2026_01_01_000002_create_posts',
 		], $this->schema->statements);
@@ -150,10 +161,7 @@ final class MigratorExecutionTest extends TestCase
 				new TestMigration('2026_01_01_000001_create_users'),
 			)->rollback();
 		} finally {
-			$this->assertSame([
-				'createOrUpdate:wp_nexcess_foundation_locks',
-				'createOrUpdate:wp_nexcess_foundation_migrations',
-			], $this->schema->statements);
+			$this->assertSame([], $this->schema->statements);
 			$this->assertTrue($this->repository->hasRun('2026_01_01_000001_create_users'));
 		}
 	}
@@ -169,10 +177,7 @@ final class MigratorExecutionTest extends TestCase
 				new TestMigration('2026_01_01_000001_create_users'),
 			)->refresh();
 		} finally {
-			$this->assertSame([
-				'createOrUpdate:wp_nexcess_foundation_locks',
-				'createOrUpdate:wp_nexcess_foundation_migrations',
-			], $this->schema->statements);
+			$this->assertSame([], $this->schema->statements);
 			$this->assertTrue($this->repository->hasRun('2026_01_01_000001_create_users'));
 		}
 	}
@@ -198,8 +203,6 @@ final class MigratorExecutionTest extends TestCase
 			'2026_01_01_000002_create_posts',
 		], $result->ran);
 		$this->assertSame([
-			'createOrUpdate:wp_nexcess_foundation_locks',
-			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'down:2026_01_01_000002_create_posts',
 			'down:2026_01_01_000001_create_users',
 			'up:2026_01_01_000001_create_users',
@@ -253,7 +256,6 @@ final class MigratorExecutionTest extends TestCase
 		$migrator = $this->configured(
 			new TestMigration('2026_01_01_000002_create_posts'),
 		);
-		$migrator->prepare();
 		$this->repository->recordRun('2026_01_01_000001_missing_migration', 1);
 
 		$statuses = $migrator->status();
@@ -296,7 +298,28 @@ final class MigratorExecutionTest extends TestCase
 		)->run();
 	}
 
-	public function test_it_releases_the_lock_when_ledger_preparation_fails(): void {
+	public function test_it_propagates_lock_acquisition_failures_with_the_configured_policy(): void {
+		$lock = $this->createMock(Lock::class);
+		$lock->expects($this->once())
+			->method('acquire')
+			->with('custom-migrations', 120)
+			->willThrowException(new LockUnavailableException('Lock backend unavailable.'));
+		$lock->expects($this->never())
+			->method('release');
+
+		$migrator = $this->migrator(
+			$this->collection(new TestMigration('2026_01_01_000001_create_users')),
+			lock: $lock,
+			lockName: 'custom-migrations',
+			lockTtl: 120
+		);
+
+		$this->expectException(LockUnavailableException::class);
+
+		$migrator->run();
+	}
+
+	public function test_it_releases_the_lock_when_initialization_fails(): void {
 		$storeSchema = $this->createMock(Schema::class);
 		$storeSchema->method('createOrUpdate')
 			->willReturnCallback(static function (Table $table): void {
@@ -305,19 +328,17 @@ final class MigratorExecutionTest extends TestCase
 				}
 			});
 
-		$migrator = $this->migrator(
-			$this->collection(new TestMigration('2026_01_01_000001_create_users')),
-			schema: $storeSchema,
-			store: new Store(
-				new MigrationTable('wp_nexcess_foundation_migrations'),
-				new LockTable('wp_nexcess_foundation_locks')
-			),
+		$store = new Store(
+			$storeSchema,
+			$this->lock,
+			new MigrationTable('wp_nexcess_foundation_migrations'),
+			new LockTable('wp_nexcess_foundation_locks')
 		);
 
 		$this->expectException(DatabaseException::class);
 
 		try {
-			$migrator->run();
+			$store->initialize();
 		} finally {
 			$this->assertNotNull($this->lock->acquire('foundation-database-migrations', 300));
 		}
@@ -370,6 +391,31 @@ final class MigratorExecutionTest extends TestCase
 		$this->expectExceptionMessage('failed while running');
 
 		$migrator->run();
+	}
+
+	public function test_it_propagates_lock_release_failures_after_a_successful_migration(): void {
+		$token = $this->lockToken();
+		$lock  = $this->createMock(Lock::class);
+		$lock->expects($this->once())
+			->method('acquire')
+			->willReturn($token);
+		$lock->expects($this->once())
+			->method('release')
+			->with($token)
+			->willThrowException(new LockUnavailableException('Lock backend unavailable.'));
+
+		$migrator = $this->migrator(
+			$this->collection(new TestMigration('2026_01_01_000001_create_users')),
+			lock: $lock,
+		);
+
+		$this->expectException(LockUnavailableException::class);
+
+		try {
+			$migrator->run();
+		} finally {
+			$this->assertTrue($this->repository->hasRun('2026_01_01_000001_create_users'));
+		}
 	}
 
 	public function test_it_preserves_the_migration_failure_when_release_cannot_confirm_ownership(): void {
@@ -440,14 +486,24 @@ final class MigratorExecutionTest extends TestCase
 		Collection $migrations,
 		?Lock $lock = null,
 		?Schema $schema = null,
-		?Store $store = null
+		string $lockName = 'foundation-database-migrations',
+		int $lockTtl = 300
 	): Migrator {
+		$schema ??= $this->schema;
+		$lock ??= $this->lock;
+		$store = new Store(
+			$schema,
+			$lock,
+			new MigrationTable('wp_nexcess_foundation_migrations'),
+			new LockTable('wp_nexcess_foundation_locks'),
+			$lockName,
+			$lockTtl
+		);
+
 		return new Migrator(
 			$migrations,
 			$this->repository,
-			$schema ?? $this->schema,
-			$lock ?? $this->lock,
-			$store ?? $this->store
+			$store
 		);
 	}
 

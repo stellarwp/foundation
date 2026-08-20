@@ -51,9 +51,9 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 	$exampleTable       = $wpdb->prefix . 'foundation_cli_example';
 	$migrationTable     = new MigrationTable($migrationTableName);
 	$lockTable          = new LockTable($lockTableName);
-	$store              = new Store($migrationTable, $lockTable);
 	$repository         = new Repository($database, $migrationTableName);
 	$lock               = new DatabaseLock($database, $lockTableName);
+	$store              = new Store($schema, $lock, $migrationTable, $lockTable);
 
 	$migration = new class($exampleTable) implements Migration {
 		public function __construct(
@@ -90,8 +90,6 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 		new Migrator(
 			new MigrationCollection([$migration]),
 			$repository,
-			$schema,
-			$lock,
 			$store
 		)
 	);

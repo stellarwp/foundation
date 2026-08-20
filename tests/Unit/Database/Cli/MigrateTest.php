@@ -32,15 +32,13 @@ final class MigrateTest extends TestCase
 		$repository     = new InMemoryRepository();
 		$schema         = new RecordingSchema();
 		$lock           = new InMemoryLock();
-		$store          = new Store($migrationTable, new LockTable('wp_nexcess_foundation_locks'));
+		$store          = new Store($schema, $lock, $migrationTable, new LockTable('wp_nexcess_foundation_locks'));
 		$command        = new Migrate(
 			$this->container,
 			'foundation',
 			new Migrator(
 				new MigrationCollection(),
 				$repository,
-				$schema,
-				$lock,
 				$store
 			)
 		);
@@ -83,15 +81,8 @@ final class MigrateTest extends TestCase
 			],
 			[
 				'type'        => 'flag',
-				'name'        => 'prepare',
-				'description' => 'Prepare Foundation migration storage without running migrations.',
-				'optional'    => true,
-				'default'     => false,
-			],
-			[
-				'type'        => 'flag',
-				'name'        => 'create-table',
-				'description' => 'Alias for --prepare.',
+				'name'        => 'initialize',
+				'description' => 'Initialize or reconcile Foundation migration storage.',
 				'optional'    => true,
 				'default'     => false,
 			],
@@ -105,51 +96,27 @@ final class MigrateTest extends TestCase
 		], $deferredAdditions['foundation migrate']['args']['synopsis']);
 	}
 
-	public function test_it_creates_database_tables_without_running_migrations(): void {
+	public function test_it_initializes_database_storage_without_running_migrations(): void {
 		[$command, $repository, $schema] = $this->newCommand();
 
-		$this->assertSame(0, $command->runCommand([], ['prepare' => true]));
+		$this->assertSame(0, $command->runCommand([], ['initialize' => true]));
 
 		$this->assertSame([], $repository->all());
 		$this->assertSame([
 			'createOrUpdate:wp_nexcess_foundation_locks',
 			'createOrUpdate:wp_nexcess_foundation_migrations',
 		], $schema->statements);
-	}
-
-	public function test_it_supports_create_table_as_an_alias_for_prepare(): void {
-		[$command, $repository, $schema] = $this->newCommand();
-
-		$this->assertSame(0, $command->runCommand([], ['create-table' => true]));
-
-		$this->assertSame([], $repository->all());
-		$this->assertSame([
-			'createOrUpdate:wp_nexcess_foundation_locks',
-			'createOrUpdate:wp_nexcess_foundation_migrations',
-		], $schema->statements);
-	}
-
-	public function test_it_rejects_conflicting_migration_operations(): void {
-		[$command, $repository, $schema] = $this->newCommand();
-
-		$this->assertSame(1, $command->runCommand([], [
-			'run'     => true,
-			'prepare' => true,
-		]));
-
-		$this->assertSame([], $repository->all());
-		$this->assertSame([], $schema->statements);
 	}
 
 	public function test_it_runs_pending_migrations(): void {
 		[$command, $repository, $schema] = $this->newCommand();
+		$command->runCommand([], ['initialize' => true]);
+		$schema->statements = [];
 
 		$this->assertSame(0, $command->runCommand([], ['run' => true]));
 
 		$this->assertTrue($repository->hasRun('2026_06_23_000001_create_example'));
 		$this->assertSame([
-			'createOrUpdate:wp_nexcess_foundation_locks',
-			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'up:2026_06_23_000001_create_example',
 		], $schema->statements);
 	}
@@ -157,6 +124,7 @@ final class MigrateTest extends TestCase
 	public function test_it_rolls_back_the_latest_migration_batch(): void {
 		[$command, $repository, $schema] = $this->newCommand();
 
+		$command->runCommand([], ['initialize' => true]);
 		$command->runCommand([], ['run' => true]);
 		$schema->statements = [];
 
@@ -169,6 +137,7 @@ final class MigrateTest extends TestCase
 	public function test_it_refreshes_database_migrations(): void {
 		[$command, $repository, $schema] = $this->newCommand();
 
+		$command->runCommand([], ['initialize' => true]);
 		$command->runCommand([], ['run' => true]);
 		$schema->statements = [];
 
@@ -185,7 +154,7 @@ final class MigrateTest extends TestCase
 	public function test_it_drops_the_migration_store(): void {
 		[$command, , $schema] = $this->newCommand();
 
-		$command->runCommand([], ['create-table' => true]);
+		$command->runCommand([], ['initialize' => true]);
 
 		$this->assertSame(0, $command->runCommand([], [
 			'drop-store' => true,
@@ -208,6 +177,7 @@ final class MigrateTest extends TestCase
 	public function test_it_shows_migration_status_when_tables_exist(): void {
 		[$command] = $this->newCommand();
 
+		$command->runCommand([], ['initialize' => true]);
 		$command->runCommand([], ['run' => true]);
 
 		$this->expectOutputRegex('/2026_06_23_000001_create_example\s+ran\s+1\s+2026-01-01 00:00:00/');
@@ -218,7 +188,7 @@ final class MigrateTest extends TestCase
 	public function test_it_shows_unavailable_recorded_migrations(): void {
 		[$command, $repository] = $this->newCommand();
 
-		$command->runCommand([], ['prepare' => true]);
+		$command->runCommand([], ['initialize' => true]);
 		$repository->recordRun('2026_06_23_000002_missing_migration', 1);
 
 		$this->expectOutputRegex('/2026_06_23_000002_missing_migration\s+unavailable/');
@@ -236,7 +206,7 @@ final class MigrateTest extends TestCase
 		$repository     = new InMemoryRepository();
 		$migrationTable = new MigrationTable('wp_nexcess_foundation_migrations');
 		$lock           = new InMemoryLock();
-		$store          = new Store($migrationTable, new LockTable('wp_nexcess_foundation_locks'));
+		$store          = new Store($wpSchema, $lock, $migrationTable, new LockTable('wp_nexcess_foundation_locks'));
 		$command        = new Migrate(
 			$this->container,
 			'foundation',
@@ -245,8 +215,6 @@ final class MigrateTest extends TestCase
 					new TestMigration('2026_06_23_000001_create_example'),
 				]),
 				$repository,
-				$wpSchema,
-				$lock,
 				$store
 			)
 		);

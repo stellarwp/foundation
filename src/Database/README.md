@@ -20,9 +20,63 @@ uses the `%i` identifier placeholder. Database-backed locks additionally require
 fractional-second temporal values: MySQL 5.6.4 or newer, or MariaDB 5.3 or
 newer.
 
-## Registering The Provider
+## Running Migrations
 
-Register `DatabaseProvider` in the application container when the project needs Foundation-managed migrations:
+Use the included WP-CLI command as the standard way to initialize migration
+storage and run migrations. Register the WP-CLI provider before the database
+provider so the database command is added to the configured command list:
+
+```php
+use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\WPCli\WPCliProvider;
+
+$container->register(WPCliProvider::class);
+$container->register(DatabaseProvider::class);
+```
+
+During deployment, initialize the migration store and then run pending
+migrations:
+
+```bash
+wp nx migrate --initialize
+wp nx migrate --run
+```
+
+`--initialize` is idempotent and creates or reconciles Foundation's internal
+migration and lock tables. Run it before migration operations, including after
+updating Foundation Database. Migration operations fail with an actionable
+error when storage has not been initialized.
+
+Use the remaining commands to inspect or manage migrations:
+
+```bash
+# Show migration status.
+wp nx migrate
+
+# Roll back the latest migration batch.
+wp nx migrate --rollback
+
+# Roll back every known migration and run them again.
+wp nx migrate --refresh --yes
+
+# Drop only the internal migration ledger.
+wp nx migrate --drop-store --yes
+```
+
+`--drop-store` preserves application tables and shared lock storage. It causes
+all configured migrations to appear pending after storage is initialized again;
+it is not a substitute for rollback because it does not call migration `down()`
+methods. Use only one operation flag at a time. `--yes` only skips confirmation
+for destructive operations.
+
+These examples use the default `nx` command prefix. Change
+`wpcli.command_prefix` in `config.php` when the application uses another prefix.
+
+## Database Configuration
+
+The recommended WP-CLI setup above registers `DatabaseProvider`. Projects that
+run migrations programmatically must still register it in the application
+container:
 
 ```php
 use StellarWP\Foundation\Database\DatabaseProvider;
@@ -115,22 +169,23 @@ reads to the writer; otherwise replication lag can make a successful acquisition
 or refresh fail closed.
 
 The database lock table must exist before application services acquire locks.
-Prepare it during activation or deployment through the configured migrator:
+The preferred deployment workflow initializes it with the migration store:
+
+```bash
+wp nx migrate --initialize
+```
+
+If an application cannot run WP-CLI during deployment, it may initialize the
+store programmatically during activation or another controlled lifecycle:
 
 ```php
 use StellarWP\Foundation\Database\Migration\Migrator;
 
-$container->get(Migrator::class)->prepare();
+$container->get(Migrator::class)->initialize();
 ```
 
-Preparing the migration store also reconciles existing internal tables with
+Initializing the migration store also reconciles existing internal tables with
 their current definitions.
-
-Projects using the included WP-CLI command can instead run:
-
-```bash
-wp nx migrate --prepare
-```
 
 Once configured, application services should depend on the shared `Lock`
 contract. See the
@@ -294,38 +349,35 @@ $this->container->mergeArrayVar(DatabaseProvider::MIGRATIONS, static fn (C $c): 
 ]);
 ```
 
-Application code that needs to run migrations should inject `StellarWP\Foundation\Database\Migration\Migrator`. It is the configured entry point for preparing the migration store, running pending migrations, rolling back, refreshing, dropping only the internal migration store, and reading migration status.
+After registering migrations, use the WP-CLI deployment workflow described in
+[Running Migrations](#running-migrations). Registering `DatabaseProvider` does
+not initialize storage or execute migrations.
+
+If WP-CLI is unavailable during deployment, application code may use the
+configured `Migrator` directly from a controlled activation or version-update
+lifecycle:
 
 ```php
 use StellarWP\Foundation\Database\Migration\Migrator;
 
-final readonly class PluginUpdater
-{
-	public function __construct(
-		private Migrator $migrator
-	) {
-	}
-
-	public function update(): void {
-		$this->migrator->run();
-	}
-}
+$migrator = $container->get(Migrator::class);
+$migrator->initialize();
+$migrator->run();
 ```
 
-`run()`, `rollback()`, and `refresh()` prepare the migration store automatically before executing migrations.
-
-`dropStore()` acquires the migration lock and removes only the migration ledger.
-It preserves application tables and shared lock storage. After the ledger is
-removed, every configured migration appears pending and may run again after the
-store is prepared. It is not a substitute for rollback because it does not call
-any migration's `down()` method.
+Call `initialize()` before `run()`, `rollback()`, `refresh()`, or `dropStore()`.
+Migration operations fail with `UninitializedStore` rather than changing
+internal table definitions implicitly.
 
 Recorded migration implementations must remain registered for as long as their
 ledger entries may be rolled back. `rollback()` and `refresh()` validate every
 selected ledger entry before changing schema and fail without a partial rollback
 when an implementation is unavailable.
 
-Registering `DatabaseProvider` does not execute migrations. Call `Migrator::run()` from the application's activation or version-update lifecycle, or run `wp nx migrate --run` during deployment. Completed migration IDs are skipped on later runs. Because migration changes and their ledger updates are not one atomic operation, write `up()` and `down()` methods so they can recover from retries after partial work or failed ledger writes.
+Completed migration IDs are skipped on later runs. Because migration changes and
+their ledger updates are not one atomic operation, write `up()` and `down()`
+methods so they can recover from retries after partial work or failed ledger
+writes.
 
 ## Evolving Tables
 
@@ -396,35 +448,3 @@ foundation/stubs/database/provider.stub
 When present, overrides are used instead of the default stubs from the `foundation-database` package.
 
 Override stubs should use the same context-aware placeholders as the default stubs when writing PHP literals. For example, use `{{ id_php }}` and `{{ table_php }}` for values written into PHP constants, and use the `{{ foundation_database_* }}` import placeholders so Strauss-prefixed projects keep working.
-
-## WP-CLI
-
-The package includes a `migrate` command class for projects using `stellarwp/foundation-wpcli`. `DatabaseProvider` adds that command to `StellarWP\Foundation\WPCli\WPCliProvider::COMMANDS`; register the WP-CLI provider once in the consuming application so merged commands are registered on `cli_init`.
-
-```php
-use StellarWP\Foundation\Database\DatabaseProvider;
-use StellarWP\Foundation\WPCli\WPCliProvider;
-
-$container->register(WPCliProvider::class);
-$container->register(DatabaseProvider::class);
-```
-
-Run the command under the configured WP-CLI prefix:
-
-```bash
-wp nx migrate --run
-```
-
-Available flags:
-
-- `--run` runs pending migrations.
-- `--rollback` rolls back the latest migration batch.
-- `--refresh` rolls back all known migrations and runs them again.
-- `--drop-store` drops only the migration ledger after confirmation. Application tables and shared lock storage remain, and all migrations appear pending afterward.
-- `--prepare` prepares the migration store without running migrations.
-- `--create-table` is an alias for `--prepare`.
-- `--yes` skips confirmation prompts for destructive actions.
-
-Use only one operation flag at a time. `--yes` is a modifier for confirmation prompts and can be combined with destructive operations.
-
-Running the command without a flag prints migration status. If the migration store does not exist yet, the command warns first and shows all configured migrations as pending.

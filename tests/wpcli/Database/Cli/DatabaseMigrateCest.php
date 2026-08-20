@@ -13,9 +13,9 @@ final class DatabaseMigrateCest
 	}
 
 	public function test_it_runs_database_migrations_through_wp_cli(WPCLITester $I): void {
-		$I->cli(['foundation', 'migrate', '--create-table']);
+		$I->cli(['foundation', 'migrate', '--initialize']);
 		$I->seeResultCodeIs(0);
-		$I->seeInShellOutput('Foundation database tables are ready.');
+		$I->seeInShellOutput('Foundation migration storage is initialized.');
 
 		$I->cli(['foundation', 'migrate', '--run']);
 		$I->seeResultCodeIs(0);
@@ -32,6 +32,9 @@ final class DatabaseMigrateCest
 	}
 
 	public function test_it_refreshes_and_drops_database_tables_through_wp_cli(WPCLITester $I): void {
+		$I->cli(['foundation', 'migrate', '--initialize']);
+		$I->seeResultCodeIs(0);
+
 		$I->cli(['foundation', 'migrate', '--run']);
 		$I->seeResultCodeIs(0);
 		$I->seeInShellOutput('Ran 1 migrations.');
@@ -62,13 +65,22 @@ final class DatabaseMigrateCest
 
 		$I->cli(['foundation', 'migrate']);
 		$I->seeResultCodeIs(0);
-		Assert::assertStringContainsString('The Foundation migration ledger does not exist.', $I->grabLastShellErrorOutput());
+		Assert::assertStringContainsString('Migration storage is not initialized.', $I->grabLastShellErrorOutput());
 	}
 
 	public function test_it_warns_when_showing_status_before_tables_exist(WPCLITester $I): void {
+		$I->cli(['foundation', 'migrate', '--run', '--initialize']);
+		$I->seeResultCodeIs(1);
+		Assert::assertStringContainsString('Only one migration operation can be used at a time.', $I->grabLastShellErrorOutput());
+
 		$I->cli(['foundation', 'migrate']);
 		$I->seeResultCodeIs(0);
-		Assert::assertStringContainsString('The Foundation migration ledger does not exist.', $I->grabLastShellErrorOutput());
+		Assert::assertStringContainsString('Migration storage is not initialized.', $I->grabLastShellErrorOutput());
+		Assert::assertStringContainsString('wp foundation migrate --initialize', $I->grabLastShellErrorOutput());
+
+		$I->cli(['foundation', 'migrate', '--run']);
+		$I->seeResultCodeIs(1);
+		Assert::assertStringContainsString('wp foundation migrate --initialize', $I->grabLastShellErrorOutput());
 	}
 
 	private function dropTables(WPCLITester $I): void {

@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\Tests\Unit\Database\Migration;
 
 use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Database\Migration\Collection;
+use StellarWP\Foundation\Database\Migration\Exceptions\UninitializedStore;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
@@ -16,7 +17,7 @@ use StellarWP\Foundation\Tests\TestCase;
 
 final class MigratorTest extends TestCase
 {
-	public function test_it_prepares_the_store_before_running_configured_migrations(): void {
+	public function test_it_runs_configured_migrations_against_initialized_storage(): void {
 		[$migrator, $repository, $schema] = $this->newMigrator();
 
 		$result = $migrator->run();
@@ -24,13 +25,11 @@ final class MigratorTest extends TestCase
 		$this->assertSame(['2026_06_23_000001_create_example'], $result->ran);
 		$this->assertTrue($repository->hasRun('2026_06_23_000001_create_example'));
 		$this->assertSame([
-			'createOrUpdate:wp_nexcess_foundation_locks',
-			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'up:2026_06_23_000001_create_example',
 		], $schema->statements);
 	}
 
-	public function test_it_prepares_the_store_before_rolling_back_configured_migrations(): void {
+	public function test_it_rolls_back_configured_migrations_against_initialized_storage(): void {
 		[$migrator, $repository, $schema] = $this->newMigrator();
 
 		$migrator->run();
@@ -41,13 +40,11 @@ final class MigratorTest extends TestCase
 		$this->assertSame(['2026_06_23_000001_create_example'], $result->rolledBack);
 		$this->assertFalse($repository->hasRun('2026_06_23_000001_create_example'));
 		$this->assertSame([
-			'createOrUpdate:wp_nexcess_foundation_locks',
-			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'down:2026_06_23_000001_create_example',
 		], $schema->statements);
 	}
 
-	public function test_it_prepares_the_store_before_refreshing_configured_migrations(): void {
+	public function test_it_refreshes_configured_migrations_against_initialized_storage(): void {
 		[$migrator, $repository, $schema] = $this->newMigrator();
 
 		$migrator->run();
@@ -59,8 +56,6 @@ final class MigratorTest extends TestCase
 		$this->assertSame(['2026_06_23_000001_create_example'], $result->ran);
 		$this->assertTrue($repository->hasRun('2026_06_23_000001_create_example'));
 		$this->assertSame([
-			'createOrUpdate:wp_nexcess_foundation_locks',
-			'createOrUpdate:wp_nexcess_foundation_migrations',
 			'down:2026_06_23_000001_create_example',
 			'up:2026_06_23_000001_create_example',
 		], $schema->statements);
@@ -77,18 +72,18 @@ final class MigratorTest extends TestCase
 		$this->assertTrue($migrator->status()[0]->ran);
 	}
 
-	public function test_it_prepares_and_drops_the_migration_store(): void {
-		[$migrator, , $schema] = $this->newMigrator();
+	public function test_it_initializes_and_drops_the_migration_store(): void {
+		[$migrator, , $schema] = $this->newMigrator(initialize: false);
 
-		$this->assertFalse($migrator->exists());
+		$this->assertFalse($migrator->isInitialized());
 
-		$migrator->prepare();
+		$migrator->initialize();
 
-		$this->assertTrue($migrator->exists());
+		$this->assertTrue($migrator->isInitialized());
 
 		$migrator->dropStore();
 
-		$this->assertFalse($migrator->exists());
+		$this->assertFalse($migrator->isInitialized());
 		$this->assertContains('drop:wp_nexcess_foundation_migrations', $schema->statements);
 		$this->assertNotContains('drop:wp_nexcess_foundation_locks', $schema->statements);
 		$this->assertTrue($schema->tables['wp_nexcess_foundation_locks']);
@@ -98,7 +93,6 @@ final class MigratorTest extends TestCase
 		$lock                  = new InMemoryLock();
 		[$migrator, , $schema] = $this->newMigrator($lock);
 
-		$migrator->prepare();
 		$token = $lock->acquire('foundation-database-migrations', 300);
 
 		$this->assertNotNull($token);
@@ -111,16 +105,16 @@ final class MigratorTest extends TestCase
 		}
 	}
 
-	public function test_it_does_not_prepare_the_ledger_while_another_migration_owns_the_lock(): void {
+	public function test_it_does_not_initialize_the_ledger_while_another_migration_owns_the_lock(): void {
 		$lock                  = new InMemoryLock();
-		[$migrator, , $schema] = $this->newMigrator($lock);
+		[$migrator, , $schema] = $this->newMigrator($lock, false);
 		$token                 = $lock->acquire('foundation-database-migrations', 300);
 
 		$this->assertNotNull($token);
 		$this->expectException(MigrationLockFailed::class);
 
 		try {
-			$migrator->prepare();
+			$migrator->initialize();
 		} finally {
 			$this->assertTrue($schema->tables['wp_nexcess_foundation_locks']);
 			$this->assertArrayNotHasKey('wp_nexcess_foundation_migrations', $schema->tables);
@@ -133,31 +127,48 @@ final class MigratorTest extends TestCase
 		$migrator->run();
 		unset($schema->tables['wp_nexcess_foundation_locks']);
 
-		$this->assertFalse($migrator->exists());
+		$this->assertFalse($migrator->isInitialized());
 		$this->assertTrue($migrator->status()[0]->ran);
+	}
+
+	public function test_it_rejects_migration_operations_before_storage_is_initialized(): void {
+		[$migrator, , $schema] = $this->newMigrator(initialize: false);
+
+		$this->expectException(UninitializedStore::class);
+
+		try {
+			$migrator->run();
+		} finally {
+			$this->assertSame([], $schema->statements);
+		}
 	}
 
 	/**
 	 * @return array{Migrator, InMemoryRepository, RecordingSchema}
 	 */
-	private function newMigrator(?InMemoryLock $lock = null): array {
+	private function newMigrator(?InMemoryLock $lock = null, bool $initialize = true): array {
 		$schema     = new RecordingSchema();
 		$repository = new InMemoryRepository();
 		$lock ??= new InMemoryLock();
 		$migrationTable = new MigrationTable('wp_nexcess_foundation_migrations');
 		$lockTable      = new LockTable('wp_nexcess_foundation_locks');
-		$store          = new Store($migrationTable, $lockTable);
+		$store          = new Store($schema, $lock, $migrationTable, $lockTable);
+
+		$migrator = new Migrator(
+			new Collection([
+				new TestMigration('2026_06_23_000001_create_example'),
+			]),
+			$repository,
+			$store
+		);
+
+		if ($initialize) {
+			$migrator->initialize();
+			$schema->statements = [];
+		}
 
 		return [
-			new Migrator(
-				new Collection([
-					new TestMigration('2026_06_23_000001_create_example'),
-				]),
-				$repository,
-				$schema,
-				$lock,
-				$store
-			),
+			$migrator,
 			$repository,
 			$schema,
 		];
