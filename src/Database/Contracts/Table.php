@@ -11,6 +11,12 @@ interface Table
 {
 	public function id(): string;
 
+	/**
+	 * Return the complete physical table name, including the WordPress table prefix.
+	 *
+	 * For example, a configured table name of `reports` with the WordPress prefix
+	 * `wp_` must return `wp_reports`.
+	 */
 	public function name(): string;
 
 	public function definition(): TableDefinition;
