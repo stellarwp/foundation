@@ -15,6 +15,7 @@ Initial packages:
 - `stellarwp/foundation-pipeline`
 - `stellarwp/foundation-wpcli`
 - `stellarwp/foundation-cli`
+- `stellarwp/foundation-docs`
 
 ## Namespaces
 
@@ -89,6 +90,8 @@ $this->container->mergeArrayVar(WPCliProvider::COMMANDS, static fn (C $c): array
 
 The command class will then be autowired only when `WPCliProvider` resolves the command collection during `cli_init`.
 
+`WPCliProvider` owns the configured `StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix` singleton. Commands with explicit constructors should accept that object and pass it to the base `Command` constructor. Feature providers should not repeat contextual `$commandPrefix` bindings or define their own command-prefix container entries.
+
 If local scaffolding assets such as `foundation/stubs/` should not be included in a consuming project's release archive, add them to that project's `.gitattributes` production zip exclusions.
 
 ## Container Providers
@@ -104,6 +107,10 @@ Use the optional `foundation.prefix` configuration key when Foundation-managed r
 Classes should receive service collaborators through constructor injection. Direct `new` expressions inside application classes are reserved for immutable value or result objects, exceptions, PHP standard-library objects, and objects deliberately produced by an owning builder or factory. Keep feature-local value objects under that feature's `ValueObjects/` namespace. Value objects should be `final readonly` where possible and must not resolve or construct service dependencies.
 
 Organize provider registration by feature or capability, not by container mechanism. The main `register()` method should call focused private methods such as `registerConfiguration()`, `registerMigrations()`, `registerLocks()`, or `registerCliCommands()`. Keep each feature's contextual bindings beside the classes they configure. Avoid generic methods such as `configureContextualBindings()` that group unrelated bindings only because they use the same container API.
+
+Treat configured pipelines as provider-owned services. Bind each distinct pipe sequence under a feature-local container identifier, then use a contextual binding to give each consumer the pipeline it needs. Consumers should send values and choose the destination without assembling their own pipe lists. Use `bind()` rather than `singleton()` because `Pipeline` carries mutable execution state.
+
+Register infrastructure providers and top-level feature providers from the application's composition root, such as the ordered provider list in `App.php`. A provider that registers definitions, configuration, or hooks must not also register other providers. The exception is a feature composition provider whose sole responsibility is registering that feature's internal providers; it should contain no service bindings, configuration, hooks, or other behavior. Keep cross-feature and application-level dependencies visible in the `App.php` provider list.
 
 ## Split Packages
 
@@ -126,6 +133,8 @@ Each split package should include:
 - `.gitattributes`
 - `.gitignore`
 - `.github/workflows/close-pull-request.yml`
+
+Non-Composer split projects may use their ecosystem manifest instead of `composer.json`. For example, `src/Docs/` uses `package.json` and must remain discoverable by `.github/bin/repo-map.sh` so it splits to `stellarwp/foundation-docs`. All other required split-repository files and warning text still apply.
 
 When adding a new split package, add its `stellarwp/foundation-<package>` repository link to the root `README.md` repositories list.
 
@@ -176,6 +185,34 @@ Banned while the project targets PHP 8.3:
 After adding or changing split package dependencies, run `composer monorepo merge` and then `composer update` so root `composer.json`/lock state includes package dependency changes.
 
 Use `composer monorepo list` to inspect available Monorepo Builder commands.
+
+## Documentation
+
+The documentation site lives in `src/Docs/` and uses Astro with Starlight. Use the Node version in `src/Docs/.nvmrc`, install dependencies with `npm ci`, and run `npm run build` from `src/Docs/` after documentation changes.
+
+Write public documentation as current product documentation. Do not mention implementation phases, review checkpoints, future documentation work, or temporary plans. If code behavior, public APIs, package requirements, configuration, or supported integrations change, update the relevant documentation in the same change. Add a component guide and sidebar entry when adding a public split package.
+
+Once a component has a central documentation guide, keep its split-package `README.md` focused on a short overview, installation, and links to the canonical guide. Do not duplicate full configuration and usage documentation across the README and documentation site.
+
+Structure component guides for scanning. Prefer a small set of root sections such as `Installation`, `Configuration`, `Usage`, and `Testing`, with task-oriented subsections beneath them. Avoid a long flat list of root headings. Lead with the decision a developer must make, then show installation, configuration, the simplest complete use case, important failure behavior, and testing.
+
+When one component exposes several independently used capabilities, use a concise overview page with nested task guides instead of forcing every capability into one long page. Keep shared installation and configuration on the overview, then give each task guide one clear ownership boundary. Link to canonical shared behavior rather than duplicating it across component pages.
+
+Place operational warnings beside the decision or API behavior they qualify. State the concrete failure mode, distinguish expected outcomes from infrastructure failures, tell the developer whether to skip, retry, or abort, and include compact pseudocode when the response would otherwise remain ambiguous.
+
+Order sequential setup guides so files are created before later examples reference or call them. When a component example assumes the application composition root or provider architecture, link back to the relevant Start Here guides. Prefer Starlight link cards for these prerequisite guides and Starlight asides for decisions or warnings developers must not miss.
+
+Keep runtime and developer dependencies distinct in installation documentation. Standalone WordPress plugins should require only the split runtime packages they ship and install `stellarwp/foundation-cli` with `--dev`. Before showing `composer require stellarwp/foundation`, warn that the aggregate package includes the developer CLI in its normal installation and that `--no-dev` will not remove it.
+
+Explain `foundation.prefix` according to the deployment boundary. A complete WordPress application that centrally owns its themes, plugins, and Foundation composition root can use the shared `nx` default. A distributable standalone plugin must configure a stable, unique prefix because PHP namespace prefixing does not isolate shared WP-CLI command names, database tables, or locks.
+
+Documentation examples for consuming WordPress projects should use Snake_Case class names and WordPress formatting, including a blank line immediately after each class declaration's opening brace. Keep translatable user-facing text in the class that renders it; configuration examples should represent runtime or deployment behavior rather than untranslated display copy. Validate required scalar configuration at construction boundaries when an empty value would make the feature invalid.
+
+WP-CLI command class examples should include one or more `@example` annotations showing the complete `wp <prefix> <subcommand>` invocation, including a representative invocation with options or flags when applicable.
+
+Use the canonical application architecture in WordPress examples: `App` owns the request singleton, providers are registered in explicit dependency order, and feature providers group definitions and hooks by capability. Use `$this->container->callback(ClassName::class, 'method')` for WordPress callbacks when the container should resolve the service lazily.
+
+Keep full source paths in the prose immediately before code examples and use only the filename in a code-block `title`. Nova's Shiki metadata parser interprets path segments such as `/Lock/` as word-highlighting instructions and otherwise adds unintended borders around matching code tokens.
 
 ## Verification
 

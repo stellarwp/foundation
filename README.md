@@ -1,9 +1,11 @@
 # Foundation
 
-Foundation is a StellarWP Composer monorepo for reusable PHP packages intended for libraries and WordPress plugin ecosystems.
+Foundation is a StellarWP Composer monorepo of shared PHP infrastructure for Nexcess libraries and WordPress plugins. Its packages are publicly available, while Nexcess application needs primarily drive changes and the roadmap.
 
 > [!NOTE]
 > This monorepo splits each package out into their own sub-repository, if you only need a specific component you can install only that specific one.
+
+See the [Foundation documentation](https://foundation.stellarwp.com/) for installation, application architecture, component configuration, and developer tooling.
 
 ## Repositories
 
@@ -18,6 +20,7 @@ Foundation is a StellarWP Composer monorepo for reusable PHP packages intended f
 | [stellarwp/foundation-identifier](https://github.com/stellarwp/foundation-identifier) | Services need injectable ULID generation and validation | Runtime |
 | [stellarwp/foundation-wpcli](https://github.com/stellarwp/foundation-wpcli) | A shipped WordPress plugin exposes WP-CLI commands | Runtime |
 | [stellarwp/foundation-cli](https://github.com/stellarwp/foundation-cli) | Developers need Foundation generators or monorepo maintenance commands | Development |
+| [stellarwp/foundation-docs](https://github.com/stellarwp/foundation-docs) | Contributors maintain or deploy the Foundation documentation site | Documentation |
 
 ## Installation
 

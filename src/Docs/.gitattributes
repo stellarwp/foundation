@@ -1,0 +1,3 @@
+# Ignore repository metadata when GitHub creates a source archive.
+/.gitattributes export-ignore
+/.github        export-ignore

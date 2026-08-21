@@ -1,0 +1,104 @@
+---
+title: Database Lock
+description: Use the WordPress database as the shared backend for Foundation lock ownership.
+sidebar:
+  order: 3
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+`DatabaseLock` implements the shared Foundation `Lock` contract with a WordPress table. Choose it when every process that must coordinate can reach the same primary database and a dedicated Redis service is unnecessary.
+
+<CardGrid>
+  <LinkCard
+    title="Database Overview"
+    description="Install Foundation Database, configure its resources, and register DatabaseProvider."
+    href="/components/database/"
+  />
+  <LinkCard
+    title="Lock"
+    description="Acquire, refresh, and release lock tokens safely in application code."
+    href="/components/lock/"
+  />
+</CardGrid>
+
+## Configuration
+
+### Select the database implementation
+
+`DatabaseProvider` registers `DatabaseLock`, but does not choose it as the application's global `Lock` implementation. Make that application-level decision in `src/Lock/Provider.php`:
+
+```php title="Provider.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Lock;
+
+use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\Database\Lock\DatabaseLock;
+use StellarWP\Foundation\Lock\Contracts\Lock;
+
+/**
+ * Selects the database-backed lock implementation for the application.
+ */
+final class Provider extends Service_Provider {
+
+	public function register(): void {
+		$this->register_lock();
+	}
+
+	private function register_lock(): void {
+		$this->container->singleton(
+			Lock::class,
+			static fn ( C $c ): DatabaseLock => $c->get( DatabaseLock::class )
+		);
+	}
+}
+```
+
+The factory aliases the interface to the `DatabaseLock` singleton already owned by `DatabaseProvider`. A direct concrete binding would ask the container to construct a separate instance.
+
+Register providers in dependency order in `src/App.php`:
+
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\WPCli\WPCliProvider;
+use YourPlugin\Lock;
+
+/** @var list<class-string<Providable>> */
+private const array PROVIDERS = [
+	WPCliProvider::class,
+	DatabaseProvider::class,
+	Lock\Provider::class,
+];
+```
+
+### Initialize lock storage
+
+Create or reconcile the database lock table during deployment:
+
+```shell
+wp your-plugin migrate --initialize
+```
+
+Replace `your-plugin` with the configured command prefix. The command is idempotent, so deployment automation can run it before migrations without first checking whether the table exists.
+
+## Usage
+
+Inject the shared `Lock` contract into application services. Acquisition, release, refresh, contention, long-running leases, and remote idempotency are covered in the [Lock guide](/components/lock/).
+
+Database-backed locks have these operational constraints:
+
+- Lock names must fit within 191 bytes.
+- Expiration uses the database's UTC clock, keeping ownership consistent between PHP processes.
+- Every contender must read and write through the same primary database. Replica reads can report stale ownership.
+- The TTL must exceed the protected operation, or the owner must refresh the token before it expires.
+
+:::caution[Keep database and remote guarantees separate]
+A database lock prevents cooperating application processes from overlapping while its lease is valid. It cannot guarantee exactly-once behavior in a remote payment or messaging API. Use the remote system's idempotency key as well.
+:::
+
+## Testing
+
+Use `InMemoryLock` in unit and feature tests that only verify application behavior against the shared contract. Use `wpunit` when testing `DatabaseLock` itself or behavior that depends on real lock-table queries and database time.
