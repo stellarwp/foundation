@@ -11,7 +11,7 @@ composer require stellarwp/foundation-database
 
 ## Overview
 
-Foundation Database is a WordPress-backed database package. It provides a configured migrator, migration and table collections, `wpdb`/`dbDelta` schema services, a database-backed lock, and a WP-CLI migration command.
+Foundation Database is a WordPress-backed database package. It provides a configured migrator, migration collection, `wpdb`/`dbDelta` schema services, a database-backed lock, and a WP-CLI migration command.
 
 This package intentionally targets WordPress runtime APIs instead of acting as a generic database abstraction. Migration classes depend on a small schema contract so application packages can define migration behavior without calling `wpdb` directly.
 

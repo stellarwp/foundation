@@ -20,7 +20,6 @@ use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository;
 use StellarWP\Foundation\Database\Schema;
 use StellarWP\Foundation\Database\Schema\DbDelta;
-use StellarWP\Foundation\Database\Table\Collection as TableCollection;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
@@ -491,7 +490,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 			$this->database->charsetCollate()
 		));
 
-		(new TableCollection($wpSchema, [$lockTable]))->create();
+		$wpSchema->createOrUpdate($lockTable);
 
 		$name       = $this->database->row('SHOW COLUMNS FROM %i WHERE Field = %s', $table, 'name');
 		$owner      = $this->database->row('SHOW COLUMNS FROM %i WHERE Field = %s', $table, 'owner');
@@ -523,7 +522,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 			$this->database->charsetCollate()
 		));
 
-		(new TableCollection($wpSchema, [$migrationTable]))->create();
+		$wpSchema->createOrUpdate($migrationTable);
 
 		$migration = $this->database->row('SHOW COLUMNS FROM %i WHERE Field = %s', $table, 'migration');
 
