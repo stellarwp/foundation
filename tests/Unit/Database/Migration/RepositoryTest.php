@@ -88,6 +88,12 @@ final class RepositoryTest extends TestCase
 		$this->assertStringContainsString('DELETE FROM `network_foundation_migrations`', $this->database->executed[0]);
 	}
 
+	public function test_it_reports_when_no_migration_run_was_deleted(): void {
+		$this->database->executeResults[] = 0;
+
+		$this->assertFalse($this->repository->deleteRun('2026_01_01_000001_create_users'));
+	}
+
 	public function test_it_calculates_the_next_batch(): void {
 		$this->database->rowResults[] = ['batch' => 4];
 

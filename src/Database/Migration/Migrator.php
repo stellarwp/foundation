@@ -9,6 +9,7 @@ use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\MigrationFailed;
 use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Database\Migration\Exceptions\InvalidRollbackBatch;
+use StellarWP\Foundation\Database\Migration\Exceptions\LedgerFailure;
 use StellarWP\Foundation\Database\Migration\Exceptions\UnavailableMigration;
 use StellarWP\Foundation\Database\Migration\Exceptions\UninitializedStore;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Record;
@@ -85,6 +86,7 @@ final readonly class Migrator
 	 *
 	 * @throws DatabaseException        When migration storage or schema access fails.
 	 * @throws InvalidRollbackBatch     When the requested batch does not match the latest recorded batch.
+	 * @throws LedgerFailure            When a rolled-back migration ledger record cannot be deleted.
 	 * @throws MigrationFailed          When a migration fails while rolling back.
 	 * @throws MigrationLockFailed      When the lock cannot be acquired or ownership cannot be confirmed during release.
 	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
@@ -182,6 +184,7 @@ final readonly class Migrator
 	 * @param list<Record>             $records
 	 * @param Schema                   $schema     The initialized schema supplied by the migration store.
 	 *
+	 * @throws LedgerFailure        When a rolled-back migration ledger record cannot be deleted.
 	 * @throws UnavailableMigration When a recorded migration implementation is unavailable.
 	 */
 	private function rollbackRecords(array $migrations, array $records, Schema $schema): Result {
@@ -206,7 +209,10 @@ final readonly class Migrator
 				throw MigrationFailed::whileRollingBack($migration->id(), $throwable);
 			}
 
-			$this->repository->deleteRun($migration->id());
+			if (! $this->repository->deleteRun($migration->id())) {
+				throw LedgerFailure::notDeletedAfterRollback($migration->id());
+			}
+
 			$rolledBack[] = $migration->id();
 		}
 

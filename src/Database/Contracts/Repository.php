@@ -30,6 +30,8 @@ interface Repository
 	public function recordRun(string $migration, int $batch): Record;
 
 	/**
+	 * Return false when no matching ledger row was deleted.
+	 *
 	 * @throws InvalidMigrationId When the migration identifier is invalid.
 	 */
 	public function deleteRun(string $migration): bool;

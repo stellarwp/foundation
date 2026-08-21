@@ -2,8 +2,10 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Database\Migration;
 
+use DateTimeImmutable;
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Migration;
+use StellarWP\Foundation\Database\Contracts\Repository;
 use StellarWP\Foundation\Database\Contracts\Schema;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
@@ -11,9 +13,11 @@ use StellarWP\Foundation\Database\Exceptions\MigrationFailed;
 use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Database\Migration\Collection;
 use StellarWP\Foundation\Database\Migration\Exceptions\InvalidRollbackBatch;
+use StellarWP\Foundation\Database\Migration\Exceptions\LedgerFailure;
 use StellarWP\Foundation\Database\Migration\Exceptions\UnavailableMigration;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Store;
+use StellarWP\Foundation\Database\Migration\ValueObjects\Record;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
@@ -40,7 +44,7 @@ final class MigratorExecutionTest extends TestCase
 
 		$this->repository = new InMemoryRepository();
 		$this->schema     = new RecordingSchema();
-		$this->lock       = new InMemoryLock(new MutableClock(new \DateTimeImmutable('2026-01-01 00:00:00')));
+		$this->lock       = new InMemoryLock(new MutableClock(new DateTimeImmutable('2026-01-01 00:00:00')));
 
 		(new Store(
 			$this->schema,
@@ -512,6 +516,28 @@ final class MigratorExecutionTest extends TestCase
 		}
 	}
 
+	public function test_it_fails_when_a_rolled_back_ledger_record_is_not_deleted(): void {
+		$migration  = new TestMigration('2026_01_01_000001_create_users');
+		$repository = $this->createMock(Repository::class);
+		$repository->method('latestBatch')->willReturn(1);
+		$repository->method('recordsForBatch')->willReturn([
+			new Record(1, $migration->id(), 1, new DateTimeImmutable('2026-01-01 00:00:00')),
+		]);
+		$repository->expects($this->once())
+			->method('deleteRun')
+			->with($migration->id())
+			->willReturn(false);
+
+		$this->expectException(LedgerFailure::class);
+		$this->expectExceptionMessage('was rolled back but its ledger record was not deleted');
+
+		try {
+			$this->migrator($this->collection($migration), repository: $repository)->rollback();
+		} finally {
+			$this->assertSame(['down:' . $migration->id()], $this->schema->statements);
+		}
+	}
+
 	private function lockToken(): LockToken {
 		$token = $this->lock->acquire('nx-foundation-database-migrations', 300);
 
@@ -528,11 +554,13 @@ final class MigratorExecutionTest extends TestCase
 		Collection $migrations,
 		?Lock $lock = null,
 		?Schema $schema = null,
+		?Repository $repository = null,
 		string $lockName = 'nx-foundation-database-migrations',
 		int $lockTtl = 300
 	): Migrator {
 		$schema ??= $this->schema;
 		$lock ??= $this->lock;
+		$repository ??= $this->repository;
 		$store = new Store(
 			$schema,
 			$lock,
@@ -544,7 +572,7 @@ final class MigratorExecutionTest extends TestCase
 
 		return new Migrator(
 			$migrations,
-			$this->repository,
+			$repository,
 			$store
 		);
 	}
