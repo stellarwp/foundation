@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Tests\Unit\Database\Query;
 
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use StellarWP\Foundation\Database\Query\Query;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestTable;
@@ -29,6 +30,53 @@ final class QueryBuilderTest extends TestCase
 			"SELECT `id`, `title` FROM `wp_reports` AS `r` WHERE `status` = 'published' ORDER BY `id` DESC LIMIT 10 OFFSET 5",
 			$query->toPreparedSql()
 		);
+	}
+
+	public function test_it_quotes_qualified_columns_and_select_wildcards_by_segment(): void {
+		$query = (new FakeDatabase())
+			->table('posts', 'p')
+			->select('*', 'p.ID', 'p.*')
+			->where('p.status', '=', 'publish')
+			->where('p.deleted_at', '=', null)
+			->orderBy('p.ID');
+
+		$this->assertSame(
+			'SELECT *, `p`.`ID`, `p`.* FROM `wp_posts` AS `p` WHERE `p`.`status` = %s AND `p`.`deleted_at` IS NULL ORDER BY `p`.`ID` ASC',
+			$query->toSql()
+		);
+		$this->assertSame(['publish'], $query->bindings());
+	}
+
+	public function test_it_escapes_each_qualified_column_segment(): void {
+		$query = (new FakeDatabase())->table('posts')->where('p`ost.I`D', '=', 1);
+
+		$this->assertSame('SELECT * FROM `wp_posts` WHERE `p``ost`.`I``D` = %s', $query->toSql());
+	}
+
+	/**
+	 * @dataProvider invalidColumnProvider
+	 */
+	#[DataProvider('invalidColumnProvider')]
+	public function test_it_rejects_invalid_qualified_columns(string $column): void {
+		$this->expectException(InvalidArgumentException::class);
+
+		(new FakeDatabase())->table('posts')->select($column)->toSql();
+	}
+
+	/**
+	 * @return iterable<string, array{string}>
+	 */
+	public static function invalidColumnProvider(): iterable {
+		yield 'empty segment' => ['p..ID'];
+
+		yield 'non-terminal wildcard' => ['p.*.ID'];
+	}
+
+	public function test_it_rejects_wildcards_outside_selects(): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('Invalid query column wildcard');
+
+		(new FakeDatabase())->table('posts')->where('p.*', '=', 1);
 	}
 
 	public function test_it_rejects_unsupported_operators(): void {

@@ -52,7 +52,7 @@ final class QueryBuilder
 	/**
 	 * Compare a column to a value. NULL values use IS NULL or IS NOT NULL semantics.
 	 *
-	 * @throws InvalidArgumentException When the operator is unsupported or cannot compare against NULL.
+	 * @throws InvalidArgumentException When the column or operator is invalid, or the operator cannot compare against NULL.
 	 */
 	public function where(string $column, string $operator, mixed $value): self {
 		$operator = $this->operator($operator);
@@ -64,19 +64,22 @@ final class QueryBuilder
 
 			$this->where[] = sprintf(
 				'%s IS%s NULL',
-				$this->database->quoteIdentifier($column),
+				$this->quoteColumn($column),
 				$operator === '=' ? '' : ' NOT'
 			);
 
 			return $this;
 		}
 
-		$this->where[]    = sprintf('%s %s %%s', $this->database->quoteIdentifier($column), $operator);
+		$this->where[]    = sprintf('%s %s %%s', $this->quoteColumn($column), $operator);
 		$this->bindings[] = $value;
 
 		return $this;
 	}
 
+	/**
+	 * @throws InvalidArgumentException When the column or direction is invalid.
+	 */
 	public function orderBy(string $column, string $direction = 'ASC'): self {
 		$direction = strtoupper($direction);
 
@@ -84,11 +87,14 @@ final class QueryBuilder
 			throw new InvalidArgumentException('Order direction must be ASC or DESC.');
 		}
 
-		$this->orderBy[] = sprintf('%s %s', $this->database->quoteIdentifier($column), $direction);
+		$this->orderBy[] = sprintf('%s %s', $this->quoteColumn($column), $direction);
 
 		return $this;
 	}
 
+	/**
+	 * @throws InvalidArgumentException When the limit or offset is invalid.
+	 */
 	public function limit(int $limit, ?int $offset = null): self {
 		if ($limit < 1) {
 			throw new InvalidArgumentException('Query limit must be greater than zero.');
@@ -105,14 +111,16 @@ final class QueryBuilder
 	}
 
 	/**
-	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException        When the table name exceeds MySQL's identifier limit.
+	 * @throws InvalidArgumentException When a selected column is invalid.
 	 */
 	public function query(): Query {
 		return new Query($this->database, $this->toSql(), $this->bindings());
 	}
 
 	/**
-	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException        When the table name exceeds MySQL's identifier limit.
+	 * @throws InvalidArgumentException When a selected column is invalid.
 	 */
 	public function toSql(): string {
 		$sql = sprintf(
@@ -159,14 +167,16 @@ final class QueryBuilder
 	}
 
 	/**
-	 * @throws DatabaseException When table-name resolution or query preparation fails.
+	 * @throws DatabaseException        When table-name resolution or query preparation fails.
+	 * @throws InvalidArgumentException When a selected column is invalid.
 	 */
 	public function toPreparedSql(): string {
 		return $this->database->prepare($this->toSql(), ...$this->bindings());
 	}
 
 	/**
-	 * @throws DatabaseException When table-name resolution or query execution fails.
+	 * @throws DatabaseException        When table-name resolution or query execution fails.
+	 * @throws InvalidArgumentException When a selected column is invalid.
 	 *
 	 * @return list<array<string, mixed>>
 	 */
@@ -175,7 +185,8 @@ final class QueryBuilder
 	}
 
 	/**
-	 * @throws DatabaseException When table-name resolution or query execution fails.
+	 * @throws DatabaseException        When table-name resolution or query execution fails.
+	 * @throws InvalidArgumentException When a selected column is invalid.
 	 *
 	 * @return array<string, mixed>|null
 	 */
@@ -194,11 +205,7 @@ final class QueryBuilder
 	}
 
 	private function selectSql(): string {
-		if ($this->columns === ['*']) {
-			return '*';
-		}
-
-		return implode(', ', array_map($this->database->quoteIdentifier(...), $this->columns));
+		return implode(', ', array_map(fn (string $column): string => $this->quoteColumn($column, true), $this->columns));
 	}
 
 	private function aliasSql(): string {
@@ -217,5 +224,38 @@ final class QueryBuilder
 		}
 
 		return $operator;
+	}
+
+	/**
+	 * Quote each segment of a qualified column reference.
+	 *
+	 * For example, p.ID becomes `p`.`ID`. When wildcards are allowed,
+	 * p.* becomes `p`.*.
+	 *
+	 * @throws InvalidArgumentException When the column contains an empty segment or a disallowed wildcard.
+	 */
+	private function quoteColumn(string $column, bool $allowWildcard = false): string {
+		$segments = explode('.', $column);
+		$last     = array_key_last($segments);
+		$quoted   = [];
+
+		foreach ($segments as $index => $segment) {
+			if ($segment === '') {
+				throw new InvalidArgumentException(sprintf('Invalid query column: %s.', $column));
+			}
+
+			if ($segment === '*') {
+				if (! $allowWildcard || $index !== $last) {
+					throw new InvalidArgumentException(sprintf('Invalid query column wildcard: %s.', $column));
+				}
+
+				$quoted[] = '*';
+				continue;
+			}
+
+			$quoted[] = $this->database->quoteIdentifier($segment);
+		}
+
+		return implode('.', $quoted);
 	}
 }
