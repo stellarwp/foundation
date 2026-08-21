@@ -108,14 +108,13 @@ final class MigrationCommand extends Command
 				path: $path . '/' . $className . '.php',
 				relativePath: $relative,
 				contents: $this->stubRenderer->render($stub, [
-					'namespace'                        => $namespace,
-					'class'                            => $className,
-					'id_php'                           => $this->phpString($id),
-					'table_class'                      => $tableClass,
-					'table_namespace'                  => $tableNamespace,
-					'foundation_database_migration'    => $project->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Migration'),
-					'foundation_database_schema'       => $project->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Schema'),
-					'foundation_database_create_table' => $project->foundationClass('StellarWP\\Foundation\\Database\\Table\\CreateTable'),
+					'namespace'                     => $namespace,
+					'class'                         => $className,
+					'id_php'                        => $this->phpString($id),
+					'table_class'                   => $tableClass,
+					'table_namespace'               => $tableNamespace,
+					'foundation_database_migration' => $project->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Migration'),
+					'foundation_database_schema'    => $project->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Schema'),
 				])
 			);
 		}

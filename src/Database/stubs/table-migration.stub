@@ -4,7 +4,6 @@ namespace {{ namespace }};
 
 use {{ foundation_database_migration }};
 use {{ foundation_database_schema }};
-use {{ foundation_database_create_table }};
 use {{ table_namespace }}\{{ table_class }};
 
 final readonly class {{ class }} implements Migration {
@@ -21,11 +20,11 @@ final readonly class {{ class }} implements Migration {
 	}
 
 	public function up( Schema $schema ): void {
-		( new CreateTable( $this->table ) )->up( $schema );
+		$schema->createOrUpdate( $this->table );
 	}
 
 	public function down( Schema $schema ): void {
-		( new CreateTable( $this->table ) )->down( $schema );
+		$schema->drop( $this->table );
 	}
 
 }

@@ -55,6 +55,7 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertSame(Command::SUCCESS, $statusCode);
 		$this->assertFileExists($path);
 		$this->assertStringContainsString('Created: src/Database/Tables/Reports_Table.php', $tester->getDisplay());
+		$this->assertStringContainsString('Add this table to a migration with Schema::createOrUpdate() and Schema::drop().', $tester->getDisplay());
 
 		$contents = (string) file_get_contents($path);
 
@@ -89,12 +90,13 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Database\\Migrations;', $contents);
 		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Contracts\\Migration;', $contents);
 		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Contracts\\Schema;', $contents);
-		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Table\\CreateTable;', $contents);
 		$this->assertStringContainsString('use Acme\\Plugin\\Database\\Tables\\Reports_Table;', $contents);
 		$this->assertStringContainsString('final readonly class Create_Reports_Table implements Migration {', $contents);
 		$this->assertStringContainsString("public const string ID = '2026_06_26_000001_create_reports_table';", $contents);
 		$this->assertStringContainsString('private Reports_Table $table', $contents);
-		$this->assertStringContainsString('( new CreateTable( $this->table ) )->up( $schema );', $contents);
+		$this->assertStringContainsString('$schema->createOrUpdate( $this->table );', $contents);
+		$this->assertStringContainsString('$schema->drop( $this->table );', $contents);
+		$this->assertStringNotContainsString('CreateTable', $contents);
 	}
 
 	public function test_it_generates_a_generic_database_migration_for_non_table_names(): void {

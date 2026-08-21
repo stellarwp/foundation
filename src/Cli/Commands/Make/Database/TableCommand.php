@@ -23,7 +23,7 @@ use Symfony\Component\Console\Output\OutputInterface;
  * Generates a WordPress-style table class for Foundation Database migrations.
  *
  * Use this from a consuming WordPress project when a feature needs a table
- * definition that can be wrapped in a Foundation `CreateTable` migration.
+ * definition that can be applied by a Foundation migration.
  */
 final class TableCommand extends Command
 {
@@ -65,7 +65,7 @@ final class TableCommand extends Command
 
 		$output->writeln(sprintf('<info>Created:</info> %s', $file->relativePath));
 		$output->writeln('');
-		$output->writeln('<comment>Add this table to a migration, usually with StellarWP\Foundation\Database\Table\CreateTable.</comment>');
+		$output->writeln('<comment>Add this table to a migration with Schema::createOrUpdate() and Schema::drop().</comment>');
 
 		if ($providerPath !== null) {
 			$output->writeln(sprintf('<info>Updated:</info> %s', $this->relativePath($providerPath)));
