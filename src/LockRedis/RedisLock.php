@@ -116,7 +116,7 @@ LUA;
 
 		return match ($result) {
 			0       => null,
-			1       => $token->refresh($expiresAt),
+			1       => $token->withExpiration($expiresAt),
 			default => throw new LockUnavailableException('Redis returned an unexpected refresh result.'),
 		};
 	}

@@ -44,14 +44,14 @@ final class LockTokenTest extends TestCase
 		)));
 	}
 
-	public function test_it_refreshes_with_the_same_lock_name_and_owner(): void {
+	public function test_it_changes_expiration_with_the_same_lock_name_and_owner(): void {
 		$token = new LockToken(
 			name: 'queue:sync',
 			owner: 'owner',
 			expiresAt: new DateTimeImmutable('2026-01-01 00:01:00')
 		);
 
-		$refreshed = $token->refresh(new DateTimeImmutable('2026-01-01 00:02:00'));
+		$refreshed = $token->withExpiration(new DateTimeImmutable('2026-01-01 00:02:00'));
 
 		$this->assertSame($token->name, $refreshed->name);
 		$this->assertSame($token->owner, $refreshed->owner);

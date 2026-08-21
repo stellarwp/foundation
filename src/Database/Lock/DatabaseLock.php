@@ -128,7 +128,7 @@ final readonly class DatabaseLock implements Lock
 			return null;
 		}
 
-		return $token->refresh($this->expiration($row));
+		return $token->withExpiration($this->expiration($row));
 	}
 
 	/**

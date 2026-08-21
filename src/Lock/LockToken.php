@@ -49,9 +49,9 @@ final readonly class LockToken
 	}
 
 	/**
-	 * Return a new token for the same owner with a later expiration time.
+	 * Return a new token for the same owner with the provided expiration time.
 	 */
-	public function refresh(DateTimeImmutable $expiresAt): self {
+	public function withExpiration(DateTimeImmutable $expiresAt): self {
 		return new self(
 			name: $this->name,
 			owner: $this->owner,

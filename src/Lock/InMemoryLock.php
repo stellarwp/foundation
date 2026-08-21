@@ -78,7 +78,7 @@ final class InMemoryLock implements Lock
 			return null;
 		}
 
-		$refreshed = $token->refresh($this->expiresAt($ttl));
+		$refreshed = $token->withExpiration($this->expiresAt($ttl));
 
 		$this->locks[$token->name] = $refreshed;
 
