@@ -28,10 +28,6 @@ final class RecordingSchema implements Schema
 		$this->statements[]  = 'createOrUpdate:' . $name;
 	}
 
-	public function createOrUpdateSql(string $sql): void {
-		$this->statements[] = 'createOrUpdateSql:' . $sql;
-	}
-
 	public function execute(string $sql): void {
 		$this->statements[] = $sql;
 	}

@@ -2,12 +2,12 @@
 
 namespace StellarWP\Foundation\Database;
 
+use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
-use StellarWP\Foundation\Database\Contracts\SchemaExecutor;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
-use StellarWP\Foundation\Database\Table\TableDefinition;
+use StellarWP\Foundation\Database\Schema\Reconciler;
 
 /**
  * WordPress schema operations backed by wpdb and dbDelta.
@@ -16,26 +16,16 @@ final readonly class Schema implements SchemaContract
 {
 	public function __construct(
 		private Database $database,
-		private SchemaExecutor $executor
+		private Reconciler $reconciler
 	) {
 	}
 
 	/**
-	 * @throws DatabaseException When WordPress cannot reconcile the table definition.
+	 * @throws DatabaseException        When WordPress cannot reconcile the table definition.
+	 * @throws InvalidArgumentException When the table definition is invalid.
 	 */
 	public function createOrUpdate(Table $table): void {
-		$definition = $table->definition();
-		$definition->assertValid();
-
-		$this->executor->execute($this->createTableSql($table, $definition));
-		$this->reconcileComplexDefaults($table, $definition);
-	}
-
-	/**
-	 * @throws DatabaseException When WordPress cannot reconcile the SQL definition.
-	 */
-	public function createOrUpdateSql(string $sql): void {
-		$this->executor->execute($sql);
+		$this->reconciler->reconcile($table);
 	}
 
 	public function execute(string $sql): void {
@@ -79,41 +69,5 @@ final readonly class Schema implements SchemaContract
 
 	public function quoteIdentifier(string $identifier): string {
 		return $this->database->quoteIdentifier($identifier);
-	}
-
-	private function createTableSql(Table $table, TableDefinition $definition): string {
-		$parts = [];
-
-		foreach ($definition->columns() as $column) {
-			$parts[] = '  ' . $column->sql();
-		}
-
-		foreach ($definition->indexes() as $index) {
-			$parts[] = '  ' . $index->sql();
-		}
-
-		return sprintf(
-			"CREATE TABLE %s (\n%s\n) %s;",
-			$this->database->quoteIdentifier($this->database->tableName($table)),
-			implode(",\n", $parts),
-			$this->database->charsetCollate()
-		);
-	}
-
-	private function reconcileComplexDefaults(Table $table, TableDefinition $definition): void {
-		foreach ($definition->columns() as $column) {
-			$default = $column->defaultSql();
-
-			if ($default === null || ! str_starts_with($default, "X'")) {
-				continue;
-			}
-
-			$this->database->execute(sprintf(
-				'ALTER TABLE %s ALTER COLUMN %s SET DEFAULT %s',
-				$this->database->quoteIdentifier($this->database->tableName($table)),
-				$this->database->quoteIdentifier($column->name),
-				$default
-			));
-		}
 	}
 }

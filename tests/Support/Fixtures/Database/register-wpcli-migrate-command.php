@@ -16,8 +16,10 @@ use StellarWP\Foundation\Database\Migration\Repository;
 use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Schema;
 use StellarWP\Foundation\Database\Schema\DbDelta;
+use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestTable;
 
 if (! class_exists(WP_CLI::class)) {
 	return;
@@ -42,7 +44,7 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 	$container->singleton(Dot::class, new Dot());
 
 	$database           = new Database($wpdb);
-	$schema             = new Schema($database, new DbDelta());
+	$schema             = new Schema($database, new Reconciler($database, new DbDelta()));
 	$migrationTableName = $wpdb->prefix . 'foundation_cli_migrations';
 	$lockTableName      = $wpdb->prefix . 'foundation_cli_locks';
 	$exampleTable       = $wpdb->prefix . 'foundation_cli_example';
@@ -52,9 +54,9 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 	$lock               = new DatabaseLock($database, $lockTableName);
 	$store              = new Store($schema, $lock, $migrationTable, $lockTable);
 
-	$migration = new class($exampleTable) implements Migration {
+	$migration = new class(new TestTable('foundation_cli_example', $exampleTable)) implements Migration {
 		public function __construct(
-			private readonly string $exampleTable
+			private readonly TestTable $table
 		) {
 		}
 
@@ -63,20 +65,13 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 		}
 
 		public function up(SchemaContract $schema): void {
-			$schema->createOrUpdateSql(sprintf(
-				'CREATE TABLE %s (
-				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-				name varchar(191) NOT NULL,
-				PRIMARY KEY  (id)
-			);',
-				$schema->quoteIdentifier($this->exampleTable)
-			));
+			$schema->createOrUpdate($this->table);
 		}
 
 		public function down(SchemaContract $schema): void {
 			$schema->execute(sprintf(
 				'DROP TABLE IF EXISTS %s',
-				$schema->quoteIdentifier($this->exampleTable)
+				$schema->quoteIdentifier($this->table->name())
 			));
 		}
 	};

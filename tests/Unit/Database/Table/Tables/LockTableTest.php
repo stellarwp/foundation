@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Tests\Unit\Database\Table\Tables;
 
 use StellarWP\Foundation\Database\Schema as DatabaseSchema;
+use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchemaExecutor;
@@ -11,10 +12,11 @@ use StellarWP\Foundation\Tests\TestCase;
 final class LockTableTest extends TestCase
 {
 	public function test_it_creates_the_lock_table(): void {
-		$database = new FakeDatabase();
-		$executor = new RecordingSchemaExecutor();
-		$schema   = new DatabaseSchema($database, $executor);
-		$table    = new LockTable('network_foundation_locks');
+		$database             = new FakeDatabase();
+		$database->rowResults = array_fill(0, 5, ['Null' => 'NO', 'Default' => null, 'Extra' => '']);
+		$executor             = new RecordingSchemaExecutor();
+		$schema               = new DatabaseSchema($database, new Reconciler($database, $executor));
+		$table                = new LockTable('network_foundation_locks');
 
 		$schema->createOrUpdate($table);
 
@@ -32,7 +34,7 @@ final class LockTableTest extends TestCase
 
 	public function test_it_drops_the_lock_table(): void {
 		$database = new FakeDatabase();
-		$schema   = new DatabaseSchema($database, new RecordingSchemaExecutor());
+		$schema   = new DatabaseSchema($database, new Reconciler($database, new RecordingSchemaExecutor()));
 		$table    = new LockTable('network_foundation_locks');
 
 		$schema->drop($table);

@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Tests\Unit\Database\Table\Tables;
 
 use StellarWP\Foundation\Database\Schema as DatabaseSchema;
+use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchemaExecutor;
@@ -11,9 +12,13 @@ use StellarWP\Foundation\Tests\TestCase;
 final class MigrationTableTest extends TestCase
 {
 	public function test_it_creates_the_migration_table(): void {
-		$database = new FakeDatabase();
+		$database             = new FakeDatabase();
+		$database->rowResults = [
+			['Null' => 'NO', 'Default' => null, 'Extra' => 'auto_increment'],
+			...array_fill(0, 3, ['Null' => 'NO', 'Default' => null, 'Extra' => '']),
+		];
 		$executor = new RecordingSchemaExecutor();
-		$schema   = new DatabaseSchema($database, $executor);
+		$schema   = new DatabaseSchema($database, new Reconciler($database, $executor));
 		$table    = new MigrationTable('network_foundation_migrations');
 
 		$schema->createOrUpdate($table);
@@ -27,7 +32,7 @@ final class MigrationTableTest extends TestCase
 
 	public function test_it_drops_the_migration_table(): void {
 		$database = new FakeDatabase();
-		$schema   = new DatabaseSchema($database, new RecordingSchemaExecutor());
+		$schema   = new DatabaseSchema($database, new Reconciler($database, new RecordingSchemaExecutor()));
 		$table    = new MigrationTable('network_foundation_migrations');
 
 		$schema->drop($table);

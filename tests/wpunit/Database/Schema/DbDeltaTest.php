@@ -53,6 +53,26 @@ final class DbDeltaTest extends WPTestCase
 		(new DbDelta())->execute(self::SQL);
 	}
 
+	public function test_it_ignores_wordpress_62_created_table_dry_run_false_positives(): void {
+		$table = $GLOBALS['wpdb']->prefix . 'foundation_dbdelta_existing';
+		$sql   = sprintf('CREATE TABLE `%s` (id bigint)', $table);
+
+		$GLOBALS['wpdb']->query(sprintf('CREATE TABLE `%s` (id bigint)', $table));
+
+		$dbDelta = PHPMockery::mock('StellarWP\Foundation\Database\Schema', 'dbDelta');
+		$dbDelta->with($sql, true)->once()->andReturn([]);
+		$dbDelta->with($sql, false)->once()->andReturn([
+			'`' . $table . '`' => 'Created table `' . $table . '`',
+		]);
+
+		try {
+			(new DbDelta())->execute($sql);
+			$this->addToAssertionCount(1);
+		} finally {
+			$GLOBALS['wpdb']->query(sprintf('DROP TABLE IF EXISTS `%s`', $table));
+		}
+	}
+
 	public function test_it_translates_wordpress_database_errors(): void {
 		$dbDelta = PHPMockery::mock('StellarWP\Foundation\Database\Schema', 'dbDelta');
 		$dbDelta->with(self::SQL, true)->once()->andReturnUsing(static function (): array {

@@ -2,6 +2,7 @@
 
 namespace StellarWP\Foundation\Database\Contracts;
 
+use InvalidArgumentException;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 
 /**
@@ -12,7 +13,8 @@ interface Schema
 	/**
 	 * Create or update a table.
 	 *
-	 * @throws DatabaseException When WordPress cannot reconcile the table definition.
+	 * @throws DatabaseException        When WordPress cannot reconcile the table definition.
+	 * @throws InvalidArgumentException When the table definition is invalid.
 	 */
 	public function createOrUpdate(Table $table): void;
 

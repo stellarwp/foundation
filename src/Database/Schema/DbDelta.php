@@ -37,6 +37,10 @@ final class DbDelta implements SchemaExecutor
 		}
 
 		$pending = dbDelta($sql, false);
+		$pending = array_filter(
+			$pending,
+			fn (string $change): bool => ! $this->createdTableExists($change, $wpdb)
+		);
 
 		if ($pending !== []) {
 			throw new DatabaseException(sprintf(
@@ -44,5 +48,28 @@ final class DbDelta implements SchemaExecutor
 				implode('; ', $pending)
 			));
 		}
+	}
+
+	/**
+	 * Ignore WordPress 6.2's stale dry-run result for a table that was created successfully.
+	 *
+	 * @throws QueryException When WordPress cannot verify the table.
+	 */
+	private function createdTableExists(string $change, \wpdb $wpdb): bool {
+		$prefix = 'Created table ';
+
+		if (! str_starts_with($change, $prefix)) {
+			return false;
+		}
+
+		$table = trim(substr($change, strlen($prefix)), '`');
+		$query = $wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table));
+		$found = $wpdb->get_var($query);
+
+		if ($wpdb->last_error !== '') {
+			throw new QueryException($wpdb->last_error, 'SHOW TABLES LIKE %s', [$table], $wpdb->last_error);
+		}
+
+		return $found === $table;
 	}
 }

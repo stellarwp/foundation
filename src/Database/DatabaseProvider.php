@@ -18,6 +18,7 @@ use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository as MigrationRecordRepository;
 use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Schema\DbDelta;
+use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
@@ -82,6 +83,7 @@ final class DatabaseProvider extends Provider
 		$this->container->singleton(DatabaseContract::class, static fn (C $c): Database => $c->get(Database::class));
 		$this->container->singleton(DbDelta::class);
 		$this->container->singleton(SchemaExecutor::class, static fn (C $c): DbDelta => $c->get(DbDelta::class));
+		$this->container->singleton(Reconciler::class);
 		$this->container->singleton(Schema::class);
 		$this->container->singleton(SchemaContract::class, static fn (C $c): Schema => $c->get(Schema::class));
 	}

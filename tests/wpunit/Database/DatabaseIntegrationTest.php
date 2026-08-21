@@ -20,11 +20,14 @@ use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository;
 use StellarWP\Foundation\Database\Schema;
 use StellarWP\Foundation\Database\Schema\DbDelta;
+use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\LockToken;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\DateTimePrecisionTable;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\SchemaReconciliationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestTable;
 use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
 
@@ -50,7 +53,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 		}
 
 		$this->database = new Database($GLOBALS['wpdb']);
-		$this->schema   = new Schema($this->database, new DbDelta());
+		$this->schema   = new Schema($this->database, new Reconciler($this->database, new DbDelta()));
 	}
 
 	protected function tearDown(): void {
@@ -216,16 +219,13 @@ final class DatabaseIntegrationTest extends WPTestCase
 		}
 	}
 
-	public function test_provider_schema_reports_db_delta_query_failures(): void {
-		$table     = $this->table('invalid_schema');
-		$container = $this->newContainer();
-		$container->register(DatabaseProvider::class);
-		$schema   = $container->get(Schema::class);
+	public function test_db_delta_reports_query_failures(): void {
+		$table    = $this->table('invalid_schema');
 		$previous = $GLOBALS['wpdb']->suppress_errors(true);
 
 		try {
-			$this->assertQueryFails(function () use ($schema, $table): void {
-				$schema->createOrUpdateSql(sprintf(
+			$this->assertQueryFails(function () use ($table): void {
+				(new DbDelta())->execute(sprintf(
 					'CREATE TABLE %s (
 						id definitely_invalid NOT NULL,
 						PRIMARY KEY  (id)
@@ -243,17 +243,13 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$table  = $this->table('schema');
 		$schema = $this->schema;
 
-		$schema->createOrUpdateSql(sprintf(
-			'CREATE TABLE %s (
-				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-				name varchar(191) NOT NULL,
-				PRIMARY KEY  (id),
-				KEY name (name)
-			) %s;',
+		$schema->createOrUpdate(new TestTable('schema_table', $table));
+		$schema->execute(sprintf(
+			'ALTER TABLE %s ADD KEY %s (%s)',
 			$this->database->quoteIdentifier($table),
-			$this->database->charsetCollate()
+			$this->database->quoteIdentifier('name'),
+			$this->database->quoteIdentifier('id')
 		));
-
 		$this->assertTrue($schema->hasTable($table));
 		$this->assertTrue($schema->hasIndex($table, 'name'));
 
@@ -315,6 +311,17 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertTrue($schema->hasIndex($queue, 'taken_failed_done'));
 	}
 
+	public function test_datetime_zero_precision_is_canonical_and_idempotent(): void {
+		$table = new DateTimePrecisionTable($this->table('datetime_zero'));
+
+		$this->schema->createOrUpdate($table);
+		$this->schema->createOrUpdate($table);
+
+		$column = $this->database->row('SHOW COLUMNS FROM %i WHERE Field = %s', $table->name(), 'occurred_at');
+
+		$this->assertSame('datetime', strtolower((string) ($column['Type'] ?? '')));
+	}
+
 	public function test_schema_preserves_quote_and_backslash_string_defaults(): void {
 		$tableName = $this->table('string_default');
 		$default   = "customer's \\ path";
@@ -348,6 +355,52 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->database->execute('INSERT INTO %i () VALUES ()', $tableName);
 
 		$this->assertSame($default, $this->database->value('SELECT label FROM %i LIMIT 1', $tableName));
+	}
+
+	public function test_schema_rejects_unapplied_numeric_defaults_and_nullability(): void {
+		$table = $this->table('column_properties');
+
+		$this->schema->createOrUpdate(new SchemaReconciliationTable($table, 1, false));
+
+		try {
+			$this->schema->createOrUpdate(new SchemaReconciliationTable($table, 5, true));
+			$this->fail('Expected unapplied column properties to fail schema reconciliation.');
+		} catch (DatabaseException $exception) {
+			$this->assertStringContainsString('column attempts expected DEFAULT 5, found DEFAULT 1', $exception->getMessage());
+			$this->assertStringContainsString('column completed_at expected NULL, found NOT NULL', $exception->getMessage());
+		}
+
+		$this->database->execute(
+			'ALTER TABLE %i MODIFY COLUMN attempts int(10) NOT NULL DEFAULT 5, MODIFY COLUMN completed_at datetime NULL',
+			$table
+		);
+		$this->schema->createOrUpdate(new SchemaReconciliationTable($table, 5, true));
+		$this->database->execute('INSERT INTO %i (completed_at) VALUES (NULL)', $table);
+
+		$row = $this->database->row('SELECT attempts, completed_at FROM %i LIMIT 1', $table);
+
+		$this->assertSame('5', $row['attempts'] ?? null);
+		$this->assertNull($row['completed_at'] ?? null);
+	}
+
+	public function test_schema_rejects_an_unapplied_auto_increment_attribute(): void {
+		$table = $this->table('column_extra');
+
+		$this->database->execute(sprintf(
+			'CREATE TABLE %s (id bigint(20) unsigned NOT NULL, PRIMARY KEY (id)) %s',
+			$this->database->quoteIdentifier($table),
+			$this->database->charsetCollate()
+		));
+
+		try {
+			$this->schema->createOrUpdate(new TestTable('column_extra', $table));
+			$this->fail('Expected an unapplied AUTO_INCREMENT attribute to fail schema reconciliation.');
+		} catch (DatabaseException $exception) {
+			$this->assertStringContainsString('column id expected extra auto_increment, found none', $exception->getMessage());
+		}
+
+		$this->database->execute('ALTER TABLE %i MODIFY COLUMN id bigint(20) unsigned NOT NULL AUTO_INCREMENT', $table);
+		$this->schema->createOrUpdate(new TestTable('column_extra', $table));
 	}
 
 	public function test_migration_repository_persists_records_in_wordpress(): void {
