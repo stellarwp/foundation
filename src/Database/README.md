@@ -263,6 +263,12 @@ $database->table('reports')->where('deleted_at', '=', null);  // IS NULL
 $database->table('reports')->where('deleted_at', '!=', null); // IS NOT NULL
 ```
 
+Qualified columns are quoted by segment, including aliases and select wildcards:
+
+```php
+$database->table('posts', 'p')->select('p.ID', 'p.*')->where('p.post_status', '=', 'publish');
+```
+
 `Database::insert()` returns the number of affected rows, which works for both
 auto-increment and application-assigned identifiers such as ULIDs. Use
 `Database::insertGetId()` only when the table has an auto-increment key and the
@@ -273,14 +279,13 @@ generated integer identifier is needed.
 Migrations implement `StellarWP\Foundation\Database\Contracts\Migration`:
 
 ```php
-use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\Migration;
 use StellarWP\Foundation\Database\Contracts\Schema;
 
 final readonly class CreateReportsTable implements Migration
 {
 	public function __construct(
-		private Database $database
+		private ReportsTable $table
 	) {
 	}
 
@@ -289,27 +294,11 @@ final readonly class CreateReportsTable implements Migration
 	}
 
 	public function up(Schema $schema): void {
-		$table = $this->database->tableName('reports');
-
-		$schema->createOrUpdateSql(
-			sprintf(
-				'CREATE TABLE %s (
-				id bigint unsigned NOT NULL AUTO_INCREMENT,
-				title varchar(191) NOT NULL,
-				PRIMARY KEY  (id)
-			);',
-				$schema->quoteIdentifier($table)
-			)
-		);
+		$schema->createOrUpdate($this->table);
 	}
 
 	public function down(Schema $schema): void {
-		$table = $this->database->tableName('reports');
-
-		$schema->execute(sprintf(
-			'DROP TABLE IF EXISTS %s',
-			$schema->quoteIdentifier($table)
-		));
+		$schema->drop($this->table);
 	}
 }
 ```
@@ -335,6 +324,13 @@ If migrations are added before registering `DatabaseProvider`, the provider will
 Register contributing providers in the order their migrations must run. The migration collection preserves registration order, so a migration that depends on an earlier schema or data change must be contributed after that dependency.
 
 Application feature tables should usually be represented by migrations. If a table only needs normal create/drop behavior, define it with `StellarWP\Foundation\Database\Contracts\Table`, wrap it in `StellarWP\Foundation\Database\Table\CreateTable`, and add that migration instance to `DatabaseProvider::MIGRATIONS`.
+
+`Schema::createOrUpdate()` independently verifies column defaults, nullability,
+and extra attributes after WordPress runs `dbDelta()`. If one of those
+properties still differs, reconciliation fails before the migration is
+recorded. Make data-dependent changes such as backfills or `NULL` to `NOT NULL`
+conversions explicitly in a versioned migration, then call `createOrUpdate()`
+to verify the final table definition.
 
 ```php
 use StellarWP\Foundation\Database\Contracts\Database;
@@ -416,7 +412,7 @@ writes.
 
 ## Evolving Tables
 
-`TableDefinition` and `Schema::createOrUpdate()` use WordPress `dbDelta()` to create tables and reconcile changes that `dbDelta()` supports, such as adding columns and indexes. Use `Schema::createOrUpdateSql()` when a migration must provide explicit dbDelta-compatible SQL. They should not be relied on to remove or rename columns, replace indexes, manage foreign keys, or backfill data.
+`TableDefinition` and `Schema::createOrUpdate()` use WordPress `dbDelta()` to create tables and reconcile changes that `dbDelta()` supports, such as adding columns and indexes. They should not be relied on to remove or rename columns, replace indexes, manage foreign keys, or backfill data.
 
 Use an explicit, versioned migration for destructive or data-dependent changes. Such migrations can inspect table and index state with `Schema::hasTable()` and `Schema::hasIndex()`; inject `Database` when column inspection through `Database::columnExists()` is required. Use `Schema::execute()` or focused helpers such as `dropIndex()` for the required SQL. Make rollback behavior explicit; throw `IrreversibleMigration::forMigration(self::ID)` when a migration cannot be safely reversed.
 
@@ -444,7 +440,11 @@ protected array $providers = [
 
 The table generator writes a Snake_Case table class under `src/Database/Tables` by default. The migration generator writes under `src/Database/Migrations` by default and references the matching table class.
 
-The migration generator never overwrites an existing file. Edit a migration only before it has been applied anywhere; otherwise create a new migration for the next schema change.
+The table and migration generators never overwrite existing files. Edit a migration only before it has been applied anywhere; otherwise create a new migration for the next schema change.
+
+Generated and explicit table and migration IDs follow the runtime ledger rules: they must
+be nonblank, contain no surrounding whitespace, fit within 191 bytes, and not
+be integer-like strings.
 
 Migration names matching `Create_*_Table`, or migrations generated with `--table-class`, use the table-backed migration stub and wrap the table in `CreateTable`. Other migration names use the generic migration stub.
 
