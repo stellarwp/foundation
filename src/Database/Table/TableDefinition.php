@@ -67,7 +67,7 @@ final class TableDefinition
 			throw new InvalidArgumentException('Datetime precision must be between 0 and 6.');
 		}
 
-		return $this->column(new Column($name, 'datetime', $precision));
+		return $this->column(new Column($name, 'datetime', $precision === 0 ? null : $precision));
 	}
 
 	public function text(string $name): self {

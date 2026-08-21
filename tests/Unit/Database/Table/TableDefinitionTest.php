@@ -75,7 +75,7 @@ final class TableDefinitionTest extends TestCase
 			->dateTime('microseconds', 6);
 
 		$this->assertSame([
-			'`seconds` datetime(0) NOT NULL',
+			'`seconds` datetime NOT NULL',
 			'`microseconds` datetime(6) NOT NULL',
 		], array_map(static fn ($column): string => $column->sql(), $definition->columns()));
 	}
