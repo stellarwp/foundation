@@ -17,13 +17,6 @@ interface Schema
 	public function createOrUpdate(Table $table): void;
 
 	/**
-	 * Create or update a table from explicit dbDelta-compatible SQL.
-	 *
-	 * @throws DatabaseException When WordPress cannot reconcile the SQL definition.
-	 */
-	public function createOrUpdateSql(string $sql): void;
-
-	/**
 	 * Execute explicit schema SQL.
 	 *
 	 * @throws DatabaseException When the statement cannot be executed.
