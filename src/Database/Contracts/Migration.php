@@ -3,12 +3,13 @@
 namespace StellarWP\Foundation\Database\Contracts;
 
 /**
- * Defines a reversible database schema change.
+ * Defines a versioned database change.
  */
 interface Migration
 {
 	/**
-	 * Unique, stable migration identifier.
+	 * Return a unique, stable identifier that is nonblank, unpadded,
+	 * non-integer-like, and no longer than 191 bytes.
 	 */
 	public function id(): string;
 
@@ -18,7 +19,7 @@ interface Migration
 	public function up(Schema $schema): void;
 
 	/**
-	 * Reverse the migration.
+	 * Reverse the migration when supported.
 	 */
 	public function down(Schema $schema): void;
 }
