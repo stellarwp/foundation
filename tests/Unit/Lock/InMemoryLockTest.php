@@ -193,4 +193,11 @@ final class InMemoryLockTest extends TestCase
 
 		$this->lock->refresh($token, 0);
 	}
+
+	public function test_it_rejects_a_ttl_that_cannot_be_represented(): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('Lock TTL cannot be represented.');
+
+		$this->lock->acquire('queue:sync', 1_000_000_000_000);
+	}
 }

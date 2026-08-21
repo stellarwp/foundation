@@ -2,7 +2,6 @@
 
 namespace StellarWP\Foundation\Tests\Unit\LockRedis;
 
-use DateMalformedIntervalStringException;
 use DateTimeImmutable;
 use InvalidArgumentException;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
@@ -125,8 +124,9 @@ final class RedisLockTest extends TestCase
 	public function test_it_does_not_acquire_when_the_ttl_cannot_be_represented(): void {
 		try {
 			$this->lock->acquire('queue:sync', 1_000_000_000_000);
-			$this->fail('Expected an invalid interval exception.');
-		} catch (DateMalformedIntervalStringException) {
+			$this->fail('Expected an invalid TTL exception.');
+		} catch (InvalidArgumentException $exception) {
+			$this->assertSame('Lock TTL cannot be represented.', $exception->getMessage());
 			$this->assertSame([], $this->connection->evaluateCalls);
 		}
 	}
@@ -134,8 +134,9 @@ final class RedisLockTest extends TestCase
 	public function test_it_does_not_refresh_when_the_ttl_cannot_be_represented(): void {
 		try {
 			$this->lock->refresh($this->token(), 1_000_000_000_000);
-			$this->fail('Expected an invalid interval exception.');
-		} catch (DateMalformedIntervalStringException) {
+			$this->fail('Expected an invalid TTL exception.');
+		} catch (InvalidArgumentException $exception) {
+			$this->assertSame('Lock TTL cannot be represented.', $exception->getMessage());
 			$this->assertSame([], $this->connection->evaluateCalls);
 		}
 	}

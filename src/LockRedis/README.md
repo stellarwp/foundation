@@ -135,7 +135,7 @@ are not currently supported or tested.
 Lock contention is not an infrastructure failure: `acquire()` returns `null`
 when another owner holds the lock. `release()` returns `false`, and `refresh()`
 returns `null`, when the token no longer owns the lease. Uncertain Redis
-results throw
+results or owner generation failures throw
 `StellarWP\Foundation\Lock\Exceptions\LockUnavailableException`; callers
 should fail closed instead of continuing the protected work without a lock.
 

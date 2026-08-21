@@ -6,18 +6,22 @@ use DateMalformedStringException;
 use DateTimeImmutable;
 use DateTimeZone;
 use InvalidArgumentException;
-use Random\RandomException;
 use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use StellarWP\Foundation\Lock\LockToken;
+use StellarWP\Foundation\Lock\Traits\GeneratesLockOwner;
+use StellarWP\Foundation\Lock\Traits\ValidatesLockTtl;
 
 /**
  * Database-backed lock implementation for WordPress environments.
  */
 final readonly class DatabaseLock implements Lock
 {
+	use GeneratesLockOwner;
+	use ValidatesLockTtl;
+
 	public function __construct(
 		private Database $database,
 		private string $table
@@ -30,13 +34,9 @@ final readonly class DatabaseLock implements Lock
 	 */
 	public function acquire(string $name, int $ttl): ?LockToken {
 		$this->assertValidName($name);
-		$this->assertValidTtl($ttl);
+		$this->assertValidLockTtl($ttl);
 
-		try {
-			$owner = bin2hex(random_bytes(16));
-		} catch (RandomException $exception) {
-			throw new LockUnavailableException('A secure lock owner token could not be generated.', 0, $exception);
-		}
+		$owner = $this->generateLockOwner();
 
 		try {
 			$this->database->execute(
@@ -102,7 +102,7 @@ final readonly class DatabaseLock implements Lock
 	 * @throws LockUnavailableException When the database cannot determine the refresh result.
 	 */
 	public function refresh(LockToken $token, int $ttl): ?LockToken {
-		$this->assertValidTtl($ttl);
+		$this->assertValidLockTtl($ttl);
 
 		try {
 			$this->database->execute(
@@ -146,15 +146,6 @@ final readonly class DatabaseLock implements Lock
 			) !== null;
 		} catch (DatabaseException $exception) {
 			throw new LockUnavailableException('The database could not determine whether the lock exists.', 0, $exception);
-		}
-	}
-
-	/**
-	 * @throws InvalidArgumentException When the TTL is less than one second.
-	 */
-	private function assertValidTtl(int $ttl): void {
-		if ($ttl < 1) {
-			throw new InvalidArgumentException('Lock TTL must be greater than zero seconds.');
 		}
 	}
 

@@ -18,10 +18,11 @@ interface Lock
 	 * already holds the lock. Implementations that coordinate multiple
 	 * processes should perform acquisition atomically.
 	 *
-	 * @throws InvalidArgumentException When the lock name is empty or the TTL
-	 *                                  is less than one second.
-	 * @throws LockUnavailableException When the backend cannot determine the
-	 *                                  acquisition result.
+	 * @throws InvalidArgumentException When the lock name is empty, the TTL
+	 *                                  is less than one second, or its
+	 *                                  expiration cannot be represented.
+	 * @throws LockUnavailableException When ownership cannot be generated or
+	 *                                  the backend cannot determine the result.
 	 */
 	public function acquire(string $name, int $ttl): ?LockToken;
 
@@ -44,7 +45,8 @@ interface Lock
 	 * multiple processes should compare and renew atomically by lock name,
 	 * owner, and non-expired state.
 	 *
-	 * @throws InvalidArgumentException When the TTL is less than one second.
+	 * @throws InvalidArgumentException When the TTL is less than one second or
+	 *                                  its expiration cannot be represented.
 	 * @throws LockUnavailableException When the backend cannot determine the
 	 *                                  refresh result.
 	 */

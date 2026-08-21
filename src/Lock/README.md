@@ -109,7 +109,9 @@ full operation.
 > [!IMPORTANT]
 > Locks are time-bounded leases. Mutual exclusion is guaranteed only until the token expires. Choose a TTL longer than the protected operation or refresh the lock before expiration.
 
-`refresh()` returns a new token with an expiration of the current time plus the supplied TTL. It returns `null` if the original token no longer owns the lock:
+Only `Lock::refresh()` renews the backend lease. It returns a new token with an
+expiration of the current time plus the supplied TTL, or `null` if the original
+token no longer owns the lock:
 
 ```php
 $token = $lock->refresh($token, 120);
@@ -124,7 +126,7 @@ Refreshing must happen before the current lease expires. For a single blocking o
 
 ## Backend Failures
 
-Persistent implementations throw `StellarWP\Foundation\Lock\Exceptions\LockUnavailableException`
-when their backend cannot provide a trustworthy result. Treat that exception as
-a failure to obtain or retain the lock; do not continue the protected work
-without coordination.
+Lock implementations throw `StellarWP\Foundation\Lock\Exceptions\LockUnavailableException`
+when their backend or secure owner generation cannot provide a trustworthy
+result. Treat that exception as a failure to obtain or retain the lock; do not
+continue the protected work without coordination.

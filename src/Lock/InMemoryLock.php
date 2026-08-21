@@ -2,13 +2,12 @@
 
 namespace StellarWP\Foundation\Lock;
 
-use DateInterval;
-use DateMalformedIntervalStringException;
-use DateTimeImmutable;
 use InvalidArgumentException;
-use Random\RandomException;
 use StellarWP\Foundation\Lock\Contracts\Clock;
 use StellarWP\Foundation\Lock\Contracts\Lock;
+use StellarWP\Foundation\Lock\Traits\CalculatesLockExpiration;
+use StellarWP\Foundation\Lock\Traits\GeneratesLockOwner;
+use StellarWP\Foundation\Lock\Traits\ValidatesLockTtl;
 
 /**
  * Process-local lock implementation useful for tests and single-process work.
@@ -19,6 +18,10 @@ use StellarWP\Foundation\Lock\Contracts\Lock;
  */
 final class InMemoryLock implements Lock
 {
+	use CalculatesLockExpiration;
+	use GeneratesLockOwner;
+	use ValidatesLockTtl;
+
 	/**
 	 * @var array<string, LockToken>
 	 */
@@ -31,13 +34,10 @@ final class InMemoryLock implements Lock
 
 	/**
 	 * {@inheritDoc}
-	 *
-	 * @throws RandomException
-	 * @throws DateMalformedIntervalStringException
 	 */
 	public function acquire(string $name, int $ttl): ?LockToken {
 		$this->assertValidName($name);
-		$this->assertValidTtl($ttl);
+		$this->assertValidLockTtl($ttl);
 		$this->releaseIfExpired($name);
 
 		if (isset($this->locks[$name])) {
@@ -46,8 +46,8 @@ final class InMemoryLock implements Lock
 
 		$token = new LockToken(
 			name: $name,
-			owner: bin2hex(random_bytes(16)),
-			expiresAt: $this->expiresAt($ttl)
+			owner: $this->generateLockOwner(),
+			expiresAt: $this->calculateLockExpiration($this->clock->now(), $ttl)
 		);
 
 		$this->locks[$name] = $token;
@@ -68,17 +68,19 @@ final class InMemoryLock implements Lock
 	}
 
 	/**
-	 * @throws DateMalformedIntervalStringException
+	 * {@inheritDoc}
 	 */
 	public function refresh(LockToken $token, int $ttl): ?LockToken {
-		$this->assertValidTtl($ttl);
+		$this->assertValidLockTtl($ttl);
 		$this->releaseIfExpired($token->name);
 
 		if (! isset($this->locks[$token->name]) || ! $this->locks[$token->name]->matches($token)) {
 			return null;
 		}
 
-		$refreshed = $token->withExpiration($this->expiresAt($ttl));
+		$refreshed = $token->withExpiration(
+			$this->calculateLockExpiration($this->clock->now(), $ttl)
+		);
 
 		$this->locks[$token->name] = $refreshed;
 
@@ -90,22 +92,6 @@ final class InMemoryLock implements Lock
 		$this->releaseIfExpired($name);
 
 		return isset($this->locks[$name]);
-	}
-
-	/**
-	 * @throws DateMalformedIntervalStringException
-	 * @throws InvalidArgumentException
-	 */
-	private function expiresAt(int $ttl): DateTimeImmutable {
-		$this->assertValidTtl($ttl);
-
-		return $this->clock->now()->add(new DateInterval(sprintf('PT%dS', $ttl)));
-	}
-
-	private function assertValidTtl(int $ttl): void {
-		if ($ttl < 1) {
-			throw new InvalidArgumentException('Lock TTL must be greater than zero seconds.');
-		}
 	}
 
 	private function releaseIfExpired(string $name): void {
