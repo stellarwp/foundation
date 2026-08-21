@@ -3,14 +3,34 @@
 namespace StellarWP\Foundation\Cli\Generation;
 
 use RuntimeException;
+use StellarWP\Foundation\Cli\Generation\Php\PhpSourceEditor;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
 
 /**
  * Writes generated files to disk with overwrite protection.
  */
-final class GeneratedFileWriter
+final readonly class GeneratedFileWriter
 {
+	public function __construct(
+		private PhpSourceEditor $sourceEditor
+	) {
+	}
+
 	public function write(GeneratedFile $file, bool $force = false): void {
+		if (! $this->sourceEditor->canParse($file->contents)) {
+			throw new RuntimeException(sprintf('Generated file "%s" is not valid PHP.', $file->relativePath));
+		}
+
+		$collision = $this->sourceEditor->classImportCollision($file->contents);
+
+		if ($collision !== null) {
+			throw new RuntimeException(sprintf(
+				'Generated file "%s" declares or imports "%s" more than once.',
+				$file->relativePath,
+				$collision
+			));
+		}
+
 		$directory = dirname($file->path);
 
 		if (! is_dir($directory) && ! mkdir($directory, 0777, true) && ! is_dir($directory)) {

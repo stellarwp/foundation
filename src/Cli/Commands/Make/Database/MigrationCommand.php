@@ -12,6 +12,7 @@ use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\Psr4Namespace;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Database\DatabaseStubPath;
+use StellarWP\Foundation\Database\Migration\ValueObjects\Id;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -21,8 +22,8 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * Generates a WordPress-style migration class for Foundation Database.
  *
- * Use this from a consuming WordPress project when a feature needs a versioned,
- * reversible schema change that can be registered with `DatabaseProvider`.
+ * Use this from a consuming WordPress project when a feature needs a versioned
+ * database change that can be registered with `DatabaseProvider`.
  */
 final class MigrationCommand extends Command
 {
@@ -46,7 +47,7 @@ final class MigrationCommand extends Command
 			->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the generated migration class.')
 			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Directory where the migration class should be written.')
 			->addOption('provider', null, InputOption::VALUE_REQUIRED, 'Database provider file to update when it exists.')
-			->addOption('id', null, InputOption::VALUE_REQUIRED, 'Stable migration identifier.')
+			->addOption('id', null, InputOption::VALUE_REQUIRED, 'Stable migration identifier: nonblank, unpadded, non-integer-like, and at most 191 bytes.')
 			->addOption('table-class', null, InputOption::VALUE_REQUIRED, 'Table class or base name used by a table-backed migration.')
 			->addOption('table-namespace', null, InputOption::VALUE_REQUIRED, 'Namespace containing the table class.');
 	}
@@ -95,7 +96,8 @@ final class MigrationCommand extends Command
 		$namespace = $this->namespace($input, $project->defaultPsr4Namespace());
 		$path      = $this->path($input, $namespace, $project);
 		$relative  = $this->relativePath($path . '/' . $className . '.php');
-		$id        = $this->optionOrDefault($input, 'id', $this->classNameResolver->migrationId($className));
+		$idOption  = $input->getOption('id');
+		$id        = (new Id(is_string($idOption) ? $idOption : $this->classNameResolver->migrationId($className)))->value;
 
 		if ($this->isTableMigration($input, $className)) {
 			$stub           = $this->stubResolver->resolve('database', 'table-migration', DatabaseStubPath::tableMigration());
@@ -226,16 +228,6 @@ final class MigrationCommand extends Command
 		return $this->classNameResolver->tableClass($name);
 	}
 
-	private function optionOrDefault(InputInterface $input, string $option, string $default): string {
-		$value = $input->getOption($option);
-
-		if (is_string($value) && trim($value) !== '') {
-			return trim($value);
-		}
-
-		return $default;
-	}
-
 	private function phpString(string $value): string {
 		return var_export($value, true);
 	}
@@ -308,7 +300,7 @@ final class MigrationCommand extends Command
 			ProviderRegistrationEditor::NOT_WRITABLE     => 'file is not writable',
 			ProviderRegistrationEditor::MISSING_ANCHOR   => 'file does not contain a generated database provider registration point',
 			ProviderRegistrationEditor::MISSING_MARKER   => 'file does not contain the generated database provider markers',
-			ProviderRegistrationEditor::IMPORT_COLLISION => 'a different imported class uses the same short class name',
+			ProviderRegistrationEditor::IMPORT_COLLISION => 'another class declaration or import uses the same short class name',
 			ProviderRegistrationEditor::PARSE_FAILED     => 'file could not be parsed as PHP',
 			ProviderRegistrationEditor::WRITE_FAILED     => 'file could not be written',
 			default                                      => 'provider could not be updated',

@@ -8,6 +8,9 @@ use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\UseItem;
+use PhpParser\NodeFinder;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor\NameResolver;
 use PhpParser\ParserFactory;
 use StellarWP\Foundation\Cli\Generation\Php\ValueObjects\LineComment;
 use StellarWP\Foundation\Cli\Generation\Php\ValueObjects\LineInsertion;
@@ -18,22 +21,34 @@ use StellarWP\Foundation\Cli\Generation\Php\ValueObjects\MergeArrayVarTarget;
  */
 final readonly class PhpSourceEditor
 {
+	/**
+	 * Create an editor with PHP-Parser services for syntax trees and source-position tokens.
+	 */
 	public function __construct(
 		private ParserFactory $parserFactory,
 		private Lexer $lexer
 	) {
 	}
 
+	/**
+	 * Determine whether the supplied source is syntactically valid PHP.
+	 */
 	public function canParse(string $contents): bool {
 		return $this->parse($contents) !== null;
 	}
 
+	/**
+	 * Determine whether a class is already imported under its default short name.
+	 *
+	 * For example, `Acme\Reports\Table` matches `use Acme\Reports\Table;` but
+	 * does not match an import of the same class aliased as another name.
+	 */
 	public function hasImport(string $contents, string $fullyQualifiedClass): bool {
 		$target = trim($fullyQualifiedClass, '\\');
 		$alias  = basename(str_replace('\\', '/', $target));
 
 		foreach ($this->imports($contents) as $import) {
-			if ($import['class'] === $target && $import['alias'] === $alias) {
+			if (strcasecmp($import['class'], $target) === 0 && strcasecmp($import['alias'], $alias) === 0) {
 				return true;
 			}
 		}
@@ -41,11 +56,29 @@ final readonly class PhpSourceEditor
 		return false;
 	}
 
+	/**
+	 * Determine whether a proposed short name conflicts with another import or class declaration.
+	 *
+	 * For example, generating `ReportsTable` conflicts with
+	 * `use Other\Package\ReportsTable;` and `final class ReportsTable`.
+	 */
 	public function hasImportShortNameCollision(string $contents, string $class, string $fullyQualifiedClass): bool {
 		$target = trim($fullyQualifiedClass, '\\');
 
 		foreach ($this->imports($contents) as $import) {
-			if ($import['alias'] === $class && $import['class'] !== $target) {
+			if (strcasecmp($import['alias'], $class) === 0 && strcasecmp($import['class'], $target) !== 0) {
+				return true;
+			}
+		}
+
+		$statements = $this->parse($contents);
+
+		if ($statements === null) {
+			return false;
+		}
+
+		foreach ($this->topLevelStatements($statements) as $statement) {
+			if ($statement instanceof Stmt\ClassLike && $statement->name !== null && strcasecmp($statement->name->toString(), $class) === 0) {
 				return true;
 			}
 		}
@@ -53,10 +86,64 @@ final readonly class PhpSourceEditor
 		return false;
 	}
 
+	/**
+	 * Return the first class-like declaration or import alias that conflicts in PHP's case-insensitive symbol table.
+	 *
+	 * This detects invalid generated files such as importing `Migration` and
+	 * declaring a class named `migration` in the same namespace.
+	 */
+	public function classImportCollision(string $contents): ?string {
+		$statements = $this->parse($contents);
+
+		if ($statements === null) {
+			return null;
+		}
+
+		$aliases = [];
+
+		foreach ($this->imports($contents) as $import) {
+			$alias = strtolower($import['alias']);
+
+			if (isset($aliases[$alias])) {
+				return $import['alias'];
+			}
+
+			$aliases[$alias] = $import['class'];
+		}
+
+		foreach ($this->topLevelStatements($statements) as $statement) {
+			if (! $statement instanceof Stmt\ClassLike || $statement->name === null) {
+				continue;
+			}
+
+			$name = $statement->name->toString();
+			$key  = strtolower($name);
+
+			if (isset($aliases[$key])) {
+				return $name;
+			}
+
+			$aliases[$key] = $name;
+		}
+
+		return null;
+	}
+
+	/**
+	 * Determine whether the source contains an exact standalone line comment.
+	 *
+	 * Marker text embedded in code or a longer comment is intentionally ignored.
+	 */
 	public function hasLineComment(string $contents, string $comment): bool {
 		return $this->lineComment($contents, $comment) !== null;
 	}
 
+	/**
+	 * Add a class import after existing imports or the namespace declaration.
+	 *
+	 * Existing imports are left unchanged. Null is returned when the source
+	 * cannot be parsed or a safe insertion offset cannot be determined.
+	 */
 	public function addImport(string $contents, string $fullyQualifiedClass): ?string {
 		if ($this->hasImport($contents, $fullyQualifiedClass)) {
 			return $contents;
@@ -73,6 +160,12 @@ final readonly class PhpSourceEditor
 		return substr($contents, 0, $offset) . $this->importSeparator($contents, $offset) . $import . substr($contents, $offset);
 	}
 
+	/**
+	 * Insert a statement immediately before an exact standalone marker comment.
+	 *
+	 * The marker's indentation is reused so generated provider registrations
+	 * follow the surrounding source formatting.
+	 */
 	public function insertBeforeLineComment(string $contents, string $comment, string $statement): ?string {
 		$lineComment = $this->lineComment($contents, $comment);
 
@@ -85,6 +178,13 @@ final readonly class PhpSourceEditor
 			. substr($contents, $lineComment->lineStartOffset);
 	}
 
+	/**
+	 * Determine whether a matching `mergeArrayVar()` registration list can be edited safely.
+	 *
+	 * For example, this locates the array returned from
+	 * `mergeArrayVar(DatabaseProvider::MIGRATIONS, static fn (C $c) => [...])`.
+	 * Inline arrays are rejected because inserting a formatted line would be unsafe.
+	 */
 	public function canInsertIntoMergeArrayVar(string $contents, string $class, string $constant, ?string $beforeComment = null): bool {
 		$target = $this->mergeArrayVarTarget($contents, $class, $constant);
 
@@ -98,43 +198,59 @@ final readonly class PhpSourceEditor
 		return $insertion !== null;
 	}
 
+	/**
+	 * Return the container expression used by the first editable `mergeArrayVar()` callback.
+	 *
+	 * This returns expressions such as `$c` for callback registrations or
+	 * `$this->container` when a direct array is supplied.
+	 */
 	public function mergeArrayVarContainerExpression(string $contents, string $class, string $constant): ?string {
 		return $this->mergeArrayVarTarget($contents, $class, $constant)?->containerExpression;
 	}
 
+	/**
+	 * Determine whether the provider registers a class with `$this->container->singleton()`.
+	 *
+	 * PHP names are resolved before comparison, so imported aliases and
+	 * namespace-relative class references are recognized correctly.
+	 */
 	public function hasContainerSingleton(string $contents, string $fullyQualifiedClass): bool {
-		$statements = $this->parse($contents);
+		$statements = $this->resolvedStatements($contents);
 
 		if ($statements === null) {
 			return false;
 		}
 
-		$aliases = $this->classAliases($contents, $fullyQualifiedClass);
-
 		return $this->findNode(
 			$statements,
-			fn (Node $node): bool => $this->isContainerSingleton($node, $fullyQualifiedClass, $aliases)
+			fn (Node $node): bool => $this->isContainerSingleton($node, $fullyQualifiedClass)
 		) !== null;
 	}
 
+	/**
+	 * Determine whether any matching `mergeArrayVar()` contribution resolves a class from its container.
+	 *
+	 * For example, this recognizes `$c->get(CreateReportsTable::class)` inside
+	 * every contribution to `DatabaseProvider::MIGRATIONS`.
+	 */
 	public function mergeArrayVarContainsClass(string $contents, string $class, string $constant, string $fullyQualifiedClass): bool {
-		$target = $this->mergeArrayVarTarget($contents, $class, $constant);
-
-		if ($target === null) {
-			return false;
-		}
-
-		$aliases = $this->classAliases($contents, $fullyQualifiedClass);
-
-		foreach ($target->registrationList->items as $item) {
-			if ($this->isContainerGet($item->value, $target->containerExpression, $fullyQualifiedClass, $aliases)) {
-				return true;
+		foreach ($this->mergeArrayVarTargets($contents, $class, $constant) as $target) {
+			foreach ($target->registrationList->items as $item) {
+				if ($this->isContainerGet($item->value, $target->containerExpression, $fullyQualifiedClass)) {
+					return true;
+				}
 			}
 		}
 
 		return false;
 	}
 
+	/**
+	 * Insert a statement into the first safely editable matching `mergeArrayVar()` array.
+	 *
+	 * A marker inside the registration array is preferred when supplied;
+	 * otherwise the statement is inserted immediately before the closing bracket.
+	 */
 	public function insertIntoMergeArrayVar(string $contents, string $class, string $constant, string $statement, ?string $beforeComment = null): ?string {
 		$target = $this->mergeArrayVarTarget($contents, $class, $constant);
 
@@ -155,6 +271,11 @@ final readonly class PhpSourceEditor
 	}
 
 	/**
+	 * Collect top-level class imports and their effective aliases.
+	 *
+	 * Function and constant imports are excluded because they do not occupy the
+	 * class symbol table used by generated declarations.
+	 *
 	 * @return list<array{class:string,alias:string}>
 	 */
 	private function imports(string $contents): array {
@@ -180,6 +301,8 @@ final readonly class PhpSourceEditor
 	}
 
 	/**
+	 * Normalize a standard `use` statement into class and alias pairs.
+	 *
 	 * @param array<UseItem> $uses
 	 *
 	 * @return list<array{class:string,alias:string}>
@@ -202,6 +325,10 @@ final readonly class PhpSourceEditor
 	}
 
 	/**
+	 * Normalize a grouped `use` statement into complete class and alias pairs.
+	 *
+	 * For example, `use Acme\{One, Two as Alias};` becomes two complete imports.
+	 *
 	 * @return list<array{class:string,alias:string}>
 	 */
 	private function groupUseImports(Stmt\GroupUse $groupUse): array {
@@ -224,6 +351,12 @@ final readonly class PhpSourceEditor
 		return $imports;
 	}
 
+	/**
+	 * Find where a new import belongs without disturbing namespace or declaration syntax.
+	 *
+	 * Imports are placed after the last existing import, then after the namespace,
+	 * then after a strict-types declaration, or finally after the PHP opening tag.
+	 */
 	private function importInsertionOffset(string $contents): ?int {
 		$statements = $this->parse($contents);
 
@@ -258,6 +391,9 @@ final readonly class PhpSourceEditor
 		return $this->openingTagEndOffset($contents);
 	}
 
+	/**
+	 * Find the byte offset immediately after a semicolon-style or braced namespace declaration.
+	 */
 	private function namespaceDeclarationEndOffset(string $contents, Stmt\Namespace_ $namespace): ?int {
 		foreach ($this->lexer->tokenize($contents) as $token) {
 			if ($token->pos < $namespace->getStartFilePos()) {
@@ -272,6 +408,9 @@ final readonly class PhpSourceEditor
 		return null;
 	}
 
+	/**
+	 * Find the byte offset immediately after the PHP opening tag, or zero when none exists.
+	 */
 	private function openingTagEndOffset(string $contents): int {
 		foreach ($this->lexer->tokenize($contents) as $token) {
 			if ($token->id === T_OPEN_TAG) {
@@ -282,6 +421,9 @@ final readonly class PhpSourceEditor
 		return 0;
 	}
 
+	/**
+	 * Choose spacing for a new import based on whether an import block already exists.
+	 */
 	private function importSeparator(string $contents, int $offset): string {
 		$before = substr($contents, 0, $offset);
 
@@ -292,6 +434,12 @@ final readonly class PhpSourceEditor
 		return "\n\n";
 	}
 
+	/**
+	 * Find an exact standalone line comment and preserve its source indentation.
+	 *
+	 * When `$within` is provided, only comments inside that syntax node are
+	 * considered, preventing an unrelated marker elsewhere in the provider from matching.
+	 */
 	private function lineComment(string $contents, string $comment, ?Node $within = null): ?LineComment {
 		foreach ($this->lexer->tokenize($contents) as $token) {
 			if (! $token->is(T_COMMENT) || trim($token->text) !== $comment) {
@@ -319,43 +467,62 @@ final readonly class PhpSourceEditor
 		return null;
 	}
 
-	private function mergeArrayVarTarget(string $contents, string $class, string $constant): ?MergeArrayVarTarget {
-		$statements = $this->parse($contents);
-
-		if ($statements === null) {
-			return null;
-		}
-
-		$aliases = $this->classAliases($contents, $class, true);
-		$call    = $this->findNode($statements, fn (Node $node): bool => $this->isMergeArrayVarCall($node, $class, $constant, $aliases));
-
-		if (! $call instanceof Expr\MethodCall) {
-			return null;
-		}
-
-		return $this->mergeArrayVarTargetFromCall($call);
-	}
-
 	/**
-	 * @return list<string>
+	 * Return the first matching `mergeArrayVar()` target whose array has a safe line insertion point.
 	 */
-	private function classAliases(string $contents, string $class, bool $allowPrefixed = false): array {
-		$class   = trim($class, '\\');
-		$aliases = [];
-
-		foreach ($this->imports($contents) as $import) {
-			if ($import['class'] === $class || ($allowPrefixed && str_ends_with($import['class'], '\\' . $class))) {
-				$aliases[] = $import['alias'];
+	private function mergeArrayVarTarget(string $contents, string $class, string $constant): ?MergeArrayVarTarget {
+		foreach ($this->mergeArrayVarTargets($contents, $class, $constant) as $target) {
+			if ($this->arrayInsertion($contents, $target->registrationList) !== null) {
+				return $target;
 			}
 		}
 
-		return $aliases;
+		return null;
 	}
 
 	/**
-	 * @param list<string> $aliases
+	 * Collect every recognized `mergeArrayVar()` contribution for a class constant.
+	 *
+	 * For example, separate feature providers may each contribute to
+	 * `DatabaseProvider::MIGRATIONS`; all contributions must be searched for duplicates.
+	 *
+	 * @return list<MergeArrayVarTarget>
 	 */
-	private function isMergeArrayVarCall(Node $node, string $class, string $constant, array $aliases): bool {
+	private function mergeArrayVarTargets(string $contents, string $class, string $constant): array {
+		$statements = $this->resolvedStatements($contents);
+
+		if ($statements === null) {
+			return [];
+		}
+
+		$targets = [];
+		$calls   = (new NodeFinder())->find(
+			$statements,
+			fn (Node $node): bool => $this->isMergeArrayVarCall($node, $class, $constant)
+		);
+
+		foreach ($calls as $call) {
+			if (! $call instanceof Expr\MethodCall) {
+				continue;
+			}
+
+			$target = $this->mergeArrayVarTargetFromCall($call);
+
+			if ($target !== null) {
+				$targets[] = $target;
+			}
+		}
+
+		return $targets;
+	}
+
+	/**
+	 * Determine whether a syntax node calls `$this->container->mergeArrayVar()` for the requested constant.
+	 *
+	 * Strauss-prefixed references are accepted when their resolved class ends
+	 * with the requested Foundation class namespace.
+	 */
+	private function isMergeArrayVarCall(Node $node, string $class, string $constant): bool {
 		if (! $node instanceof Expr\MethodCall || ! $node->name instanceof Node\Identifier || $node->name->toString() !== 'mergeArrayVar') {
 			return false;
 		}
@@ -374,21 +541,13 @@ final readonly class PhpSourceEditor
 			return false;
 		}
 
-		$referencedClass = $firstArgument->class->toString();
-
-		if (str_contains($referencedClass, '\\')) {
-			$referencedClass = trim($referencedClass, '\\');
-
-			return $referencedClass === $class || str_ends_with($referencedClass, '\\' . $class);
-		}
-
-		return in_array($referencedClass, $aliases, true);
+		return $this->isClassReference($firstArgument->class, $class, true);
 	}
 
 	/**
-	 * @param list<string> $aliases
+	 * Determine whether a syntax node is a singleton registration for the requested class.
 	 */
-	private function isContainerSingleton(Node $node, string $class, array $aliases): bool {
+	private function isContainerSingleton(Node $node, string $class): bool {
 		if (! $node instanceof Expr\MethodCall || ! $node->name instanceof Node\Identifier || $node->name->toString() !== 'singleton') {
 			return false;
 		}
@@ -403,13 +562,16 @@ final readonly class PhpSourceEditor
 			&& $argument->class instanceof Node\Name
 			&& $argument->name instanceof Node\Identifier
 			&& $argument->name->toString() === 'class'
-			&& $this->isClassReference($argument->class, $class, $aliases);
+			&& $this->isClassReference($argument->class, $class);
 	}
 
 	/**
-	 * @param list<string> $aliases
+	 * Determine whether an array item resolves the requested class from the callback container.
+	 *
+	 * The receiver must match the callback parameter, such as `$c` in
+	 * `static fn (C $c): array => [$c->get(Service::class)]`.
 	 */
-	private function isContainerGet(Node $node, string $containerExpression, string $class, array $aliases): bool {
+	private function isContainerGet(Node $node, string $containerExpression, string $class): bool {
 		if (! $node instanceof Expr\MethodCall || ! $node->name instanceof Node\Identifier || $node->name->toString() !== 'get') {
 			return false;
 		}
@@ -424,9 +586,12 @@ final readonly class PhpSourceEditor
 			&& $argument->class instanceof Node\Name
 			&& $argument->name instanceof Node\Identifier
 			&& $argument->name->toString() === 'class'
-			&& $this->isClassReference($argument->class, $class, $aliases);
+			&& $this->isClassReference($argument->class, $class);
 	}
 
+	/**
+	 * Determine whether a node represents the expected callback variable or provider container property.
+	 */
 	private function matchesContainerExpression(Node $node, string $containerExpression): bool {
 		if ($containerExpression === '$this->container') {
 			return $this->isThisContainer($node);
@@ -438,23 +603,37 @@ final readonly class PhpSourceEditor
 	}
 
 	/**
-	 * @param list<string> $aliases
+	 * Compare a PHP name using the fully resolved name attached by PHP-Parser.
 	 */
-	private function isClassReference(Node\Name $name, string $class, array $aliases): bool {
-		$reference = trim($name->toString(), '\\');
-		$class     = trim($class, '\\');
+	private function isClassReference(Node\Name $name, string $class, bool $allowPrefixed = false): bool {
+		$resolved = $name->getAttribute('resolvedName') ?? $name->getAttribute('namespacedName');
 
-		if ($name instanceof Node\Name\FullyQualified) {
-			return $reference === $class;
-		}
-
-		if (str_contains($reference, '\\')) {
-			return $reference === $class;
-		}
-
-		return in_array($reference, $aliases, true);
+		return $resolved instanceof Node\Name
+			&& $this->classMatches($resolved->toString(), $class, $allowPrefixed);
 	}
 
+	/**
+	 * Compare class names case-insensitively, optionally allowing a namespace prefix.
+	 *
+	 * Prefix matching supports rewritten references such as
+	 * `Acme\Prefixed\StellarWP\Foundation\Database\DatabaseProvider`.
+	 */
+	private function classMatches(string $reference, string $class, bool $allowPrefixed = false): bool {
+		$reference = trim($reference, '\\');
+		$class     = trim($class, '\\');
+
+		if (strcasecmp($reference, $class) === 0) {
+			return true;
+		}
+
+		return $allowPrefixed
+			&& strlen($reference) > strlen($class)
+			&& strcasecmp(substr($reference, -strlen($class) - 1), '\\' . $class) === 0;
+	}
+
+	/**
+	 * Determine whether a node is exactly the provider's `$this->container` property.
+	 */
 	private function isThisContainer(Node $node): bool {
 		return $node instanceof Expr\PropertyFetch
 			&& $node->var instanceof Expr\Variable
@@ -463,6 +642,12 @@ final readonly class PhpSourceEditor
 			&& $node->name->toString() === 'container';
 	}
 
+	/**
+	 * Extract the editable registration array and its container expression from a merge call.
+	 *
+	 * Supported values are a direct array, an arrow function returning an array,
+	 * or a closure with an explicit array return statement.
+	 */
 	private function mergeArrayVarTargetFromCall(Expr\MethodCall $call): ?MergeArrayVarTarget {
 		$callback = $call->args[1]->value ?? null;
 
@@ -508,6 +693,9 @@ final readonly class PhpSourceEditor
 		return null;
 	}
 
+	/**
+	 * Return the first callback parameter as a source expression such as `$c`.
+	 */
 	private function callbackContainerExpression(Expr\Closure|Expr\ArrowFunction $callback): ?string {
 		$parameter = $callback->params[0] ?? null;
 
@@ -518,6 +706,12 @@ final readonly class PhpSourceEditor
 		return '$' . $parameter->var->name;
 	}
 
+	/**
+	 * Calculate a formatting-preserving insertion before a multiline array's closing bracket.
+	 *
+	 * Single-line arrays return null because inserting a line without reprinting the
+	 * complete syntax tree could corrupt formatting or comments.
+	 */
 	private function arrayInsertion(string $contents, Expr\Array_ $array): ?LineInsertion {
 		$indent = null;
 
@@ -545,6 +739,9 @@ final readonly class PhpSourceEditor
 		);
 	}
 
+	/**
+	 * Add one indentation level while preserving the surrounding tab or space style.
+	 */
 	private function childIndent(string $indent): string {
 		if ($indent === '' || str_contains($indent, "\t")) {
 			return $indent . "\t";
@@ -554,6 +751,8 @@ final readonly class PhpSourceEditor
 	}
 
 	/**
+	 * Search statements depth-first and return the first node accepted by a predicate.
+	 *
 	 * @param array<Node\Stmt>     $statements
 	 * @param callable(Node): bool $predicate
 	 */
@@ -570,6 +769,8 @@ final readonly class PhpSourceEditor
 	}
 
 	/**
+	 * Search one syntax node and its descendants depth-first.
+	 *
 	 * @param callable(Node): bool $predicate
 	 */
 	private function findMatchingNode(Node $node, callable $predicate): ?Node {
@@ -606,6 +807,9 @@ final readonly class PhpSourceEditor
 		return null;
 	}
 
+	/**
+	 * Return the byte offset of the first character on the line containing an offset.
+	 */
 	private function lineStartOffset(string $contents, int $offset): int {
 		$previousNewline = strrpos(substr($contents, 0, $offset), "\n");
 
@@ -616,6 +820,9 @@ final readonly class PhpSourceEditor
 		return $previousNewline + 1;
 	}
 
+	/**
+	 * Return the byte offset of the newline ending a line, or the end of the source.
+	 */
 	private function lineEndOffset(string $contents, int $offset): int {
 		$nextNewline = strpos($contents, "\n", $offset);
 
@@ -627,6 +834,11 @@ final readonly class PhpSourceEditor
 	}
 
 	/**
+	 * Return statements inside the first namespace, or the original root statements.
+	 *
+	 * Generator targets use one namespace per file, so imports and declarations are
+	 * inspected only within that file-level namespace.
+	 *
 	 * @param array<Node\Stmt> $statements
 	 *
 	 * @return array<Node\Stmt>
@@ -642,11 +854,41 @@ final readonly class PhpSourceEditor
 	}
 
 	/**
+	 * Parse source while converting PHP-Parser syntax failures to null.
+	 *
 	 * @return array<Node\Stmt>|null
 	 */
 	private function parse(string $contents): ?array {
 		try {
 			return $this->parserFactory->createForNewestSupportedVersion()->parse($contents);
+		} catch (Error) {
+			return null;
+		}
+	}
+
+	/**
+	 * Parse source and attach PHP-resolved names without replacing original nodes.
+	 *
+	 * Keeping original nodes preserves source offsets for edits while resolvedName and
+	 * namespacedName attributes provide PHP-accurate comparisons for aliases and prefixes.
+	 *
+	 * @return array<Node\Stmt>|null
+	 */
+	private function resolvedStatements(string $contents): ?array {
+		$statements = $this->parse($contents);
+
+		if ($statements === null) {
+			return null;
+		}
+
+		$traverser = new NodeTraverser();
+		$traverser->addVisitor(new NameResolver(null, ['replaceNodes' => false]));
+
+		try {
+			return array_values(array_filter(
+				$traverser->traverse($statements),
+				static fn (Node $node): bool => $node instanceof Stmt
+			));
 		} catch (Error) {
 			return null;
 		}

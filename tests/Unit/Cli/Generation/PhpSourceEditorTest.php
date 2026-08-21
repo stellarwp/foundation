@@ -31,6 +31,15 @@ final class PhpSourceEditorTest extends TestCase
 		$contents = $this->fixture('existing-import');
 
 		$this->assertSame($contents, $this->editor()->addImport($contents, 'Acme\\Generated'));
+		$this->assertTrue($this->editor()->hasImport($contents, 'acme\\generated'));
+	}
+
+	public function test_it_detects_case_insensitive_import_collisions(): void {
+		$this->assertTrue($this->editor()->hasImportShortNameCollision(
+			$this->fixture('existing-import'),
+			'generated',
+			'Acme\\Other\\Generated'
+		));
 	}
 
 	public function test_it_returns_null_when_a_line_comment_cannot_be_found(): void {
@@ -141,6 +150,77 @@ PHP;
 			'MIGRATIONS',
 			$target
 		));
+	}
+
+	public function test_it_resolves_namespace_relative_provider_registrations(): void {
+		$contents = $this->fixture('namespace-relative-registrations');
+
+		$this->assertTrue($this->editor()->hasContainerSingleton(
+			$contents,
+			'Acme\\Plugin\\Database\\Tables\\Reports_Table'
+		));
+		$this->assertTrue($this->editor()->mergeArrayVarContainsClass(
+			$contents,
+			'StellarWP\\Foundation\\Database\\DatabaseProvider',
+			'MIGRATIONS',
+			'Acme\\Plugin\\Database\\Migrations\\Create_Reports_Table'
+		));
+	}
+
+	public function test_it_resolves_imported_namespace_prefixes(): void {
+		$contents = $this->fixture('imported-prefix-registrations');
+
+		$this->assertTrue($this->editor()->hasContainerSingleton(
+			$contents,
+			'Acme\Plugin\Database\Tables\Reports_Table'
+		));
+		$this->assertTrue($this->editor()->mergeArrayVarContainsClass(
+			$contents,
+			'StellarWP\Foundation\Database\DatabaseProvider',
+			'MIGRATIONS',
+			'Acme\Plugin\Database\Migrations\Create_Reports_Table'
+		));
+	}
+
+	public function test_it_does_not_treat_imported_namespaces_as_local_references(): void {
+		$contents = $this->fixture('import-shadowed-registrations');
+
+		$this->assertFalse($this->editor()->hasContainerSingleton(
+			$contents,
+			'Acme\Plugin\Database\Tables\Reports_Table'
+		));
+		$this->assertFalse($this->editor()->mergeArrayVarContainsClass(
+			$contents,
+			'StellarWP\Foundation\Database\DatabaseProvider',
+			'MIGRATIONS',
+			'Acme\Plugin\Database\Migrations\Create_Reports_Table'
+		));
+	}
+
+	public function test_it_uses_valid_later_merge_array_contributions(): void {
+		$contents = $this->fixture('multiple-migration-contributions');
+		$editor   = $this->editor();
+
+		$this->assertTrue($editor->canInsertIntoMergeArrayVar(
+			$contents,
+			'StellarWP\Foundation\Database\DatabaseProvider',
+			'MIGRATIONS'
+		));
+		$this->assertTrue($editor->mergeArrayVarContainsClass(
+			$contents,
+			'StellarWP\Foundation\Database\DatabaseProvider',
+			'MIGRATIONS',
+			'Acme\Plugin\Database\Migrations\Create_Reports_Table'
+		));
+		$this->assertStringContainsString(
+			'$c->get(Generated::class),',
+			(string) $editor->insertIntoMergeArrayVar(
+				$contents,
+				'StellarWP\Foundation\Database\DatabaseProvider',
+				'MIGRATIONS',
+				'$c->get(Generated::class),'
+			)
+		);
 	}
 
 	private function editor(): PhpSourceEditor {

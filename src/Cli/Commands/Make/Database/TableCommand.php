@@ -12,6 +12,7 @@ use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\Psr4Namespace;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Database\DatabaseStubPath;
+use StellarWP\Foundation\Database\Migration\ValueObjects\Id;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -46,16 +47,15 @@ final class TableCommand extends Command
 			->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the generated table class.')
 			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Directory where the table class should be written.')
 			->addOption('provider', null, InputOption::VALUE_REQUIRED, 'Database provider file to update when it exists.')
-			->addOption('id', null, InputOption::VALUE_REQUIRED, 'Stable table identifier used by migrations.')
-			->addOption('table', null, InputOption::VALUE_REQUIRED, 'Unprefixed WordPress table name.')
-			->addOption('force', null, InputOption::VALUE_NONE, 'Overwrite the file if it already exists.');
+			->addOption('id', null, InputOption::VALUE_REQUIRED, 'Stable migration identifier: nonblank, unpadded, non-integer-like, and at most 191 bytes.')
+			->addOption('table', null, InputOption::VALUE_REQUIRED, 'Unprefixed WordPress table name.');
 	}
 
 	protected function execute(InputInterface $input, OutputInterface $output): int {
 		try {
 			$this->validateExplicitProviderUpdate($input);
 			$file = $this->generatedFile($input);
-			$this->fileWriter->write($file, (bool) $input->getOption('force'));
+			$this->fileWriter->write($file);
 			$providerPath = $this->updateProvider($input, $output);
 		} catch (RuntimeException $exception) {
 			$output->writeln('<error>' . $exception->getMessage() . '</error>');
@@ -89,7 +89,8 @@ final class TableCommand extends Command
 		$stub      = $this->stubResolver->resolve('database', 'table', DatabaseStubPath::table());
 		$relative  = $this->relativePath($path . '/' . $className . '.php');
 		$table     = $this->optionOrDefault($input, 'table', $this->classNameResolver->tableName($className));
-		$id        = $this->optionOrDefault($input, 'id', $table . '_table');
+		$idOption  = $input->getOption('id');
+		$id        = (new Id(is_string($idOption) ? $idOption : $table . '_table'))->value;
 
 		return new GeneratedFile(
 			path: $path . '/' . $className . '.php',
@@ -248,7 +249,7 @@ final class TableCommand extends Command
 			ProviderRegistrationEditor::NOT_WRITABLE     => 'file is not writable',
 			ProviderRegistrationEditor::MISSING_ANCHOR   => 'file does not contain a generated database provider registration point',
 			ProviderRegistrationEditor::MISSING_MARKER   => 'file does not contain the generated database provider markers',
-			ProviderRegistrationEditor::IMPORT_COLLISION => 'a different imported class uses the same short class name',
+			ProviderRegistrationEditor::IMPORT_COLLISION => 'another class declaration or import uses the same short class name',
 			ProviderRegistrationEditor::PARSE_FAILED     => 'file could not be parsed as PHP',
 			ProviderRegistrationEditor::WRITE_FAILED     => 'file could not be written',
 			default                                      => 'provider could not be updated',

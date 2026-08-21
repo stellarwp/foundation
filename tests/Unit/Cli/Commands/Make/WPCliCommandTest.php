@@ -2,9 +2,12 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Cli\Commands\Make;
 
+use PhpParser\Lexer;
+use PhpParser\ParserFactory;
 use StellarWP\Foundation\Cli\Commands\Make\WPCliCommand;
 use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
+use StellarWP\Foundation\Cli\Generation\Php\PhpSourceEditor;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
@@ -299,14 +302,17 @@ final class WPCliCommandTest extends TestCase
 		$root = $this->temporaryProject();
 
 		mkdir($root . '/foundation/stubs/wpcli', 0777, true);
-		file_put_contents($root . '/foundation/stubs/wpcli/command.stub', 'Generated {{ class }} in {{ namespace }}');
+		file_put_contents(
+			$root . '/foundation/stubs/wpcli/command.stub',
+			'<?php namespace {{ namespace }}; // Generated {{ class }} in {{ namespace }}' . "\n" . 'final class {{ class }} {}'
+		);
 
 		$tester = new CommandTester($this->command($root));
 		$tester->execute([
 			'name' => 'Sync_Products',
 		]);
 
-		$this->assertSame(
+		$this->assertStringContainsString(
 			'Generated Sync_Products_Command in Acme\\Plugin\\Cli\\Commands',
 			(string) file_get_contents($root . '/src/Cli/Commands/Sync_Products_Command.php')
 		);
@@ -397,7 +403,7 @@ final class WPCliCommandTest extends TestCase
 			classNameResolver: new WordPressClassNameResolver(),
 			stubResolver: new StubResolver($root),
 			stubRenderer: new StubRenderer(),
-			fileWriter: new GeneratedFileWriter()
+			fileWriter: new GeneratedFileWriter(new PhpSourceEditor(new ParserFactory(), new Lexer()))
 		);
 	}
 

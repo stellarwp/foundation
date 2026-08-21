@@ -3,10 +3,13 @@
 namespace StellarWP\Foundation\Tests\Unit\Cli\Generation;
 
 use phpmock\mockery\PHPMockery;
+use PhpParser\Lexer;
+use PhpParser\ParserFactory;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use RuntimeException;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
+use StellarWP\Foundation\Cli\Generation\Php\PhpSourceEditor;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
 use StellarWP\Foundation\Tests\TestCase;
 
@@ -27,10 +30,78 @@ final class GeneratedFileWriterTest extends TestCase
 			contents: '<?php echo "generated";'
 		);
 
-		(new GeneratedFileWriter())->write($file);
+		$this->writer()->write($file);
 
 		$this->assertFileExists($file->path);
 		$this->assertSame($file->contents, (string) file_get_contents($file->path));
+	}
+
+	public function test_it_rejects_invalid_php_before_creating_the_file(): void {
+		$file = new GeneratedFile(
+			path: $this->tempDir . '/Invalid.php',
+			relativePath: 'Invalid.php',
+			contents: '<?php final class Invalid {'
+		);
+
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('Generated file "Invalid.php" is not valid PHP.');
+
+		try {
+			$this->writer()->write($file);
+		} finally {
+			$this->assertFileDoesNotExist($file->path);
+		}
+	}
+
+	public function test_it_rejects_case_insensitive_class_import_collisions_before_creating_the_file(): void {
+		$file = new GeneratedFile(
+			path: $this->tempDir . '/Migration.php',
+			relativePath: 'Migration.php',
+			contents: (string) file_get_contents($this->data_dir('cli/generation/generated-file-writer/class-import-collision.stub'))
+		);
+
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('declares or imports "migration" more than once');
+
+		try {
+			$this->writer()->write($file);
+		} finally {
+			$this->assertFileDoesNotExist($file->path);
+		}
+	}
+
+	public function test_it_rejects_duplicate_identical_imports_before_creating_the_file(): void {
+		$file = new GeneratedFile(
+			path: $this->tempDir . '/Example.php',
+			relativePath: 'Example.php',
+			contents: (string) file_get_contents($this->data_dir('cli/generation/generated-file-writer/duplicate-import.stub'))
+		);
+
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('declares or imports "Migration" more than once');
+
+		try {
+			$this->writer()->write($file);
+		} finally {
+			$this->assertFileDoesNotExist($file->path);
+		}
+	}
+
+	public function test_it_rejects_duplicate_class_declarations_before_creating_the_file(): void {
+		$file = new GeneratedFile(
+			path: $this->tempDir . '/Duplicate.php',
+			relativePath: 'Duplicate.php',
+			contents: (string) file_get_contents($this->data_dir('cli/generation/generated-file-writer/duplicate-class.stub'))
+		);
+
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('declares or imports "duplicate" more than once');
+
+		try {
+			$this->writer()->write($file);
+		} finally {
+			$this->assertFileDoesNotExist($file->path);
+		}
 	}
 
 	public function test_it_refuses_to_overwrite_existing_files_without_force(): void {
@@ -41,10 +112,10 @@ final class GeneratedFileWriterTest extends TestCase
 		$this->expectException(RuntimeException::class);
 		$this->expectExceptionMessage('File already exists: Generated.php.');
 
-		(new GeneratedFileWriter())->write(new GeneratedFile(
+		$this->writer()->write(new GeneratedFile(
 			path: $path,
 			relativePath: 'Generated.php',
-			contents: 'replacement'
+			contents: '<?php // replacement'
 		));
 	}
 
@@ -53,13 +124,13 @@ final class GeneratedFileWriterTest extends TestCase
 
 		file_put_contents($path, 'existing');
 
-		(new GeneratedFileWriter())->write(new GeneratedFile(
+		$this->writer()->write(new GeneratedFile(
 			path: $path,
 			relativePath: 'Generated.php',
-			contents: 'replacement'
+			contents: '<?php // replacement'
 		), force: true);
 
-		$this->assertSame('replacement', (string) file_get_contents($path));
+		$this->assertSame('<?php // replacement', (string) file_get_contents($path));
 	}
 
 	#[RunInSeparateProcess]
@@ -75,10 +146,10 @@ final class GeneratedFileWriterTest extends TestCase
 		$this->expectException(RuntimeException::class);
 		$this->expectExceptionMessage('Could not write generated file "Generated.php".');
 
-		(new GeneratedFileWriter())->write(new GeneratedFile(
+		$this->writer()->write(new GeneratedFile(
 			path: $path,
 			relativePath: 'Generated.php',
-			contents: 'content'
+			contents: '<?php // content'
 		));
 	}
 
@@ -95,7 +166,7 @@ final class GeneratedFileWriterTest extends TestCase
 			->once()
 			->andReturn($handle);
 		PHPMockery::mock('StellarWP\Foundation\Cli\Generation', 'fwrite')
-			->with($handle, 'content')
+			->with($handle, '<?php // content')
 			->once()
 			->andReturn(3);
 		PHPMockery::mock('StellarWP\Foundation\Cli\Generation', 'fclose')
@@ -111,10 +182,10 @@ final class GeneratedFileWriterTest extends TestCase
 		$this->expectExceptionMessage('Could not write generated file "Generated.php".');
 
 		try {
-			(new GeneratedFileWriter())->write(new GeneratedFile(
+			$this->writer()->write(new GeneratedFile(
 				path: $path,
 				relativePath: 'Generated.php',
-				contents: 'content'
+				contents: '<?php // content'
 			));
 		} finally {
 			\fclose($handle);
@@ -132,10 +203,10 @@ final class GeneratedFileWriterTest extends TestCase
 		set_error_handler(static fn (): bool => true);
 
 		try {
-			(new GeneratedFileWriter())->write(new GeneratedFile(
+			$this->writer()->write(new GeneratedFile(
 				path: $path . '/Generated.php/File.php',
 				relativePath: 'blocked/Generated.php/File.php',
-				contents: 'content'
+				contents: '<?php // content'
 			));
 		} finally {
 			restore_error_handler();
@@ -153,13 +224,17 @@ final class GeneratedFileWriterTest extends TestCase
 		set_error_handler(static fn (): bool => true);
 
 		try {
-			(new GeneratedFileWriter())->write(new GeneratedFile(
+			$this->writer()->write(new GeneratedFile(
 				path: $path,
 				relativePath: 'Generated.php',
-				contents: 'content'
+				contents: '<?php // content'
 			), force: true);
 		} finally {
 			restore_error_handler();
 		}
+	}
+
+	private function writer(): GeneratedFileWriter {
+		return new GeneratedFileWriter(new PhpSourceEditor(new ParserFactory(), new Lexer()));
 	}
 }
