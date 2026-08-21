@@ -5,6 +5,7 @@ namespace StellarWP\Foundation\WPCli;
 use InvalidArgumentException;
 use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Traits\ResolvesFoundationPrefix;
+use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 use UnexpectedValueException;
 
 /**
@@ -18,8 +19,7 @@ final class WPCliProvider extends Provider
 {
 	use ResolvesFoundationPrefix;
 
-	public const string COMMANDS       = 'foundation.wpcli.commands';
-	public const string COMMAND_PREFIX = 'foundation.wpcli.command_prefix';
+	public const string COMMANDS = 'foundation.wpcli.commands';
 
 	/**
 	 * @throws InvalidArgumentException When the configured Foundation prefix is invalid.
@@ -30,7 +30,10 @@ final class WPCliProvider extends Provider
 			?? $foundationPrefix;
 
 		$this->container->mergeArrayVar(self::COMMANDS, []);
-		$this->container->bind(self::COMMAND_PREFIX, $commandPrefix);
+		$this->container->when(CommandPrefix::class)
+			->needs('$value')
+			->give($commandPrefix);
+		$this->container->singleton(CommandPrefix::class);
 
 		add_action('cli_init', function (): void {
 			$this->registerCommands();

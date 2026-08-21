@@ -52,6 +52,7 @@ final class WPCliCommandTest extends TestCase
 		$this->assertSame(Command::SUCCESS, $statusCode);
 		$this->assertFileExists($path);
 		$this->assertStringContainsString('Created: src/Cli/Commands/Sync_Products_Command.php', $tester->getDisplay());
+		$this->assertStringContainsString('Contribute this command to WPCliProvider::COMMANDS from its feature provider.', $tester->getDisplay());
 
 		$contents = (string) file_get_contents($path);
 

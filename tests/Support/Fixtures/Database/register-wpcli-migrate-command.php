@@ -20,6 +20,7 @@ use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestTable;
+use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 
 if (! class_exists(WP_CLI::class)) {
 	return;
@@ -78,7 +79,7 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 
 	$command = new Migrate(
 		$container,
-		'foundation',
+		new CommandPrefix('foundation'),
 		new Migrator(
 			new MigrationCollection([$migration]),
 			$repository,

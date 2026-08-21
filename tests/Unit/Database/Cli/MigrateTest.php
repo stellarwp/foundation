@@ -15,6 +15,7 @@ use StellarWP\Foundation\Tests\Support\Fixtures\Database\InMemoryRepository;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchema;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
 use StellarWP\Foundation\Tests\TestCase;
+use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 use WP_CLI;
 
 final class MigrateTest extends TestCase
@@ -35,7 +36,7 @@ final class MigrateTest extends TestCase
 		$store          = new Store($schema, $lock, $migrationTable, new LockTable('wp_nx_foundation_locks'));
 		$command        = new Migrate(
 			$this->container,
-			'foundation',
+			new CommandPrefix('foundation'),
 			new Migrator(
 				new MigrationCollection(),
 				$repository,
@@ -209,7 +210,7 @@ final class MigrateTest extends TestCase
 		$store          = new Store($wpSchema, $lock, $migrationTable, new LockTable('wp_nx_foundation_locks'));
 		$command        = new Migrate(
 			$this->container,
-			'foundation',
+			new CommandPrefix('foundation'),
 			new Migrator(
 				new MigrationCollection([
 					new TestMigration('2026_06_23_000001_create_example'),

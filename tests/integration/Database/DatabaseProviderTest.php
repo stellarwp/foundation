@@ -21,6 +21,7 @@ use StellarWP\Foundation\Tests\Support\Fixtures\Database\NoopMigration;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
 use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
 use StellarWP\Foundation\WPCli\Command;
+use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 use StellarWP\Foundation\WPCli\WPCliProvider;
 
 final class DatabaseProviderTest extends WPTestCase
@@ -66,7 +67,7 @@ final class DatabaseProviderTest extends WPTestCase
 		$this->assertSame('custom_locks', $container->get(LockTable::class)->name());
 		$this->assertSame('custom-migrations', $container->get(DatabaseProvider::LOCK_NAME));
 		$this->assertSame(120, $container->get(DatabaseProvider::LOCK_TTL));
-		$this->assertSame('custom', $container->get(WPCliProvider::COMMAND_PREFIX));
+		$this->assertSame('custom', $container->get(CommandPrefix::class)->value);
 	}
 
 	public function test_it_rejects_an_invalid_foundation_prefix_when_database_resources_are_overridden(): void {
@@ -100,7 +101,7 @@ final class DatabaseProviderTest extends WPTestCase
 		$this->assertSame($GLOBALS['wpdb']->prefix . 'your_plugin_foundation_migrations', $container->get(DatabaseProvider::MIGRATIONS_TABLE));
 		$this->assertSame($GLOBALS['wpdb']->prefix . 'your_plugin_foundation_locks', $container->get(DatabaseProvider::LOCKS_TABLE));
 		$this->assertSame('your-plugin-foundation-database-migrations', $container->get(DatabaseProvider::LOCK_NAME));
-		$this->assertSame('your-plugin', $container->get(WPCliProvider::COMMAND_PREFIX));
+		$this->assertSame('your-plugin', $container->get(CommandPrefix::class)->value);
 	}
 
 	public function test_it_applies_configured_lock_policy_to_the_migration_store(): void {

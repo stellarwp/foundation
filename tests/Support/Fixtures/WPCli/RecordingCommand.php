@@ -6,14 +6,16 @@ use StellarWP\Foundation\WPCli\Command;
 
 final class RecordingCommand extends Command
 {
-	public bool $registered = false;
+	public static bool $registered        = false;
+	public static ?string $registeredName = null;
 
 	public function runCommand(array $args = [], array $assocArgs = []): int {
 		return self::SUCCESS;
 	}
 
 	public function register(): void {
-		$this->registered = true;
+		self::$registered     = true;
+		self::$registeredName = $this->command();
 	}
 
 	protected function subcommand(): string {

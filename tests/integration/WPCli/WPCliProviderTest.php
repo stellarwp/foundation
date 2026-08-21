@@ -8,6 +8,7 @@ use lucatume\DI52\Container as C;
 use stdClass;
 use StellarWP\Foundation\Tests\Support\Fixtures\WPCli\RecordingCommand;
 use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
+use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 use StellarWP\Foundation\WPCli\WPCliProvider;
 use UnexpectedValueException;
 
@@ -17,7 +18,10 @@ final class WPCliProviderTest extends WPTestCase
 		$this->container->singleton(Dot::class, new Dot());
 		$this->container->register(WPCliProvider::class);
 
-		$this->assertSame('nx', $this->container->get(WPCliProvider::COMMAND_PREFIX));
+		$commandPrefix = $this->container->get(CommandPrefix::class);
+
+		$this->assertSame('nx', $commandPrefix->value);
+		$this->assertSame($commandPrefix, $this->container->get(CommandPrefix::class));
 	}
 
 	public function test_it_uses_the_foundation_prefix_by_default(): void {
@@ -29,7 +33,22 @@ final class WPCliProviderTest extends WPTestCase
 
 		$this->container->register(WPCliProvider::class);
 
-		$this->assertSame('your-plugin', $this->container->get(WPCliProvider::COMMAND_PREFIX));
+		$this->assertSame('your-plugin', $this->container->get(CommandPrefix::class)->value);
+	}
+
+	public function test_it_uses_the_package_specific_command_prefix(): void {
+		$this->container->singleton(Dot::class, new Dot([
+			'foundation' => [
+				'prefix' => 'your-plugin',
+			],
+			'wpcli'      => [
+				'command_prefix' => 'your-plugin-tools',
+			],
+		]));
+
+		$this->container->register(WPCliProvider::class);
+
+		$this->assertSame('your-plugin-tools', $this->container->get(CommandPrefix::class)->value);
 	}
 
 	public function test_it_rejects_an_invalid_foundation_prefix_when_the_command_prefix_is_overridden(): void {
@@ -49,11 +68,14 @@ final class WPCliProviderTest extends WPTestCase
 	}
 
 	public function test_it_registers_configured_commands_on_cli_init(): void {
-		$this->container->when(RecordingCommand::class)
-			->needs('$commandPrefix')
-			->give(static fn (C $c): string => $c->get(WPCliProvider::COMMAND_PREFIX));
+		$this->container->singleton(Dot::class, new Dot([
+			'wpcli' => [
+				'command_prefix' => 'your-plugin-tools',
+			],
+		]));
 
-		$this->container->singleton(RecordingCommand::class);
+		RecordingCommand::$registered     = false;
+		RecordingCommand::$registeredName = null;
 		$this->container->mergeArrayVar(WPCliProvider::COMMANDS, static fn (C $c): array => [
 			$c->get(RecordingCommand::class),
 		]);
@@ -62,15 +84,13 @@ final class WPCliProviderTest extends WPTestCase
 
 		do_action('cli_init');
 
-		$this->assertTrue($this->container->get(RecordingCommand::class)->registered);
+		$this->assertTrue(RecordingCommand::$registered);
+		$this->assertSame('your-plugin-tools recording', RecordingCommand::$registeredName);
 	}
 
 	public function test_it_rejects_invalid_commands_before_registering_any_command(): void {
-		$this->container->when(RecordingCommand::class)
-			->needs('$commandPrefix')
-			->give(static fn (C $c): string => $c->get(WPCliProvider::COMMAND_PREFIX));
-
-		$this->container->singleton(RecordingCommand::class);
+		RecordingCommand::$registered     = false;
+		RecordingCommand::$registeredName = null;
 		$this->container->mergeArrayVar(WPCliProvider::COMMANDS, static fn (C $c): array => [
 			$c->get(RecordingCommand::class),
 			new stdClass(),
@@ -83,7 +103,8 @@ final class WPCliProviderTest extends WPTestCase
 		try {
 			do_action('cli_init');
 		} finally {
-			$this->assertFalse($this->container->get(RecordingCommand::class)->registered);
+			$this->assertFalse(RecordingCommand::$registered);
+			$this->assertNull(RecordingCommand::$registeredName);
 		}
 	}
 

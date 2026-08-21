@@ -6,12 +6,13 @@ use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use StellarWP\Foundation\Tests\Support\Fixtures\WPCli\TestCommand;
 use StellarWP\Foundation\Tests\TestCase;
+use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 use WP_CLI;
 
 final class CommandTest extends TestCase
 {
 	public function test_it_runs_a_foundation_wp_cli_command(): void {
-		$command = new TestCommand($this->container, 'foundation');
+		$command = new TestCommand($this->container, new CommandPrefix('foundation'));
 
 		$this->assertSame(0, $command->runCommand(['value'], ['flag' => true]));
 		$this->assertSame(['value'], $command->args);
@@ -28,7 +29,7 @@ final class CommandTest extends TestCase
 	}
 
 	public function test_it_asks_for_normalized_input(): void {
-		$command = new TestCommand($this->container, 'foundation');
+		$command = new TestCommand($this->container, new CommandPrefix('foundation'));
 
 		$result = $command->promptWithInput('Continue?', 'YES' . PHP_EOL);
 
@@ -37,7 +38,7 @@ final class CommandTest extends TestCase
 	}
 
 	public function test_it_exposes_default_input_and_output_streams(): void {
-		$command = new TestCommand($this->container, 'foundation');
+		$command = new TestCommand($this->container, new CommandPrefix('foundation'));
 
 		$this->assertIsResource($command->defaultInput());
 		$this->assertIsResource($command->defaultOutput());
@@ -58,7 +59,7 @@ final class CommandTest extends TestCase
 
 		require_once $wpCliRoot . '/php/utils.php';
 
-		$command = new TestCommand($this->container, 'foundation');
+		$command = new TestCommand($this->container, new CommandPrefix('foundation'));
 
 		$command->register();
 		$deferredAdditions = WP_CLI::get_deferred_additions();

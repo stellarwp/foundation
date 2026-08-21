@@ -137,10 +137,6 @@ final class DatabaseProvider extends Provider
 	}
 
 	private function registerCliCommands(): void {
-		$this->container->when(Migrate::class)
-			->needs('$commandPrefix')
-			->give(static fn (C $c): string => $c->get(WPCliProvider::COMMAND_PREFIX));
-
 		$this->container->mergeArrayVar(WPCliProvider::COMMANDS, static fn (C $c): array => [
 			$c->get(Migrate::class),
 		]);

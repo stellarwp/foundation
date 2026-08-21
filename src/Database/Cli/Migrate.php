@@ -5,6 +5,7 @@ namespace StellarWP\Foundation\Database\Cli;
 use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\WPCli\Command;
+use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 use WP_CLI;
 
 use function WP_CLI\Utils\format_items;
@@ -24,7 +25,7 @@ final class Migrate extends Command
 
 	public function __construct(
 		protected Container $container,
-		string $commandPrefix,
+		CommandPrefix $commandPrefix,
 		private readonly Migrator $migrator
 	) {
 		parent::__construct($this->container, $commandPrefix);

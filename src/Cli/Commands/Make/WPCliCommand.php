@@ -61,7 +61,7 @@ final class WPCliCommand extends Command
 
 		$output->writeln(sprintf('<info>Created:</info> %s', $file->relativePath));
 		$output->writeln('');
-		$output->writeln('<comment>Register this command from your WP-CLI provider and configure its $commandPrefix container argument.</comment>');
+		$output->writeln('<comment>Contribute this command to WPCliProvider::COMMANDS from its feature provider.</comment>');
 
 		$runtimeDependencyWarning = $this->runtimeDependencyWarning();
 
