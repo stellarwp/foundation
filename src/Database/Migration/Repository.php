@@ -7,6 +7,7 @@ use DateTimeZone;
 use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\Repository as RepositoryContract;
 use StellarWP\Foundation\Database\Migration\Exceptions\InvalidMigrationId;
+use StellarWP\Foundation\Database\Migration\Exceptions\LedgerFailure;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Id;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Record;
 
@@ -56,6 +57,7 @@ final readonly class Repository implements RepositoryContract
 
 	/**
 	 * @throws InvalidMigrationId When the migration identifier is invalid.
+	 * @throws LedgerFailure      When the inserted ledger record cannot be read back.
 	 */
 	public function recordRun(string $migration, int $batch): Record {
 		$migration = (new Id($migration))->value;
@@ -76,7 +78,7 @@ final readonly class Repository implements RepositoryContract
 		);
 
 		if ($row === null) {
-			return new Record(0, $migration, $batch, $ranAt);
+			throw LedgerFailure::missingAfterInsert($migration);
 		}
 
 		return $this->recordFromRow($row);

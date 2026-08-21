@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Database\Contracts;
 
 use StellarWP\Foundation\Database\Migration\Exceptions\InvalidMigrationId;
+use StellarWP\Foundation\Database\Migration\Exceptions\LedgerFailure;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Record;
 
 /**
@@ -24,6 +25,7 @@ interface Repository
 
 	/**
 	 * @throws InvalidMigrationId When the migration identifier is invalid.
+	 * @throws LedgerFailure      When the inserted ledger record cannot be read back.
 	 */
 	public function recordRun(string $migration, int $batch): Record;
 

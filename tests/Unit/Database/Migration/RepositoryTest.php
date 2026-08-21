@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Tests\Unit\Database\Migration;
 
 use StellarWP\Foundation\Database\Migration\Exceptions\InvalidMigrationId;
+use StellarWP\Foundation\Database\Migration\Exceptions\LedgerFailure;
 use StellarWP\Foundation\Database\Migration\Repository;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\TestCase;
@@ -48,6 +49,17 @@ final class RepositoryTest extends TestCase
 
 		$this->assertSame(2, $record->batch);
 		$this->assertStringContainsString('INSERT INTO `network_foundation_migrations`', $this->database->executed[0]);
+	}
+
+	public function test_it_fails_when_an_inserted_migration_cannot_be_read_back(): void {
+		$this->expectException(LedgerFailure::class);
+		$this->expectExceptionMessage('was inserted but could not be read from the ledger');
+
+		try {
+			$this->repository->recordRun('2026_01_01_000001_create_users', 2);
+		} finally {
+			$this->assertStringContainsString('INSERT INTO `network_foundation_migrations`', $this->database->executed[0]);
+		}
 	}
 
 	public function test_it_rejects_invalid_migration_ids_before_writing_to_the_ledger(): void {
