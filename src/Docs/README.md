@@ -42,5 +42,5 @@ the read-only `stellarwp/foundation-docs` split repository.
 Both workflows use a Direct Upload Cloudflare Pages project named
 `foundation-docs` whose production branch is `production`. The Cloudflare API
 token requires `Account > Cloudflare Pages > Edit`. The
-`CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` organization Actions secrets
+`CLOUDFLARE_DEPLOY_ACCOUNT_ID` and `CLOUDFLARE_DEPLOY_TOKEN` organization Actions secrets
 must be available to both repositories.
