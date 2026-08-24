@@ -146,8 +146,33 @@ jobs:
           "${SLIC_BIN}" composer update predis/predis:3.0.0 --with-all-dependencies
           "${SLIC_BIN}" run redis --ext DotReporter
 
-      - name: Monitor coverage
+      - name: Upload coverage report
         if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: clover.xml
+          if-no-files-found: error
+          retention-days: 1
+
+  coverage:
+    if: github.event_name == 'pull_request'
+    needs: slic
+    runs-on: ubuntu-latest
+    name: Monitor coverage
+
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
+
+    steps:
+      - name: Download coverage report
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage-report
+
+      - name: Monitor coverage
         uses: slavcodev/coverage-monitor-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
