@@ -250,7 +250,11 @@ Use a separate capability contract when a custom renderer supports optional beha
 
 The renderer throws `ViewNotFoundException` when a view is missing, unreadable, or resolves outside the selected directory. Empty names, absolute paths, null bytes, and parent traversal such as `../private` are rejected with `InvalidArgumentException`.
 
-Exceptions thrown by the view itself are propagated after Foundation restores the output-buffer level. A view may use balanced buffers of its own, but it must not clean, flush, close, or replace Foundation's rendering buffer. Invalid buffer state is rejected instead of returning incomplete output. Let application-level error handling record or present those failures rather than returning a partial template.
+Exceptions thrown by the view itself are propagated after Foundation removes any removable buffers opened while rendering. A view may use balanced buffers of its own, but it must not clean, flush, close, or replace Foundation's rendering buffer. Invalid buffer state is rejected instead of returning incomplete output. Let application-level error handling record or present those failures rather than returning a partial template.
+
+:::danger[Do not create non-removable output buffers]
+A PHP template must not start a buffer without `PHP_OUTPUT_HANDLER_REMOVABLE`. PHP cannot close such a buffer before the process ends, so no in-process PHP renderer can restore the request's output-buffer stack afterward. Treat view files as trusted application code and keep any buffers they open balanced and removable.
+:::
 
 ## Testing
 
@@ -265,6 +269,8 @@ Place small PHP view fixtures under the test data directory. For example, create
 Render the fixture with the concrete class:
 
 ```php
+use StellarWP\Foundation\View\PhpView;
+
 $view = new PhpView( codecept_data_dir( 'views' ) );
 
 $this->assertSame(

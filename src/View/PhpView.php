@@ -86,6 +86,8 @@ final readonly class PhpView implements DirectoryAwareView
 
 	/**
 	 * Remove buffers opened while rendering without closing a caller-owned buffer.
+	 *
+	 * PHP cannot remove a buffer created without PHP_OUTPUT_HANDLER_REMOVABLE.
 	 */
 	private static function discardBuffersAbove(int $bufferLevel): void {
 		while (ob_get_level() > $bufferLevel) {
