@@ -100,6 +100,10 @@ View names are relative to the configured directory and omit the `.php` extensio
 Add a typed `@var` annotation, including a short description, for every value the view expects. These annotations define the template's input contract, allow PHPStan to analyze the file without undefined-variable errors, and provide type-aware completion in supported IDEs.
 :::
 
+:::caution[Reserved view variable names]
+`PhpView` uses `foundationViewPath` and `foundationViewData` internally. Passing either name as a view data key throws `InvalidArgumentException`; choose application-specific variable names instead.
+:::
+
 :::caution[Escape output in the view]
 Foundation passes data into trusted PHP files but does not escape it automatically. Escape each value for its HTML, attribute, URL, or JavaScript context when the view outputs it. Do not render user-uploaded PHP templates.
 :::

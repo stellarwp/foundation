@@ -12,6 +12,11 @@ use StellarWP\Foundation\View\Exceptions\ViewNotFoundException;
  */
 final readonly class PhpView implements DirectoryAwareView
 {
+	private const array RESERVED_DATA_KEYS = [
+		'foundationViewPath',
+		'foundationViewData',
+	];
+
 	private string $directory;
 
 	/**
@@ -37,12 +42,18 @@ final readonly class PhpView implements DirectoryAwareView
 	/**
 	 * {@inheritDoc}
 	 *
-	 * @throws InvalidArgumentException When the view name is empty, absolute, or traverses parent directories.
+	 * @throws InvalidArgumentException When the view name is invalid or the data contains a reserved key.
 	 * @throws RuntimeException         When the view leaves output buffering in an invalid state.
 	 * @throws ViewNotFoundException    When the view does not exist, is unreadable, or resolves outside the configured directory.
 	 * @throws \Throwable               When the view itself throws.
 	 */
 	public function render(string $name, array $data = []): string {
+		foreach (self::RESERVED_DATA_KEYS as $reservedKey) {
+			if (array_key_exists($reservedKey, $data)) {
+				throw new InvalidArgumentException(sprintf('View data key "%s" is reserved by PhpView.', $reservedKey));
+			}
+		}
+
 		$path                = $this->resolve($name);
 		$bufferLevel         = ob_get_level();
 		$renderBufferLevel   = $bufferLevel + 1;

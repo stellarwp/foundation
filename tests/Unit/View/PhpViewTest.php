@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Tests\Unit\View;
 
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use StellarWP\Foundation\Tests\TestCase;
 use StellarWP\Foundation\View\Exceptions\ViewNotFoundException;
@@ -52,15 +53,27 @@ final class PhpViewTest extends TestCase
 		);
 	}
 
-	public function test_view_data_cannot_replace_the_resolved_view_path(): void {
+	/**
+	 * @dataProvider reserved_view_data_keys
+	 */
+	#[DataProvider('reserved_view_data_keys')]
+	public function test_it_rejects_reserved_view_data_keys(string $key): void {
 		$view = new PhpView($this->data_dir('View/default'));
 
-		$this->assertSame(
-			'internal-variable.php',
-			$view->render('internal-variable', [
-				'foundationViewPath' => $this->data_dir('View/outside.php'),
-			])
-		);
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage(sprintf('View data key "%s" is reserved by PhpView.', $key));
+
+		$view->render('greeting', [$key => null]);
+	}
+
+	/**
+	 * @return array<string, array{key: string}>
+	 */
+	public static function reserved_view_data_keys(): array {
+		return [
+			'view path' => ['key' => 'foundationViewPath'],
+			'view data' => ['key' => 'foundationViewData'],
+		];
 	}
 
 	public function test_it_restores_the_output_buffer_when_a_view_throws(): void {
