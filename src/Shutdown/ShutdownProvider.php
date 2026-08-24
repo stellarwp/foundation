@@ -33,6 +33,11 @@ final class ShutdownProvider extends Provider
 			ShutdownRunner::class,
 		]);
 
+		// Installation and uninstall requests may not have the complete application state expected by shutdown tasks.
+		if (defined('WP_UNINSTALL_PLUGIN') || wp_installing()) {
+			return;
+		}
+
 		add_action(
 			'shutdown',
 			$this->container->callback(ShutdownRunnerContract::class, 'terminate'),

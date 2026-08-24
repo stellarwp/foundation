@@ -84,4 +84,21 @@ final class ShutdownProviderTest extends WPTestCase
 
 		$this->assertSame(['terminated'], $calls);
 	}
+
+	public function test_it_does_not_register_the_shutdown_hook_while_wordpress_is_installing(): void {
+		$wasInstalling = wp_installing(true);
+
+		try {
+			$this->container->register(ShutdownProvider::class);
+			$callback = $this->container->callback(ShutdownRunnerContract::class, 'terminate');
+
+			$this->assertFalse(has_action('shutdown', $callback));
+			$this->assertInstanceOf(
+				ResponseFinishingRunner::class,
+				$this->container->get(ShutdownRunnerContract::class)
+			);
+		} finally {
+			wp_installing($wasInstalling);
+		}
+	}
 }

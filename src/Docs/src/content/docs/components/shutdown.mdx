@@ -187,7 +187,7 @@ private const array PROVIDERS = [
 ];
 ```
 
-The shutdown provider registers the shared task collection, the decorated runner, and one callback on WordPress's `shutdown` action at `PHP_INT_MAX`. Registration alone does not construct or run contributed tasks.
+The shutdown provider registers the shared task collection, the decorated runner, and one callback on WordPress's `shutdown` action at `PHP_INT_MAX`. It does not register that automatic callback while WordPress is installing or the plugin is being uninstalled. Registration alone does not construct or run contributed tasks.
 
 If the application uses `foundation-log`, register `LogProvider` with the other infrastructure providers before the feature providers. The shutdown runner receives the configured `LoggerInterface` automatically.
 
