@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\Database\Exceptions;
 
 /**
- * Raised when a migration lock cannot be acquired or its ownership cannot be confirmed.
+ * Raised when a migration lock cannot be acquired, renewed, or released safely.
  */
 final class MigrationLockFailed extends DatabaseException
 {
@@ -12,6 +12,13 @@ final class MigrationLockFailed extends DatabaseException
 	 */
 	public static function forLock(string $lock): self {
 		return new self(sprintf('Could not acquire migration lock "%s".', $lock));
+	}
+
+	/**
+	 * Create an exception when ownership is lost before the lock can be renewed.
+	 */
+	public static function forLostOwnership(string $lock): self {
+		return new self(sprintf('Could not refresh migration lock "%s" because ownership was lost.', $lock));
 	}
 
 	/**

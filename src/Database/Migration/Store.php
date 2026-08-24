@@ -2,6 +2,7 @@
 
 namespace StellarWP\Foundation\Database\Migration;
 
+use Closure;
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Schema;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
@@ -94,10 +95,10 @@ final readonly class Store
 	 *
 	 * @template T
 	 *
-	 * @param callable(Schema): T $operation The operation that receives the schema while the migration lock is held.
+	 * @param callable(Schema, Closure(): void): T $operation The operation receives the schema and a lock-renewal callback.
 	 *
 	 * @throws DatabaseException        When migration storage cannot be inspected.
-	 * @throws MigrationLockFailed      When the lock cannot be acquired or ownership cannot be confirmed during release.
+	 * @throws MigrationLockFailed      When the lock cannot be acquired, renewed, or released.
 	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
 	 * @throws UninitializedStore       When migration storage has not been initialized.
 	 *
@@ -109,11 +110,11 @@ final readonly class Store
 			throw new UninitializedStore();
 		}
 
-		return $this->withLock(function () use ($operation): mixed {
+		return $this->withLock(function (Closure $renewLock) use ($operation): mixed {
 			// The ledger may have changed before this process acquired the lock.
 			$this->assertInitialized();
 
-			return $operation($this->schema);
+			return $operation($this->schema, $renewLock);
 		});
 	}
 
@@ -137,10 +138,10 @@ final readonly class Store
 	 *
 	 * @template T
 	 *
-	 * @param callable(): T $operation
+	 * @param callable(Closure(): void): T $operation
 	 *
 	 * @throws DatabaseException        When migration storage access fails.
-	 * @throws MigrationLockFailed      When the lock cannot be acquired or ownership cannot be confirmed during release.
+	 * @throws MigrationLockFailed      When the lock cannot be acquired, renewed, or released.
 	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
 	 *
 	 * @return T
@@ -152,8 +153,18 @@ final readonly class Store
 			throw MigrationLockFailed::forLock($this->lockName);
 		}
 
+		$renewLock = function () use (&$token): void {
+			$refreshed = $this->lock->refresh($token, $this->lockTtl);
+
+			if ($refreshed === null) {
+				throw MigrationLockFailed::forLostOwnership($this->lockName);
+			}
+
+			$token = $refreshed;
+		};
+
 		try {
-			$result = $operation();
+			$result = $operation($renewLock);
 		} catch (Throwable $failure) {
 			try {
 				$this->lock->release($token);

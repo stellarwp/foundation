@@ -212,6 +212,12 @@ wp your-plugin migrate
 
 The runner acquires the configured migration lock, executes pending migrations in provider contribution order, and records each successful migration in one batch.
 
+:::caution[Allow enough time for each migration]
+Foundation renews its lock immediately before and after each migration. The configured `database.lock_ttl` must exceed the longest uninterrupted `up()`, `down()`, or ledger operation because blocking work cannot renew its lease while it is running. Increase the TTL or split long work into separate migrations before deploying it.
+
+If a migration finishes but the following renewal fails, Foundation leaves the ledger unchanged and stops. A later command may therefore call that migration again. Write `up()` and `down()` so repeated execution can safely reconcile the intended state.
+:::
+
 ### Roll back or rebuild
 
 Roll back the latest applied batch:

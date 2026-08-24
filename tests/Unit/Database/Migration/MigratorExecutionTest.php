@@ -37,6 +37,8 @@ final class MigratorExecutionTest extends TestCase
 
 	private RecordingSchema $schema;
 
+	private MutableClock $clock;
+
 	private InMemoryLock $lock;
 
 	protected function setUp(): void {
@@ -44,7 +46,8 @@ final class MigratorExecutionTest extends TestCase
 
 		$this->repository = new InMemoryRepository();
 		$this->schema     = new RecordingSchema();
-		$this->lock       = new InMemoryLock(new MutableClock(new DateTimeImmutable('2026-01-01 00:00:00')));
+		$this->clock      = new MutableClock(new DateTimeImmutable('2026-01-01 00:00:00'));
+		$this->lock       = new InMemoryLock($this->clock);
 
 		(new Store(
 			$this->schema,
@@ -100,6 +103,54 @@ final class MigratorExecutionTest extends TestCase
 		$this->assertSame(1, $this->repository->all()['2026_01_01_000002_create_posts']->batch);
 	}
 
+	public function test_it_renews_the_lock_around_each_migration(): void {
+		$first = $this->createMock(Migration::class);
+		$first->method('id')->willReturn('2026_01_01_000001_create_users');
+		$first->method('up')->willReturnCallback(function (Schema $schema): void {
+			$schema->execute('up:2026_01_01_000001_create_users');
+			$this->clock->advance(9);
+		});
+
+		$second = $this->createMock(Migration::class);
+		$second->method('id')->willReturn('2026_01_01_000002_create_posts');
+		$second->method('up')->willReturnCallback(function (Schema $schema): void {
+			$schema->execute('up:2026_01_01_000002_create_posts');
+			$this->clock->advance(9);
+		});
+
+		$result = $this->migrator(
+			$this->collection($first, $second),
+			lockTtl: 10
+		)->run();
+
+		$this->assertSame([
+			'2026_01_01_000001_create_users',
+			'2026_01_01_000002_create_posts',
+		], $result->ran);
+	}
+
+	public function test_it_does_not_record_a_migration_after_its_lock_expires(): void {
+		$migration = $this->createMock(Migration::class);
+		$migration->method('id')->willReturn('2026_01_01_000001_create_users');
+		$migration->method('up')->willReturnCallback(function (Schema $schema): void {
+			$schema->execute('up:2026_01_01_000001_create_users');
+			$this->clock->advance(10);
+		});
+
+		$this->expectException(MigrationLockFailed::class);
+		$this->expectExceptionMessage('Could not refresh migration lock');
+
+		try {
+			$this->migrator(
+				$this->collection($migration),
+				lockTtl: 10
+			)->run();
+		} finally {
+			$this->assertSame(['up:2026_01_01_000001_create_users'], $this->schema->statements);
+			$this->assertFalse($this->repository->hasRun('2026_01_01_000001_create_users'));
+		}
+	}
+
 	public function test_it_skips_migrations_that_have_already_run(): void {
 		$this->configured(
 			new TestMigration('2026_01_01_000001_create_users'),
@@ -142,6 +193,60 @@ final class MigratorExecutionTest extends TestCase
 		], $this->schema->statements);
 		$this->assertTrue($this->repository->hasRun('2026_01_01_000001_create_users'));
 		$this->assertFalse($this->repository->hasRun('2026_01_01_000002_create_posts'));
+	}
+
+	public function test_it_renews_the_lock_around_each_rollback(): void {
+		$first = $this->createMock(Migration::class);
+		$first->method('id')->willReturn('2026_01_01_000001_create_users');
+		$first->method('down')->willReturnCallback(function (Schema $schema): void {
+			$schema->execute('down:2026_01_01_000001_create_users');
+			$this->clock->advance(9);
+		});
+
+		$second = $this->createMock(Migration::class);
+		$second->method('id')->willReturn('2026_01_01_000002_create_posts');
+		$second->method('down')->willReturnCallback(function (Schema $schema): void {
+			$schema->execute('down:2026_01_01_000002_create_posts');
+			$this->clock->advance(9);
+		});
+
+		$migrator = $this->migrator(
+			$this->collection($first, $second),
+			lockTtl: 10
+		);
+		$migrator->run();
+
+		$result = $migrator->rollback();
+
+		$this->assertSame([
+			'2026_01_01_000002_create_posts',
+			'2026_01_01_000001_create_users',
+		], $result->rolledBack);
+	}
+
+	public function test_it_preserves_a_migration_record_when_its_rollback_lock_expires(): void {
+		$migration = $this->createMock(Migration::class);
+		$migration->method('id')->willReturn('2026_01_01_000001_create_users');
+		$migration->method('down')->willReturnCallback(function (Schema $schema): void {
+			$schema->execute('down:2026_01_01_000001_create_users');
+			$this->clock->advance(10);
+		});
+
+		$this->configured(new TestMigration('2026_01_01_000001_create_users'))->run();
+		$this->schema->statements = [];
+
+		$this->expectException(MigrationLockFailed::class);
+		$this->expectExceptionMessage('Could not refresh migration lock');
+
+		try {
+			$this->migrator(
+				$this->collection($migration),
+				lockTtl: 10
+			)->rollback();
+		} finally {
+			$this->assertSame(['down:2026_01_01_000001_create_users'], $this->schema->statements);
+			$this->assertTrue($this->repository->hasRun('2026_01_01_000001_create_users'));
+		}
 	}
 
 	public function test_it_rolls_back_an_explicit_batch_when_it_is_still_latest(): void {
@@ -266,6 +371,48 @@ final class MigratorExecutionTest extends TestCase
 		], $this->schema->statements);
 	}
 
+	public function test_it_renews_one_lock_through_both_phases_of_refresh(): void {
+		$migration       = new TestMigration('2026_01_01_000001_create_users');
+		$acquired        = new LockToken('custom-migrations', 'owner', new DateTimeImmutable('2026-01-01 00:01:00'));
+		$beforeRollback  = $acquired->withExpiration(new DateTimeImmutable('2026-01-01 00:02:00'));
+		$afterRollback   = $acquired->withExpiration(new DateTimeImmutable('2026-01-01 00:03:00'));
+		$beforeRun       = $acquired->withExpiration(new DateTimeImmutable('2026-01-01 00:04:00'));
+		$afterRun        = $acquired->withExpiration(new DateTimeImmutable('2026-01-01 00:05:00'));
+		$expectedTokens  = [$acquired, $beforeRollback, $afterRollback, $beforeRun];
+		$refreshedTokens = [$beforeRollback, $afterRollback, $beforeRun, $afterRun];
+		$lock            = $this->createMock(Lock::class);
+
+		$this->repository->recordRun($migration->id(), 1);
+		$lock->expects($this->once())
+			->method('acquire')
+			->with('custom-migrations', 10)
+			->willReturn($acquired);
+		$lock->expects($this->exactly(4))
+			->method('refresh')
+			->willReturnCallback(function (LockToken $token, int $ttl) use (&$expectedTokens, &$refreshedTokens): ?LockToken {
+				$this->assertSame(array_shift($expectedTokens), $token);
+				$this->assertSame(10, $ttl);
+
+				return array_shift($refreshedTokens);
+			});
+		$lock->expects($this->once())
+			->method('release')
+			->with($afterRun)
+			->willReturn(true);
+
+		$migrator = $this->migrator(
+			$this->collection($migration),
+			lock: $lock,
+			lockName: 'custom-migrations',
+			lockTtl: 10
+		);
+
+		$result = $migrator->refresh();
+
+		$this->assertSame(['2026_01_01_000001_create_users'], $result->rolledBack);
+		$this->assertSame(['2026_01_01_000001_create_users'], $result->ran);
+	}
+
 	public function test_refresh_uses_one_migration_snapshot_for_rollback_and_run(): void {
 		$collection = new Collection();
 		$late       = new TestMigration('2026_01_01_000002_create_posts');
@@ -365,6 +512,101 @@ final class MigratorExecutionTest extends TestCase
 		$migrator->run();
 	}
 
+	public function test_it_releases_the_lock_when_renewal_fails_before_a_migration_runs(): void {
+		$migration = new TestMigration('2026_01_01_000001_create_users');
+		$token     = new LockToken('custom-migrations', 'owner', new DateTimeImmutable('2026-01-01 00:02:00'));
+		$lock      = $this->createMock(Lock::class);
+
+		$lock->expects($this->once())
+			->method('acquire')
+			->with('custom-migrations', 120)
+			->willReturn($token);
+		$lock->expects($this->once())
+			->method('refresh')
+			->with($token, 120)
+			->willThrowException(new LockUnavailableException('Lock backend unavailable.'));
+		$lock->expects($this->once())
+			->method('release')
+			->with($token)
+			->willReturn(true);
+
+		$this->expectException(LockUnavailableException::class);
+
+		try {
+			$this->migrator(
+				$this->collection($migration),
+				lock: $lock,
+				lockName: 'custom-migrations',
+				lockTtl: 120
+			)->run();
+		} finally {
+			$this->assertSame([], $this->schema->statements);
+			$this->assertFalse($this->repository->hasRun($migration->id()));
+		}
+	}
+
+	public function test_it_uses_the_configured_ttl_and_releases_the_latest_refreshed_token(): void {
+		$acquired  = new LockToken('custom-migrations', 'owner', new DateTimeImmutable('2026-01-01 00:02:00'));
+		$beforeRun = $acquired->withExpiration(new DateTimeImmutable('2026-01-01 00:04:00'));
+		$afterRun  = $acquired->withExpiration(new DateTimeImmutable('2026-01-01 00:06:00'));
+		$expected  = [$acquired, $beforeRun];
+		$refreshed = [$beforeRun, $afterRun];
+		$lock      = $this->createMock(Lock::class);
+
+		$lock->expects($this->once())
+			->method('acquire')
+			->with('custom-migrations', 120)
+			->willReturn($acquired);
+		$lock->expects($this->exactly(2))
+			->method('refresh')
+			->willReturnCallback(function (LockToken $token, int $ttl) use (&$expected, &$refreshed): ?LockToken {
+				$this->assertSame(array_shift($expected), $token);
+				$this->assertSame(120, $ttl);
+
+				return array_shift($refreshed);
+			});
+		$lock->expects($this->once())
+			->method('release')
+			->with($afterRun)
+			->willReturn(true);
+
+		$this->migrator(
+			$this->collection(new TestMigration('2026_01_01_000001_create_users')),
+			lock: $lock,
+			lockName: 'custom-migrations',
+			lockTtl: 120
+		)->run();
+	}
+
+	public function test_it_stops_before_running_a_migration_when_lock_renewal_loses_ownership(): void {
+		$token = $this->lockToken();
+		$lock  = $this->createMock(Lock::class);
+		$lock->expects($this->once())
+			->method('acquire')
+			->willReturn($token);
+		$lock->expects($this->once())
+			->method('refresh')
+			->with($token, 300)
+			->willReturn(null);
+		$lock->expects($this->once())
+			->method('release')
+			->with($token)
+			->willReturn(false);
+
+		$this->expectException(MigrationLockFailed::class);
+		$this->expectExceptionMessage('Could not refresh migration lock');
+
+		try {
+			$this->migrator(
+				$this->collection(new TestMigration('2026_01_01_000001_create_users')),
+				lock: $lock,
+			)->run();
+		} finally {
+			$this->assertSame([], $this->schema->statements);
+			$this->assertFalse($this->repository->hasRun('2026_01_01_000001_create_users'));
+		}
+	}
+
 	public function test_it_releases_the_lock_when_initialization_fails(): void {
 		$storeSchema = $this->createMock(Schema::class);
 		$storeSchema->method('createOrUpdate')
@@ -397,6 +639,10 @@ final class MigratorExecutionTest extends TestCase
 			->method('acquire')
 			->with('nx-foundation-database-migrations', 300)
 			->willReturn($token);
+		$lock->expects($this->exactly(2))
+			->method('refresh')
+			->with($token, 300)
+			->willReturn($token);
 		$lock->expects($this->once())
 			->method('release')
 			->with($token)
@@ -424,6 +670,10 @@ final class MigratorExecutionTest extends TestCase
 			->method('acquire')
 			->willReturn($token);
 		$lock->expects($this->once())
+			->method('refresh')
+			->with($token, 300)
+			->willReturn($token);
+		$lock->expects($this->once())
 			->method('release')
 			->with($token)
 			->willThrowException(new LockUnavailableException('Lock backend unavailable.'));
@@ -444,6 +694,10 @@ final class MigratorExecutionTest extends TestCase
 		$lock  = $this->createMock(Lock::class);
 		$lock->expects($this->once())
 			->method('acquire')
+			->willReturn($token);
+		$lock->expects($this->exactly(2))
+			->method('refresh')
+			->with($token, 300)
 			->willReturn($token);
 		$lock->expects($this->once())
 			->method('release')
@@ -469,6 +723,10 @@ final class MigratorExecutionTest extends TestCase
 		$lock  = $this->createMock(Lock::class);
 		$lock->expects($this->once())
 			->method('acquire')
+			->willReturn($token);
+		$lock->expects($this->once())
+			->method('refresh')
+			->with($token, 300)
 			->willReturn($token);
 		$lock->expects($this->once())
 			->method('release')
