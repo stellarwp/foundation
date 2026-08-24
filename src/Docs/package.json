@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "preview:cloudflare": "npm run build && wrangler pages dev dist"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.41.7",

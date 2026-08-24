@@ -198,6 +198,8 @@ Use `composer monorepo list` to inspect available Monorepo Builder commands.
 
 The documentation site lives in `src/Docs/` and uses Astro with Starlight. Use the Node version in `src/Docs/.nvmrc`, install dependencies with `npm ci`, and run `npm run build` from `src/Docs/` after documentation changes.
 
+Same-repository documentation pull requests are previewed from the monorepo workflow. Production documentation is deployed only for published stable releases by the tag workflow that is split into `stellarwp/foundation-docs`; never deploy documentation production from a push to the monorepo's `main` branch. Both workflows use the `foundation-docs` Cloudflare Pages project through Direct Upload, configured with `production` as its production branch.
+
 Write public documentation as current product documentation. Do not mention implementation phases, review checkpoints, future documentation work, or temporary plans. If code behavior, public APIs, package requirements, configuration, or supported integrations change, update the relevant documentation in the same change. Add a component guide and sidebar entry when adding a public split package.
 
 Once a component has a central documentation guide, keep its split-package `README.md` focused on a short overview, installation, and links to the canonical guide. Do not duplicate full configuration and usage documentation across the README and documentation site.
@@ -248,6 +250,7 @@ After completing a feature, run `composer test:coverage`, review `clover.xml` fo
 - Run `composer monorepo bump-interdependency <constraint>` when planning a major version release so Foundation packages that depend on each other require the new major line, for example `^3.0`. It may also be useful for a minor release when one package must require APIs added in that new minor, for example `^1.1`.
 - Before publishing a release, verify the intended release-line package constraints are already committed. For a minor release such as `1.2.0`, internal Foundation package dependencies should already require the released line, for example `^1.2`.
 - Publishing a GitHub release creates the release tag and triggers the tagged monorepo split. Wait for the tagged `Split Monorepo Packages and Release` workflow to succeed before considering the release complete.
+- When a release includes `foundation-docs`, also verify that the tag-triggered `Deploy Documentation` workflow succeeds in the `stellarwp/foundation-docs` split repository before considering the documentation release complete.
 - After a successful tagged split for a minor or major `.0` release, the split workflow automatically bumps internal package constraints and branch aliases to the next development line on `main`, for example from `^1.2` and `1.2.x-dev` to `^1.3` and `1.3.x-dev`.
 - The post-release automation intentionally skips patch tags such as `1.2.1`, because patch releases should not move `dev-main` to a new minor development line.
 - If the post-release automation fails, fetch the release tag and manually run `composer monorepo bump-interdependency <next-dev-constraint>`, `composer monorepo package-alias`, and `composer monorepo merge`, then commit and push the updated package `composer.json` files.
