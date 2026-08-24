@@ -216,7 +216,10 @@ final readonly class PackageScaffolder
 
 		on:
 		  pull_request_target:
-		    types: [opened]
+		    types: [opened, reopened]
+
+		permissions:
+		  pull-requests: write
 
 		jobs:
 		  run:
