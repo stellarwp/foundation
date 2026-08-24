@@ -124,7 +124,7 @@ Use a factory callback only when the value must be computed or fetched from the 
 In `src/Report/Provider.php`, use `mergeArrayVar()` when independent providers contribute to one ordered collection. The provider that owns the collection registers its default and supplies it to the consuming class:
 
 ```php title="Provider.php"
-public const string EXPORTERS = 'your_plugin.report.exporters';
+public const string EXPORTERS = 'your-plugin.report.exporters';
 
 private function register_exporter_collection(): void {
 	$this->container->mergeArrayVar( self::EXPORTERS, [] );
@@ -134,6 +134,14 @@ private function register_exporter_collection(): void {
 		->give( static fn ( C $c ): array => $c->get( self::EXPORTERS ) );
 }
 ```
+
+:::note[Name shared container identifiers]
+Use class and interface names as container identifiers for services. Introduce a text identifier only when a provider owns a shared scalar, configured object, or contribution point that has no natural service contract.
+
+Application-owned text identifiers should start with a stable application or plugin prefix, followed by the feature and value name, as shown by `your-plugin.report.exporters` above. This keeps ownership visible and prevents unrelated features from choosing the same key. Keep the identifier stable if the provider class is renamed.
+
+Text container identifiers are internal application wiring. Do not reuse them as configuration paths, database tables, cache keys, lock names, commands, or other externally visible values.
+:::
 
 Other feature providers append their implementations without replacing earlier contributions. For example, `src/Report/Csv/Provider.php` can contribute the CSV implementation:
 
