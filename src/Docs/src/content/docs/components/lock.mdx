@@ -335,8 +335,9 @@ Inject `InMemoryLock` when a test needs real ownership and expiration behavior w
 
 ```php
 use StellarWP\Foundation\Lock\InMemoryLock;
+use StellarWP\Foundation\Lock\SystemClock;
 
-$service = new Catalog_Synchronizer( new InMemoryLock() );
+$service = new Catalog_Synchronizer( new InMemoryLock( new SystemClock() ) );
 ```
 
 Because application code depends on the shared `Lock` contract, the production backend can change without changing the service under test.

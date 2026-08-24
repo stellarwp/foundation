@@ -13,9 +13,11 @@ use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\InMemoryLock;
 use StellarWP\Foundation\Lock\LockToken;
+use StellarWP\Foundation\Lock\SystemClock;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\InMemoryRepository;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchema;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
+use StellarWP\Foundation\Tests\Support\Fixtures\Lock\MutableClock;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class MigratorTest extends TestCase
@@ -93,7 +95,7 @@ final class MigratorTest extends TestCase
 	}
 
 	public function test_it_does_not_drop_the_store_while_another_migration_owns_the_lock(): void {
-		$lock                  = new InMemoryLock();
+		$lock                  = new InMemoryLock(new MutableClock(new DateTimeImmutable('2026-01-01 00:00:00')));
 		[$migrator, , $schema] = $this->newMigrator($lock);
 
 		$token = $lock->acquire('nx-foundation-database-migrations', 300);
@@ -109,7 +111,7 @@ final class MigratorTest extends TestCase
 	}
 
 	public function test_it_does_not_initialize_the_ledger_while_another_migration_owns_the_lock(): void {
-		$lock                  = new InMemoryLock();
+		$lock                  = new InMemoryLock(new MutableClock(new DateTimeImmutable('2026-01-01 00:00:00')));
 		[$migrator, , $schema] = $this->newMigrator($lock, false);
 		$token                 = $lock->acquire('nx-foundation-database-migrations', 300);
 
@@ -199,9 +201,9 @@ final class MigratorTest extends TestCase
 	 * @return array{Migrator, InMemoryRepository, RecordingSchema}
 	 */
 	private function newMigrator(?Lock $lock = null, bool $initialize = true): array {
-		$schema     = new RecordingSchema();
-		$repository = new InMemoryRepository();
-		$lock ??= new InMemoryLock();
+		$schema         = new RecordingSchema();
+		$repository     = new InMemoryRepository();
+		$lock           ??= new InMemoryLock(new SystemClock());
 		$migrationTable = new MigrationTable('wp_nx_foundation_migrations');
 		$lockTable      = new LockTable('wp_nx_foundation_locks');
 		$store          = new Store($schema, $lock, $migrationTable, $lockTable);

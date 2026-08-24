@@ -11,6 +11,7 @@ use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\InMemoryLock;
+use StellarWP\Foundation\Lock\SystemClock;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\InMemoryRepository;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchema;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
@@ -32,7 +33,7 @@ final class MigrateTest extends TestCase
 		$migrationTable = new MigrationTable('wp_nx_foundation_migrations');
 		$repository     = new InMemoryRepository();
 		$schema         = new RecordingSchema();
-		$lock           = new InMemoryLock();
+		$lock           = new InMemoryLock(new SystemClock());
 		$store          = new Store($schema, $lock, $migrationTable, new LockTable('wp_nx_foundation_locks'));
 		$command        = new Migrate(
 			$this->container,
@@ -206,7 +207,7 @@ final class MigrateTest extends TestCase
 		$wpSchema       = new RecordingSchema();
 		$repository     = new InMemoryRepository();
 		$migrationTable = new MigrationTable('wp_nx_foundation_migrations');
-		$lock           = new InMemoryLock();
+		$lock           = new InMemoryLock(new SystemClock());
 		$store          = new Store($wpSchema, $lock, $migrationTable, new LockTable('wp_nx_foundation_locks'));
 		$command        = new Migrate(
 			$this->container,

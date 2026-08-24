@@ -28,7 +28,7 @@ final class InMemoryLock implements Lock
 	private array $locks = [];
 
 	public function __construct(
-		private readonly Clock $clock = new SystemClock()
+		private readonly Clock $clock
 	) {
 	}
 

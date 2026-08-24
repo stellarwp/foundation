@@ -38,16 +38,25 @@ final class CliProvider extends Provider
 	public const string ROOT_PATH = self::class . '.root_path';
 
 	public function register(): void {
+		$this->registerRootPath();
+		$this->registerProcess();
+		$this->registerGeneration();
+		$this->registerPackageCommand();
+		$this->registerDatabaseCommands();
+		$this->registerWpCliCommand();
+		$this->registerApplication();
+	}
+
+	private function registerRootPath(): void {
 		$this->container->singleton(self::ROOT_PATH, getcwd() ?: dirname(__DIR__, 2));
+	}
 
-		$this->container->when(PackageResolver::class)
-			->needs('$rootPath')
-			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+	private function registerProcess(): void {
+		$this->container->singleton(ShellProcessRunner::class);
+		$this->container->bind(ProcessRunner::class, ShellProcessRunner::class);
+	}
 
-		$this->container->when(PackageScaffolder::class)
-			->needs('$rootPath')
-			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
-
+	private function registerGeneration(): void {
 		$this->container->when(ComposerAutoloadResolver::class)
 			->needs('$rootPath')
 			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
@@ -56,10 +65,34 @@ final class CliProvider extends Provider
 			->needs('$rootPath')
 			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
 
-		$this->container->when(WPCliCommand::class)
+		$this->container->singleton(WordPressClassNameResolver::class);
+		$this->container->singleton(ComposerAutoloadResolver::class);
+		$this->container->singleton(GeneratedFileWriter::class);
+		$this->container->singleton(Lexer::class);
+		$this->container->singleton(ParserFactory::class);
+		$this->container->singleton(PhpSourceEditor::class);
+		$this->container->singleton(StubRenderer::class);
+		$this->container->singleton(StubResolver::class);
+	}
+
+	private function registerPackageCommand(): void {
+		$this->container->when(PackageResolver::class)
 			->needs('$rootPath')
 			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
 
+		$this->container->when(PackageScaffolder::class)
+			->needs('$rootPath')
+			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+
+		$this->container->singleton(PackageResolver::class);
+		$this->container->singleton(PackageScaffolder::class);
+		$this->container->singleton(PackageFilesValidator::class);
+		$this->container->singleton(PackageRepositoryPlanFactory::class);
+		$this->container->bind(PackageRepositoryCreator::class, GitHubPackageRepositoryCreator::class);
+		$this->container->singleton(CreateCommand::class);
+	}
+
+	private function registerDatabaseCommands(): void {
 		$this->container->when(MigrationCommand::class)
 			->needs('$rootPath')
 			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
@@ -72,6 +105,21 @@ final class CliProvider extends Provider
 			->needs('$rootPath')
 			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
 
+		$this->container->singleton(MigrationCommand::class);
+		$this->container->singleton(ProviderCommand::class);
+		$this->container->singleton(ProviderRegistrationEditor::class);
+		$this->container->singleton(TableCommand::class);
+	}
+
+	private function registerWpCliCommand(): void {
+		$this->container->when(WPCliCommand::class)
+			->needs('$rootPath')
+			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+
+		$this->container->singleton(WPCliCommand::class);
+	}
+
+	private function registerApplication(): void {
 		$this->container->when(Application::class)
 			->needs('$commands')
 			->give(static fn (Container $c): array => [
@@ -82,27 +130,6 @@ final class CliProvider extends Provider
 				$c->get(WPCliCommand::class),
 			]);
 
-		$this->container->singleton(PackageResolver::class);
-		$this->container->singleton(PackageScaffolder::class);
-		$this->container->singleton(PackageFilesValidator::class);
-		$this->container->singleton(PackageRepositoryPlanFactory::class);
-		$this->container->singleton(ShellProcessRunner::class);
-		$this->container->bind(ProcessRunner::class, ShellProcessRunner::class);
-		$this->container->bind(PackageRepositoryCreator::class, GitHubPackageRepositoryCreator::class);
-		$this->container->singleton(CreateCommand::class);
-		$this->container->singleton(WordPressClassNameResolver::class);
-		$this->container->singleton(ComposerAutoloadResolver::class);
-		$this->container->singleton(GeneratedFileWriter::class);
-		$this->container->singleton(Lexer::class);
-		$this->container->singleton(ParserFactory::class);
-		$this->container->singleton(PhpSourceEditor::class);
-		$this->container->singleton(StubRenderer::class);
-		$this->container->singleton(StubResolver::class);
-		$this->container->singleton(MigrationCommand::class);
-		$this->container->singleton(ProviderCommand::class);
-		$this->container->singleton(ProviderRegistrationEditor::class);
-		$this->container->singleton(TableCommand::class);
-		$this->container->singleton(WPCliCommand::class);
 		$this->container->singleton(Application::class);
 	}
 }
