@@ -21,10 +21,16 @@ final class WPCliProvider extends Provider
 
 	public const string COMMANDS = self::class . '.commands';
 
+	private bool $registered = false;
+
 	/**
 	 * @throws InvalidArgumentException When the configured Foundation prefix is invalid.
 	 */
 	public function register(): void {
+		if ($this->registered) {
+			return;
+		}
+
 		$foundationPrefix = $this->foundationPrefix();
 		$commandPrefix    = $this->config->get('wpcli.command_prefix')
 			?? $foundationPrefix;
@@ -38,6 +44,8 @@ final class WPCliProvider extends Provider
 		add_action('cli_init', function (): void {
 			$this->registerCommands();
 		}, 0, 0);
+
+		$this->registered = true;
 	}
 
 	/**

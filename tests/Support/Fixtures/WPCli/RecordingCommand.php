@@ -8,6 +8,7 @@ final class RecordingCommand extends Command
 {
 	public static bool $registered        = false;
 	public static ?string $registeredName = null;
+	public static int $registrationCount  = 0;
 
 	public function runCommand(array $args = [], array $assocArgs = []): int {
 		return self::SUCCESS;
@@ -16,6 +17,7 @@ final class RecordingCommand extends Command
 	public function register(): void {
 		self::$registered     = true;
 		self::$registeredName = $this->command();
+		self::$registrationCount++;
 	}
 
 	protected function subcommand(): string {
