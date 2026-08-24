@@ -31,6 +31,9 @@ final class TableDefinition
 		return new self($table);
 	}
 
+	/**
+	 * @throws InvalidArgumentException When the generated column name is already defined.
+	 */
 	public function bigIncrements(string $name): self {
 		return $this
 			->column(new Column($name, 'bigint', 20))
@@ -39,28 +42,43 @@ final class TableDefinition
 			->primary($name);
 	}
 
+	/**
+	 * @throws InvalidArgumentException When the column name is already defined.
+	 */
 	public function string(string $name, int $length = 191, ?string $default = null): self {
 		return $this->column(new Column($name, 'varchar', $length, default: $default));
 	}
 
+	/**
+	 * @throws InvalidArgumentException When the column name is already defined.
+	 */
 	public function unsignedInteger(string $name, int $length = 10, ?int $default = null): self {
 		return $this->column(new Column($name, 'int', $length, unsigned: true, default: $default));
 	}
 
+	/**
+	 * @throws InvalidArgumentException When the column name is already defined.
+	 */
 	public function integer(string $name, int $length = 10): self {
 		return $this->column(new Column($name, 'int', $length));
 	}
 
+	/**
+	 * @throws InvalidArgumentException When the column name is already defined.
+	 */
 	public function tinyInteger(string $name, int $length = 3): self {
 		return $this->column(new Column($name, 'tinyint', $length));
 	}
 
+	/**
+	 * @throws InvalidArgumentException When the column name is already defined.
+	 */
 	public function bigInteger(string $name, int $length = 20): self {
 		return $this->column(new Column($name, 'bigint', $length));
 	}
 
 	/**
-	 * @throws InvalidArgumentException When precision is outside the database-supported range.
+	 * @throws InvalidArgumentException When the column name is already defined or precision is outside the database-supported range.
 	 */
 	public function dateTime(string $name, ?int $precision = null): self {
 		if ($precision !== null && ($precision < 0 || $precision > 6)) {
@@ -70,17 +88,32 @@ final class TableDefinition
 		return $this->column(new Column($name, 'datetime', $precision === 0 ? null : $precision));
 	}
 
+	/**
+	 * @throws InvalidArgumentException When the column name is already defined.
+	 */
 	public function text(string $name): self {
 		return $this->column(new Column($name, 'text'));
 	}
 
+	/**
+	 * @throws InvalidArgumentException When the column name is already defined.
+	 */
 	public function longText(string $name): self {
 		return $this->column(new Column($name, 'longtext'));
 	}
 
+	/**
+	 * @throws InvalidArgumentException When the column name is already defined.
+	 */
 	public function column(Column $column): self {
-		$this->columns[$column->name] = $column;
-		$this->currentColumn          = $column->name;
+		$key = strtolower($column->name);
+
+		if (isset($this->columns[$key])) {
+			throw new InvalidArgumentException(sprintf('Column %s is already defined.', $column->name));
+		}
+
+		$this->columns[$key] = $column;
+		$this->currentColumn = $key;
 
 		return $this;
 	}
@@ -110,7 +143,7 @@ final class TableDefinition
 	}
 
 	private function replaceCurrentColumn(Column $column): self {
-		$this->columns[$column->name] = $column;
+		$this->columns[strtolower($column->name)] = $column;
 
 		return $this;
 	}
@@ -179,7 +212,7 @@ final class TableDefinition
 
 		foreach ($this->indexes as $index) {
 			foreach ($index->columns as $column) {
-				if (! isset($this->columns[$column])) {
+				if (! isset($this->columns[strtolower($column)])) {
 					$errors[] = sprintf('Index %s references missing column %s.', $index->name, $column);
 				}
 			}

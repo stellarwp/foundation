@@ -144,6 +144,23 @@ final class TableDefinitionTest extends TestCase
 			->default('draft');
 	}
 
+	public function test_it_rejects_duplicate_column_names_case_insensitively(): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('Column status is already defined.');
+
+		TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+			->string('Status')->nullable()
+			->text('status');
+	}
+
+	public function test_it_matches_index_column_references_case_insensitively(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+			->string('Status')
+			->index('status_lookup', 'status');
+
+		$this->assertSame([], $definition->validationErrors());
+	}
+
 	public function test_it_reports_duplicate_primary_keys(): void {
 		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
 			->bigIncrements('id')

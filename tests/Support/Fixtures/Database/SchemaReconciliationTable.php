@@ -24,18 +24,12 @@ final readonly class SchemaReconciliationTable implements Table
 	}
 
 	public function definition(): TableDefinition {
-		$definition = TableDefinition::for($this)
-			->bigIncrements('id')
-			->integer('attempts')->default($this->attemptsDefault)
-			->dateTime('completed_at')
-			->string('label')->default('')
-			->column(new Column('ratio', 'decimal(10,2)', default: 1.25))
-			->column(new Column('enabled', 'bit', 1, default: true));
-
-		if ($this->completedAtNullable) {
-			$definition->column(new Column('completed_at', 'datetime', nullable: true));
-		}
-
-		return $definition;
+		return TableDefinition::for($this)
+		                      ->bigIncrements('id')
+		                      ->integer('attempts')->default($this->attemptsDefault)
+		                      ->dateTime('completed_at')->nullable($this->completedAtNullable)
+		                      ->string('label')->default('')
+		                      ->column(new Column('ratio', 'decimal(10,2)', default: 1.25))
+		                      ->column(new Column('enabled', 'bit', 1, default: true));
 	}
 }
