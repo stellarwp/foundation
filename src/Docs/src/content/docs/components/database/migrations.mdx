@@ -136,7 +136,51 @@ final readonly class Create_Reports_Table implements Migration {
 
 Migration IDs are permanent, byte-exact identifiers. The generator prefixes them with a sortable timestamp so migration history is easy to inspect, but execution follows provider contribution order rather than sorting by ID. Register providers and migrations in dependency order, and do not change an ID after the migration has been deployed.
 
-For later schema changes, update the table's desired definition and create a new migration that applies it. Use `Schema::execute()` for data changes or schema operations that `dbDelta()` cannot express reliably.
+For later schema changes, update the table's desired definition and create a new migration that applies it. Use `Schema::execute()` only for trusted schema SQL that `dbDelta()` cannot express reliably.
+
+For parameterized data changes, inject the `Database` contract into the migration and pass values through WordPress placeholders. For example, `src/Database/Migrations/Backfill_Report_Status.php` can update existing rows without interpolating values into SQL:
+
+```php title="Backfill_Report_Status.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Database\Migrations;
+
+use StellarWP\Foundation\Database\Contracts\Database;
+use StellarWP\Foundation\Database\Contracts\Migration;
+use StellarWP\Foundation\Database\Contracts\Schema;
+use StellarWP\Foundation\Database\Exceptions\IrreversibleMigration;
+use YourPlugin\Database\Tables\Reports_Table;
+
+final readonly class Backfill_Report_Status implements Migration {
+
+	public const string ID = '2026_08_24_120000_backfill_report_status';
+
+	public function __construct(
+		private Database $database,
+		private Reports_Table $table
+	) {
+	}
+
+	public function id(): string {
+		return self::ID;
+	}
+
+	public function up( Schema $schema ): void {
+		$this->database->execute(
+			'UPDATE %i SET status = %s WHERE status = %s',
+			$this->table->name(),
+			'active',
+			'legacy'
+		);
+	}
+
+	public function down( Schema $schema ): void {
+		throw IrreversibleMigration::forMigration( self::ID );
+	}
+}
+```
+
+Do not interpolate request, configuration, or stored data directly into SQL.
 
 :::caution[Make rollback behavior deliberate]
 The generic migration stub throws `IrreversibleMigration` from `down()`. Implement a safe inverse before relying on rollback, or keep the migration explicitly irreversible. Foundation does not pretend a destructive data change can be undone.
