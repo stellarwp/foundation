@@ -14,6 +14,7 @@ Split packages:
 - `stellarwp/foundation-identifier`
 - `stellarwp/foundation-pipeline`
 - `stellarwp/foundation-shutdown`
+- `stellarwp/foundation-view`
 - `stellarwp/foundation-wpcli`
 - `stellarwp/foundation-cli`
 - `stellarwp/foundation-docs`
@@ -48,6 +49,10 @@ When it is very clear that a class will be reused by many similar features, prom
 Feature-local interfaces should live in a `Contracts/` folder inside the feature slice, for example `Commands/Package/Contracts/PackageRepositoryCreator.php`. Only promote contracts to a package-level `Contracts/` namespace when they are intended to be shared across multiple features or consumed as public extension points.
 
 Shared infrastructure interfaces should live under that shared namespace's `Contracts/` folder, for example `Process/Contracts/ProcessRunner.php`.
+
+Design public contracts as the smallest stable capabilities consumers need so applications can replace the supplied implementation without inheriting unrelated backend assumptions. Do not put filesystem, database, transport, framework, or other implementation-specific behavior on a general contract merely because the default concrete class supports it. Use a separate capability contract when only some implementations provide optional behavior, and bind each supported contract to the default implementation in the package provider. Follow interface segregation and dependency inversion: application code should be able to supply a substantially different implementation without implementing meaningless methods or extending Foundation internals.
+
+Keep convenience methods and implementation machinery on the concrete class unless they form a genuine reusable capability. Do not expose private helpers as public API speculatively. Prefer composition, and extract a focused collaborator when another real implementation needs to share the same policy or behavior.
 
 Avoid `use ... as ...` import aliases unless they resolve a real class-name collision or ambiguity. Prefer importing the class by its actual short name. The standing exception is `use lucatume\DI52\Container as C;`, which may be used for concise container factory callbacks.
 

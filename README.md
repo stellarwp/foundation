@@ -19,6 +19,7 @@ See the [Foundation documentation](https://foundation.stellarwp.com/) for instal
 | [stellarwp/foundation-lock-redis](https://github.com/stellarwp/foundation-lock-redis) | Multiple processes or servers coordinate through dedicated Redis | Runtime |
 | [stellarwp/foundation-database](https://github.com/stellarwp/foundation-database) | A WordPress application needs queries, migrations, or database-backed locks | Runtime |
 | [stellarwp/foundation-identifier](https://github.com/stellarwp/foundation-identifier) | Services need injectable ULID generation and validation | Runtime |
+| [stellarwp/foundation-view](https://github.com/stellarwp/foundation-view) | Services need scoped PHP template rendering without global state | Runtime |
 | [stellarwp/foundation-wpcli](https://github.com/stellarwp/foundation-wpcli) | A shipped WordPress plugin exposes WP-CLI commands | Runtime |
 | [stellarwp/foundation-cli](https://github.com/stellarwp/foundation-cli) | Developers need Foundation generators or monorepo maintenance commands | Development |
 | [stellarwp/foundation-docs](https://github.com/stellarwp/foundation-docs) | Contributors maintain or deploy the Foundation documentation site | Documentation |
