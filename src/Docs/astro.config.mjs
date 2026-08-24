@@ -45,6 +45,7 @@ export default defineConfig({
             { slug: 'components/log' },
             { slug: 'components/identifier' },
             { slug: 'components/pipeline' },
+            { slug: 'components/shutdown' },
             { slug: 'components/wp-cli' },
           ],
         },

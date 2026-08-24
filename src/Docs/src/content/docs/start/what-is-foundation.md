@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-Foundation is a Composer monorepo of reusable PHP components maintained for libraries and WordPress plugin ecosystems. It provides common application infrastructure without requiring every project to invent its own container, logging, locking, database, identifier, pipeline, or command conventions.
+Foundation is a Composer monorepo of reusable PHP components maintained for libraries and WordPress plugin ecosystems. It provides common application infrastructure without requiring every project to invent its own container, logging, locking, database, identifier, pipeline, shutdown, or command conventions.
 
 Foundation is primarily developed for internal Nexcess projects. Its packages are publicly available and designed to remain reusable, but the needs of Nexcess applications will primarily drive changes, priorities, and the project roadmap.
 

@@ -1,0 +1,238 @@
+---
+title: Shutdown
+description: Run bounded application termination work once in deterministic priority order.
+sidebar:
+  order: 7
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Some work must happen before a PHP request ends, but does not need to delay the response sent to the client. For example, an application may need to flush buffered logs or telemetry to a third-party service, close request-scoped resources, or publish diagnostics collected during the request. Running that work before returning the response makes the website or API feel slower even though the result does not affect what the client receives.
+
+Foundation Shutdown lets features contribute these end-of-request tasks from their providers. In WordPress, it attempts to finish the HTTP response before running the tasks from the `shutdown` action. Each task runs once in priority order, and one failed task does not prevent the remaining tasks from running.
+
+Use shutdown tasks for bounded, best-effort work that can finish within the current PHP process. They are not asynchronous jobs: the PHP worker remains occupied until every task finishes.
+
+:::note[Use a queue for durable work]
+Use a durable queue when work is long-running, must be retried, or cannot safely be lost if the process exits.
+:::
+
+## Installation
+
+Install the runtime package:
+
+```shell
+composer require stellarwp/foundation-shutdown
+```
+
+### Prepare the application
+
+Shutdown tasks use the application's existing container and ordered provider graph:
+
+<CardGrid>
+  <LinkCard
+    title="Bootstrap a WordPress Plugin"
+    description="Create the application, shared container, and ordered provider list."
+    href="/start/bootstrap-wordpress-plugin/"
+  />
+  <LinkCard
+    title="Register Service Providers"
+    description="Contribute feature behavior without resolving services during registration."
+    href="/start/register-service-providers/"
+  />
+  <LinkCard
+    title="Log"
+    description="Configure the optional PSR-3 logger used for task diagnostics."
+    href="/components/log/"
+  />
+</CardGrid>
+
+## Configuration
+
+### Configure the cache write
+
+In the root `config.php`, choose the WordPress transient key and lifetime used for the cached snapshot:
+
+```php title="config.php"
+<?php declare(strict_types=1);
+
+return [
+	'product_cache' => [
+		'key' => $_ENV['PRODUCT_CACHE_KEY'] ?? 'your_plugin_products',
+		'ttl' => (int) ( $_ENV['PRODUCT_CACHE_TTL'] ?? 300 ),
+	],
+];
+```
+
+### Create a cache-write task
+
+Create `src/Product_Cache/Product_Cache_Writer.php`. This example assumes `Product_Cache_Buffer` collects an in-memory snapshot while the application handles the request. The task writes that prepared snapshot to a WordPress transient only when it changed:
+
+```php title="Product_Cache_Writer.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Product_Cache;
+
+use InvalidArgumentException;
+use StellarWP\Foundation\Shutdown\Contracts\Terminable;
+
+/**
+ * Writes buffered product data to the application cache at shutdown.
+ */
+final readonly class Product_Cache_Writer implements Terminable {
+
+	/**
+	 * @throws InvalidArgumentException When the cache key is empty or the TTL is invalid.
+	 */
+	public function __construct(
+		private Product_Cache_Buffer $buffer,
+		private string $cache_key,
+		private int $ttl
+	) {
+		if ( $this->cache_key === '' ) {
+			throw new InvalidArgumentException( 'The product cache key cannot be empty.' );
+		}
+
+		if ( $this->ttl < 1 ) {
+			throw new InvalidArgumentException( 'The product cache TTL must be greater than zero.' );
+		}
+	}
+
+	/**
+	 * @action shutdown
+	 */
+	public function terminate(): void {
+		if ( ! $this->buffer->has_changes() ) {
+			return;
+		}
+
+		set_transient(
+			$this->cache_key,
+			$this->buffer->snapshot(),
+			$this->ttl
+		);
+	}
+}
+```
+
+The buffer is responsible for collecting cacheable state during the request. The shutdown task only performs the final bounded write. The PHP worker remains occupied until `terminate()` returns, even when the response has already been sent to the client.
+
+### Contribute the task from its feature provider
+
+In `src/Product_Cache/Provider.php`, supply the task's scalar configuration before adding it lazily to `ShutdownProvider::TASKS`:
+
+```php title="Provider.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Product_Cache;
+
+use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\Shutdown\ShutdownProvider;
+use StellarWP\Foundation\Shutdown\ShutdownTask;
+
+/**
+ * Configures the product cache and its end-of-request write.
+ */
+final class Provider extends Service_Provider {
+
+	private const int WRITE_PRIORITY = 100;
+
+	public function register(): void {
+		$this->register_cache_writer();
+		$this->register_shutdown_task();
+	}
+
+	private function register_cache_writer(): void {
+		$this->container->when( Product_Cache_Writer::class )
+			->needs( '$cache_key' )
+			->give( (string) $this->config->get( 'product_cache.key', 'your_plugin_products' ) );
+
+		$this->container->when( Product_Cache_Writer::class )
+			->needs( '$ttl' )
+			->give( (int) $this->config->get( 'product_cache.ttl', 300 ) );
+	}
+
+	private function register_shutdown_task(): void {
+		$this->container->mergeArrayVar(
+			ShutdownProvider::TASKS,
+			static fn ( C $c ): array => [
+				new ShutdownTask(
+					$c->get( Product_Cache_Writer::class ),
+					self::WRITE_PRIORITY
+				),
+			]
+		);
+	}
+}
+```
+
+The contextual bindings target the task's `$cache_key` and `$ttl` constructor arguments. The container autowires `Product_Cache_Buffer`, applies those configured scalar values when the task collection is resolved, and then constructs the task.
+
+`ShutdownTask` is an immutable value object pairing one `Terminable` service with its priority. Lower values run first. Tasks with the same priority retain provider contribution order.
+
+### Register the providers
+
+In `src/App.php`, register `ShutdownProvider` before the feature provider that contributes the cache task:
+
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Shutdown\ShutdownProvider;
+use YourPlugin\Product_Cache;
+
+/** @var list<class-string<Providable>> */
+private const array PROVIDERS = [
+	ShutdownProvider::class,
+	Product_Cache\Provider::class,
+];
+```
+
+The shutdown provider registers the shared task collection, the decorated runner, and one callback on WordPress's `shutdown` action at `PHP_INT_MAX`. Registration alone does not construct or run contributed tasks.
+
+If the application uses `foundation-log`, register `LogProvider` with the other infrastructure providers before the feature providers. The shutdown runner receives the configured `LoggerInterface` automatically.
+
+Register every contributing provider before resolving the shutdown runner. The normal application bootstrap does this automatically because the runner is resolved only when the WordPress action fires.
+
+## Usage
+
+### Run tasks at WordPress shutdown
+
+No application hook is required after `ShutdownProvider` is registered. At WordPress shutdown, Foundation:
+
+1. Resolves the complete contributed task collection.
+2. Attempts `fastcgi_finish_request()` and then `litespeed_finish_request()` when available, stopping after one succeeds.
+3. Runs tasks from the lowest priority to the highest.
+4. Runs equal-priority tasks in contribution order.
+5. Ignores repeated or recursive calls to the same runner instance.
+
+Response finishing is best effort. A missing function, a `false` result, or a thrown exception does not prevent termination tasks from running.
+
+### Invoke the runner from another lifecycle
+
+An application with another explicit termination boundary can resolve the configured contract directly:
+
+```php
+use StellarWP\Foundation\Shutdown\Contracts\ShutdownRunner;
+
+$container->get( ShutdownRunner::class )->terminate();
+```
+
+Each runner instance executes only once. Calling it before WordPress shutdown means the later `shutdown` callback is a no-op for that instance.
+
+### Handle task failures
+
+The runner catches every `Throwable` from a task and continues with the remaining tasks. When a PSR-3 logger is available, it records task execution at `debug` and task failures at `error`, including the task class, priority, and exception. Logger failures are also isolated.
+
+:::caution[Shutdown work is best effort]
+Task exceptions are not rethrown, and PHP shutdown provides no retry or durability guarantee. Do not use this component for payments, required data persistence, customer notifications, or work that must eventually complete. Persist that work before the request ends and process it through a durable queue.
+:::
+
+:::caution[Finishing the response is not asynchronous execution]
+`fastcgi_finish_request()` or `litespeed_finish_request()` may let the client receive its response sooner, but the PHP worker remains busy. Keep shutdown tasks short and move slow or unbounded operations to a queue.
+:::
+
+## Testing
+
+Test each `Terminable` service directly through its observable behavior. Add one provider integration test when the contribution itself matters: register `ShutdownProvider` and the feature provider, resolve the `ShutdownRunner` contract, call `terminate()`, and assert the task's effect.
+
+The package already tests priority ordering, equal-priority stability, once-only execution, recursive invocation, response-finishing fallbacks, failure isolation, and optional logging. Application tests do not need to duplicate those generic guarantees.

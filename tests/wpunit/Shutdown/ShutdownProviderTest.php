@@ -2,13 +2,9 @@
 
 namespace StellarWP\Foundation\Tests\WPUnit\Shutdown;
 
-use Adbar\Dot;
-use lucatume\DI52\Container as DI52Container;
 use Monolog\Handler\TestHandler;
 use Monolog\Logger;
 use Psr\Log\LoggerInterface;
-use StellarWP\Foundation\Container\ContainerAdapter;
-use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Shutdown\Contracts\ShutdownRunner as ShutdownRunnerContract;
 use StellarWP\Foundation\Shutdown\ResponseFinishingRunner;
 use StellarWP\Foundation\Shutdown\ShutdownProvider;
@@ -18,16 +14,6 @@ use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
 
 final class ShutdownProviderTest extends WPTestCase
 {
-	private ContainerAdapter $container;
-
-	protected function setUp(): void {
-		parent::setUp();
-
-		$this->container = new ContainerAdapter(new DI52Container());
-		$this->container->bind(Container::class, $this->container);
-		$this->container->singleton(Dot::class, new Dot());
-	}
-
 	protected function tearDown(): void {
 		if ($this->container->has(ShutdownRunnerContract::class)) {
 			remove_action(
