@@ -27,6 +27,7 @@ use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\LockToken;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\DateTimePrecisionTable;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\IndexReconciliationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\SchemaReconciliationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestTable;
 use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
@@ -381,6 +382,18 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 		$this->assertSame('5', $row['attempts'] ?? null);
 		$this->assertNull($row['completed_at'] ?? null);
+	}
+
+	public function test_schema_rejects_an_index_that_db_delta_does_not_remove(): void {
+		$table = $this->table('removed_index');
+
+		$this->schema->createOrUpdate(new IndexReconciliationTable($table, true));
+		$this->assertTrue($this->schema->hasIndex($table, 'email_unique'));
+
+		$this->expectException(DatabaseException::class);
+		$this->expectExceptionMessage('unexpected index email_unique');
+
+		$this->schema->createOrUpdate(new IndexReconciliationTable($table, false));
 	}
 
 	public function test_schema_rejects_an_unapplied_auto_increment_attribute(): void {

@@ -8,6 +8,7 @@ use StellarWP\Foundation\Database\Contracts\SchemaExecutor;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Table\Column;
+use StellarWP\Foundation\Database\Table\IndexType;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 
 /**
@@ -37,6 +38,7 @@ final readonly class Reconciler
 		$this->executor->execute($this->createTableSql($table, $definition));
 		$this->reconcileComplexDefaults($table, $definition);
 		$this->assertColumnPropertiesMatch($table, $definition);
+		$this->assertIndexesMatch($table, $definition);
 	}
 
 	/**
@@ -179,6 +181,187 @@ final readonly class Reconciler
 			'default'  => $row['Default'],
 			'extra'    => $extra,
 		];
+	}
+
+	/**
+	 * Verify that every declared index, and no undeclared index, exists with the expected type and ordered columns.
+	 *
+	 * @throws DatabaseException When index metadata is invalid or differs from the definition.
+	 */
+	private function assertIndexesMatch(Table $table, TableDefinition $definition): void {
+		$expected    = $this->expectedIndexes($definition);
+		$actual      = $this->physicalIndexes($table);
+		$differences = [];
+
+		foreach ($expected as $name => $index) {
+			if (! isset($actual[$name])) {
+				$differences[] = sprintf('index %s expected %s, found missing', $index['name'], $this->describeIndex($index));
+				continue;
+			}
+
+			if ($index['type'] !== $actual[$name]['type'] || $index['columns'] !== $actual[$name]['columns']) {
+				$differences[] = sprintf(
+					'index %s expected %s, found %s',
+					$index['name'],
+					$this->describeIndex($index),
+					$this->describeIndex($actual[$name])
+				);
+			}
+
+			unset($actual[$name]);
+		}
+
+		foreach ($actual as $index) {
+			$differences[] = sprintf('unexpected index %s found %s', $index['name'], $this->describeIndex($index));
+		}
+
+		if ($differences !== []) {
+			throw new DatabaseException(sprintf(
+				'Database schema reconciliation did not apply the definition for %s: %s.',
+				$this->database->tableName($table),
+				implode('; ', $differences)
+			));
+		}
+	}
+
+	/**
+	 * Normalize the indexes declared by a table definition for comparison with database metadata.
+	 *
+	 * @return array<string, array{name: string, type: string, columns: list<string>}>
+	 */
+	private function expectedIndexes(TableDefinition $definition): array {
+		$indexes = [];
+
+		foreach ($definition->indexes() as $index) {
+			$name = $index->type === IndexType::PRIMARY ? 'PRIMARY' : $index->name;
+
+			$indexes[strtolower($name)] = [
+				'name'    => $name,
+				'type'    => $index->type,
+				'columns' => array_map(strtolower(...), $index->columns),
+			];
+		}
+
+		return $indexes;
+	}
+
+	/**
+	 * Read and normalize the physical indexes reported by MariaDB or MySQL.
+	 *
+	 * @throws DatabaseException When the database returns invalid index metadata.
+	 *
+	 * @return array<string, array{name: string, type: string, columns: list<string>}>
+	 */
+	private function physicalIndexes(Table $table): array {
+		/** @var array<string, array{name: string, type: string, columns: array<int, string>}> $indexes */
+		$indexes = [];
+
+		foreach ($this->database->rows('SHOW INDEX FROM %i', $this->database->tableName($table)) as $row) {
+			$name      = $row['Key_name'] ?? null;
+			$column    = $row['Column_name'] ?? null;
+			$indexType = $row['Index_type'] ?? null;
+			$collation = $row['Collation'] ?? null;
+			$nonUnique = filter_var($row['Non_unique'] ?? null, FILTER_VALIDATE_INT);
+			$sequence  = filter_var($row['Seq_in_index'] ?? null, FILTER_VALIDATE_INT, [
+				'options' => ['min_range' => 1],
+			]);
+
+			if (
+				! is_string($name)
+				|| $name === ''
+				|| ! is_string($column)
+				|| $column === ''
+				|| ! is_string($indexType)
+				|| $indexType === ''
+				|| ($collation !== null && (! is_string($collation) || ! in_array(strtoupper($collation), ['A', 'D'], true)))
+				|| ! in_array($nonUnique, [0, 1], true)
+				|| ! is_int($sequence)
+			) {
+				throw new DatabaseException(sprintf(
+					'Database returned invalid index metadata for %s.',
+					$this->database->tableName($table)
+				));
+			}
+
+			$key               = strtolower($name);
+			$semanticIndexType = strtoupper($indexType);
+			$type              = strcasecmp($name, 'PRIMARY') === 0
+				? IndexType::PRIMARY
+				: (in_array($semanticIndexType, ['FULLTEXT', 'SPATIAL', 'RTREE'], true)
+					? strtolower($semanticIndexType)
+					: ($nonUnique === 0 ? IndexType::UNIQUE : IndexType::KEY));
+
+			if (isset($indexes[$key]) && $indexes[$key]['type'] !== $type) {
+				throw new DatabaseException(sprintf(
+					'Database returned invalid index metadata for %s.%s.',
+					$this->database->tableName($table),
+					$name
+				));
+			}
+
+			$indexes[$key] ??= [
+				'name'    => $name,
+				'type'    => $type,
+				'columns' => [],
+			];
+
+			if (isset($indexes[$key]['columns'][$sequence])) {
+				throw new DatabaseException(sprintf(
+					'Database returned invalid index metadata for %s.%s.',
+					$this->database->tableName($table),
+					$name
+				));
+			}
+
+			$subPart = $row['Sub_part'] ?? null;
+
+			if ($subPart !== null) {
+				$subPart = filter_var($subPart, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+
+				if (! is_int($subPart)) {
+					throw new DatabaseException(sprintf(
+						'Database returned invalid index metadata for %s.%s.',
+						$this->database->tableName($table),
+						$name
+					));
+				}
+
+				$column .= '(' . $subPart . ')';
+			}
+
+			if (strtoupper((string) $collation) === 'D') {
+				$column .= ' DESC';
+			}
+
+			$indexes[$key]['columns'][$sequence] = strtolower($column);
+		}
+
+		foreach ($indexes as &$index) {
+			ksort($index['columns']);
+
+			if (array_keys($index['columns']) !== range(1, count($index['columns']))) {
+				throw new DatabaseException(sprintf(
+					'Database returned invalid index metadata for %s.%s.',
+					$this->database->tableName($table),
+					$index['name']
+				));
+			}
+
+			$index['columns'] = array_values($index['columns']);
+		}
+
+		unset($index);
+
+		return $indexes;
+	}
+
+	/**
+	 * Format one normalized index for a reconciliation error.
+	 *
+	 * @param array{name: string, type: string, columns: list<string>} $index
+	 */
+	private function describeIndex(array $index): string {
+		return sprintf('%s (%s)', strtoupper($index['type']), implode(', ', $index['columns']));
 	}
 
 	/**

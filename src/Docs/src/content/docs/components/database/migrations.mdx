@@ -138,6 +138,12 @@ Migration IDs are permanent, byte-exact identifiers. The generator prefixes them
 
 For later schema changes, update the table's desired definition and create a new migration that applies it. Use `Schema::execute()` only for trusted schema SQL that `dbDelta()` cannot express reliably.
 
+:::caution[Remove or change indexes explicitly]
+WordPress `dbDelta()` can leave removed or changed indexes in place. Foundation verifies index names, uniqueness, ordered columns, and column prefix lengths after reconciliation, and it will not record the migration when the physical indexes differ from the table definition.
+
+Use `Schema::dropIndex()` for removed or changed named secondary indexes, then call `Schema::createOrUpdate()` to apply and verify the final table definition. Primary-key changes and other operations without a focused helper require trusted SQL through `Schema::execute()`.
+:::
+
 For parameterized data changes, inject the `Database` contract into the migration and pass values through WordPress placeholders. For example, `src/Database/Migrations/Backfill_Report_Status.php` can update existing rows without interpolating values into SQL:
 
 ```php title="Backfill_Report_Status.php"

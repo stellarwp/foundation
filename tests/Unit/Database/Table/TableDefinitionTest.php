@@ -180,4 +180,23 @@ final class TableDefinitionTest extends TestCase
 
 		$this->assertContains('Index status_lookup is defined more than once.', $definition->validationErrors());
 	}
+
+	public function test_it_reports_duplicate_index_names_case_insensitively(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+			->string('status')
+			->string('type')
+			->index('Status_Lookup', 'status')
+			->index('status_lookup', 'type');
+
+		$this->assertContains('Index Status_Lookup is defined more than once.', $definition->validationErrors());
+	}
+
+	public function test_it_rejects_primary_as_a_secondary_index_name(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+			->bigIncrements('id')
+			->string('status')
+			->index('PRIMARY', 'status');
+
+		$this->assertContains('The PRIMARY index name is reserved for the primary key.', $definition->validationErrors());
+	}
 }

@@ -12,11 +12,15 @@ use StellarWP\Foundation\Tests\TestCase;
 final class LockTableTest extends TestCase
 {
 	public function test_it_creates_the_lock_table(): void {
-		$database             = new FakeDatabase();
-		$database->rowResults = array_fill(0, 5, ['Null' => 'NO', 'Default' => null, 'Extra' => '']);
-		$executor             = new RecordingSchemaExecutor();
-		$schema               = new DatabaseSchema($database, new Reconciler($database, $executor));
-		$table                = new LockTable('network_foundation_locks');
+		$database                = new FakeDatabase();
+		$database->rowResults    = array_fill(0, 5, ['Null' => 'NO', 'Default' => null, 'Extra' => '']);
+		$database->rowsResults[] = [
+			['Key_name' => 'PRIMARY', 'Non_unique' => 0, 'Seq_in_index' => 1, 'Column_name' => 'name', 'Sub_part' => null, 'Index_type' => 'BTREE', 'Collation' => 'A'],
+			['Key_name' => 'expires_at', 'Non_unique' => 1, 'Seq_in_index' => 1, 'Column_name' => 'expires_at', 'Sub_part' => null, 'Index_type' => 'BTREE', 'Collation' => 'A'],
+		];
+		$executor = new RecordingSchemaExecutor();
+		$schema   = new DatabaseSchema($database, new Reconciler($database, $executor));
+		$table    = new LockTable('network_foundation_locks');
 
 		$schema->createOrUpdate($table);
 

@@ -198,6 +198,11 @@ final class TableDefinition
 				continue;
 			}
 
+			if (strcasecmp($index->name, 'PRIMARY') === 0) {
+				$errors[] = 'The PRIMARY index name is reserved for the primary key.';
+				continue;
+			}
+
 			foreach ($this->indexesByName($index->name) as $duplicate) {
 				if ($duplicate !== $index && $duplicate->type !== IndexType::PRIMARY) {
 					$errors[] = sprintf('Index %s is defined more than once.', $index->name);
@@ -256,7 +261,7 @@ final class TableDefinition
 	private function indexesByName(string $name): array {
 		return array_values(array_filter(
 			$this->indexes,
-			static fn (Index $index): bool => $index->name === $name
+			static fn (Index $index): bool => strcasecmp($index->name, $name) === 0
 		));
 	}
 }

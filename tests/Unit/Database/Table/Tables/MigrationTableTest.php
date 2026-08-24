@@ -17,6 +17,11 @@ final class MigrationTableTest extends TestCase
 			['Null' => 'NO', 'Default' => null, 'Extra' => 'auto_increment'],
 			...array_fill(0, 3, ['Null' => 'NO', 'Default' => null, 'Extra' => '']),
 		];
+		$database->rowsResults[] = [
+			['Key_name' => 'PRIMARY', 'Non_unique' => 0, 'Seq_in_index' => 1, 'Column_name' => 'id', 'Sub_part' => null, 'Index_type' => 'BTREE', 'Collation' => 'A'],
+			['Key_name' => 'migration', 'Non_unique' => 0, 'Seq_in_index' => 1, 'Column_name' => 'migration', 'Sub_part' => null, 'Index_type' => 'BTREE', 'Collation' => 'A'],
+			['Key_name' => 'batch', 'Non_unique' => 1, 'Seq_in_index' => 1, 'Column_name' => 'batch', 'Sub_part' => null, 'Index_type' => 'BTREE', 'Collation' => 'A'],
+		];
 		$executor = new RecordingSchemaExecutor();
 		$schema   = new DatabaseSchema($database, new Reconciler($database, $executor));
 		$table    = new MigrationTable('network_foundation_migrations');
