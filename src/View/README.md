@@ -14,5 +14,5 @@ composer require stellarwp/foundation-view
 
 ## Documentation
 
-See the [Foundation View documentation](https://foundation.stellarwp.com/components/view/)
+See the [Foundation View documentation](https://foundation.nexcess.dev/components/view/)
 for configuration, rendering, runtime directory selection, path safety, and testing.

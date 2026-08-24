@@ -16,5 +16,5 @@ composer require stellarwp/foundation-container
 
 ## Documentation
 
-See the [Foundation Container documentation](https://foundation.stellarwp.com/components/container/)
+See the [Foundation Container documentation](https://foundation.nexcess.dev/components/container/)
 for application setup, bindings, provider collections, lazy callbacks, and testing.

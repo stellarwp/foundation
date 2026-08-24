@@ -15,5 +15,5 @@ composer require stellarwp/foundation-log
 
 ## Documentation
 
-See the [Foundation Log documentation](https://foundation.stellarwp.com/components/log/)
+See the [Foundation Log documentation](https://foundation.nexcess.dev/components/log/)
 for channel configuration, structured logging, failure behavior, and testing.

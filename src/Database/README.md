@@ -15,5 +15,5 @@ composer require stellarwp/foundation-database
 
 ## Documentation
 
-See the [Foundation Database documentation](https://foundation.stellarwp.com/components/database/)
+See the [Foundation Database documentation](https://foundation.nexcess.dev/components/database/)
 for configuration, migrations, query building, database locks, and testing.

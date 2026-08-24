@@ -15,5 +15,5 @@ composer require --dev stellarwp/foundation-cli
 
 ## Documentation
 
-See the [Foundation CLI documentation](https://foundation.stellarwp.com/tooling/foundation-cli/)
+See the [Foundation CLI documentation](https://foundation.nexcess.dev/tooling/foundation-cli/)
 for project generators, stub overrides, Strauss support, custom commands, and monorepo maintenance.

@@ -21,6 +21,6 @@ composer require stellarwp/foundation-shutdown
 
 ## Documentation
 
-See the [Foundation Shutdown documentation](https://foundation.stellarwp.com/components/shutdown/)
+See the [Foundation Shutdown documentation](https://foundation.nexcess.dev/components/shutdown/)
 for provider registration, task contributions, priority ordering, response
 finishing, failure behavior, and testing.

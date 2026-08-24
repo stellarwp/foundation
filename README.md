@@ -5,7 +5,7 @@ Foundation is a StellarWP Composer monorepo of shared PHP infrastructure for Nex
 > [!NOTE]
 > This monorepo splits each package out into their own sub-repository, if you only need a specific component you can install only that specific one.
 
-See the [Foundation documentation](https://foundation.stellarwp.com/) for installation, application architecture, component configuration, and developer tooling.
+See the [Foundation documentation](https://foundation.nexcess.dev/) for installation, application architecture, component configuration, and developer tooling.
 
 ## Repositories
 

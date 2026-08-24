@@ -3,7 +3,7 @@ import { defineConfig } from 'astro/config';
 import starlightThemeNova from 'starlight-theme-nova';
 
 export default defineConfig({
-  site: 'https://foundation.stellarwp.com',
+  site: 'https://foundation.nexcess.dev',
   integrations: [
     starlight({
       title: 'Foundation',

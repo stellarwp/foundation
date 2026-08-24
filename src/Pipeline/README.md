@@ -15,5 +15,5 @@ composer require stellarwp/foundation-pipeline
 
 ## Documentation
 
-See the [Foundation Pipeline documentation](https://foundation.stellarwp.com/components/pipeline/)
+See the [Foundation Pipeline documentation](https://foundation.nexcess.dev/components/pipeline/)
 for pipeline construction, transformations, short circuits, parameters, error handling, and testing.

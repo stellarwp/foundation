@@ -23,6 +23,6 @@ Alternatively, install and enable the PhpRedis extension.
 
 ## Documentation
 
-See the [Foundation Lock guide](https://foundation.stellarwp.com/components/lock/)
+See the [Foundation Lock guide](https://foundation.nexcess.dev/components/lock/)
 for backend selection, Redis configuration, container registration, lease
 handling, failure behavior, and usage examples.

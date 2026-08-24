@@ -14,5 +14,5 @@ composer require stellarwp/foundation-identifier
 
 ## Documentation
 
-See the [Foundation Identifier documentation](https://foundation.stellarwp.com/components/identifier/)
+See the [Foundation Identifier documentation](https://foundation.nexcess.dev/components/identifier/)
 for provider configuration, generation, validation, ordering, and testing.

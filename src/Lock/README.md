@@ -15,6 +15,6 @@ composer require stellarwp/foundation-lock
 
 ## Documentation
 
-See the [Foundation Lock documentation](https://foundation.stellarwp.com/components/lock/)
+See the [Foundation Lock documentation](https://foundation.nexcess.dev/components/lock/)
 for backend selection, configuration, lease handling, failure behavior, usage
 examples, and testing.

@@ -17,6 +17,6 @@ not normally need to install `wp-cli/wp-cli` separately.
 
 ## Documentation
 
-See the [Foundation WP-CLI documentation](https://foundation.stellarwp.com/components/wp-cli/)
+See the [Foundation WP-CLI documentation](https://foundation.nexcess.dev/components/wp-cli/)
 for command generation, provider registration, prefixes, arguments, failure
 behavior, and testing.
