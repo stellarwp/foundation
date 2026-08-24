@@ -45,6 +45,7 @@
         "stellarwp/foundation-lock-redis": "self.version",
         "stellarwp/foundation-log": "self.version",
         "stellarwp/foundation-pipeline": "self.version",
+        "stellarwp/foundation-shutdown": "self.version",
         "stellarwp/foundation-wpcli": "self.version"
     },
     "minimum-stability": "dev",
@@ -59,6 +60,7 @@
             "StellarWP\\Foundation\\Lock\\": "src/Lock/",
             "StellarWP\\Foundation\\Log\\": "src/Log/",
             "StellarWP\\Foundation\\Pipeline\\": "src/Pipeline/",
+            "StellarWP\\Foundation\\Shutdown\\": "src/Shutdown/",
             "StellarWP\\Foundation\\WPCli\\": "src/WPCli/"
         },
         "exclude-from-classmap": [
