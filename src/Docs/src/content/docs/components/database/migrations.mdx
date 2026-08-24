@@ -134,7 +134,7 @@ final readonly class Create_Reports_Table implements Migration {
 }
 ```
 
-Migration IDs are permanent, byte-exact identifiers. The generator prefixes them with a sortable timestamp so migrations contributed by separate providers run in a predictable order. Do not change an ID after the migration has been deployed.
+Migration IDs are permanent, byte-exact identifiers. The generator prefixes them with a sortable timestamp so migration history is easy to inspect, but execution follows provider contribution order rather than sorting by ID. Register providers and migrations in dependency order, and do not change an ID after the migration has been deployed.
 
 For later schema changes, update the table's desired definition and create a new migration that applies it. Use `Schema::execute()` for data changes or schema operations that `dbDelta()` cannot express reliably.
 
@@ -166,7 +166,7 @@ Running the command without an operation displays migration status:
 wp your-plugin migrate
 ```
 
-The runner acquires the configured migration lock, executes pending migrations in ID order, and records each successful migration in one batch.
+The runner acquires the configured migration lock, executes pending migrations in provider contribution order, and records each successful migration in one batch.
 
 ### Roll back or rebuild
 
