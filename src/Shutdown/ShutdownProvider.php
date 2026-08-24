@@ -14,15 +14,17 @@ use StellarWP\Foundation\Shutdown\Contracts\ShutdownRunner as ShutdownRunnerCont
  */
 final class ShutdownProvider extends Provider
 {
-	public const string TASKS       = self::class . '.tasks';
-	private const string REGISTERED = self::class . '.registered';
+	public const string TASKS = self::class . '.tasks';
+
+	private bool $registered = false;
 
 	public function register(): void {
-		if ($this->container->has(self::REGISTERED)) {
+		// DI52 may register the provider repeatedly, but its definitions and WordPress hook must be added only once.
+		if ($this->registered) {
 			return;
 		}
 
-		$this->container->singleton(self::REGISTERED, true);
+		$this->registered = true;
 
 		$this->container->when(ShutdownRunner::class)
 			->needs('$tasks')
