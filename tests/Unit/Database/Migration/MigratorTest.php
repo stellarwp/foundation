@@ -201,9 +201,10 @@ final class MigratorTest extends TestCase
 	 * @return array{Migrator, InMemoryRepository, RecordingSchema}
 	 */
 	private function newMigrator(?Lock $lock = null, bool $initialize = true): array {
+		$lock ??= new InMemoryLock(new SystemClock());
+
 		$schema         = new RecordingSchema();
 		$repository     = new InMemoryRepository();
-		$lock           ??= new InMemoryLock(new SystemClock());
 		$migrationTable = new MigrationTable('wp_nx_foundation_migrations');
 		$lockTable      = new LockTable('wp_nx_foundation_locks');
 		$store          = new Store($schema, $lock, $migrationTable, $lockTable);
