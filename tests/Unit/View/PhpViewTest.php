@@ -34,10 +34,10 @@ final class PhpViewTest extends TestCase
 		);
 	}
 
-	public function test_it_renders_a_nested_view_name(): void {
+	public function test_it_renders_a_view_from_a_nested_directory(): void {
 		$view = new PhpView($this->data_dir('View/default'));
 
-		$this->assertSame('<p>Nested view</p>' . PHP_EOL, $view->render('admin/product-summary'));
+		$this->assertSame('<p>Product summary</p>' . PHP_EOL, $view->render('admin/product-summary'));
 	}
 
 	public function test_it_returns_a_new_renderer_for_a_runtime_directory_without_mutating_the_original(): void {

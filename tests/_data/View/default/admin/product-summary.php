@@ -1,1 +1,1 @@
-<p>Nested view</p>
+<p>Product summary</p>
