@@ -35,7 +35,7 @@ use StellarWP\Foundation\Container\Contracts\Provider;
  */
 final class CliProvider extends Provider
 {
-	public const string ROOT_PATH = 'foundation.cli.root_path';
+	public const string ROOT_PATH = self::class . '.root_path';
 
 	public function register(): void {
 		$this->container->singleton(self::ROOT_PATH, getcwd() ?: dirname(__DIR__, 2));

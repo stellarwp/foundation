@@ -24,7 +24,7 @@ use StellarWP\Foundation\Log\Handlers\NullHandler;
  */
 final class LogProvider extends Provider
 {
-	public const string LOG_LEVEL        = 'foundation.log.log_level';
+	public const string LOG_LEVEL        = self::class . '.log_level';
 	public const string CHANNEL_ERRORLOG = 'errorlog';
 	private const string CHANNEL_CONSOLE = 'console';
 	private const string CHANNEL_NULL    = 'null';

@@ -31,11 +31,11 @@ final class DatabaseProvider extends Provider
 {
 	use ResolvesFoundationPrefix;
 
-	public const string MIGRATIONS       = 'foundation.database.migrations';
-	public const string MIGRATIONS_TABLE = 'foundation.database.migrations_table';
-	public const string LOCKS_TABLE      = 'foundation.database.locks_table';
-	public const string LOCK_NAME        = 'foundation.database.lock_name';
-	public const string LOCK_TTL         = 'foundation.database.lock_ttl';
+	public const string MIGRATIONS       = self::class . '.migrations';
+	public const string MIGRATIONS_TABLE = self::class . '.migrations_table';
+	public const string LOCKS_TABLE      = self::class . '.locks_table';
+	public const string LOCK_NAME        = self::class . '.lock_name';
+	public const string LOCK_TTL         = self::class . '.lock_ttl';
 
 	/**
 	 * @throws InvalidArgumentException When the configured Foundation prefix is invalid.

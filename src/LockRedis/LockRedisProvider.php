@@ -13,7 +13,7 @@ use StellarWP\Foundation\Lock\SystemClock;
  */
 final class LockRedisProvider extends Provider
 {
-	public const string PREFIX = 'foundation.lock_redis.prefix';
+	public const string PREFIX = self::class . '.prefix';
 
 	/**
 	 * @throws InvalidArgumentException When the required Redis lock prefix is not configured.

@@ -19,7 +19,7 @@ final class WPCliProvider extends Provider
 {
 	use ResolvesFoundationPrefix;
 
-	public const string COMMANDS = 'foundation.wpcli.commands';
+	public const string COMMANDS = self::class . '.commands';
 
 	/**
 	 * @throws InvalidArgumentException When the configured Foundation prefix is invalid.
