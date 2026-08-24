@@ -140,7 +140,6 @@ final class Provider extends Service_Provider {
 
 	public function register(): void {
 		$this->register_cache_writer();
-		$this->register_shutdown_task();
 	}
 
 	private function register_cache_writer(): void {
@@ -151,9 +150,7 @@ final class Provider extends Service_Provider {
 		$this->container->when( Product_Cache_Writer::class )
 			->needs( '$ttl' )
 			->give( (int) $this->config->get( 'product_cache.ttl', 300 ) );
-	}
 
-	private function register_shutdown_task(): void {
 		$this->container->mergeArrayVar(
 			ShutdownProvider::TASKS,
 			static fn ( C $c ): array => [
