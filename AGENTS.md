@@ -126,6 +126,8 @@ Split packages live in `src/<Package>/` and are split to read-only repositories 
 
 `stellarwp/foundation-database` is a WordPress-backed database package. Keep its runtime implementation centered on `wpdb`, `dbDelta()`, WordPress table prefixes, and WP-CLI integration. If the project later needs file storage, Redis storage, PDO database support, or another non-WordPress backend, prefer a separate package or explicit driver package instead of making `foundation-database` a generic DBAL-style abstraction.
 
+Foundation Database stores logical table names and resolves physical names through `DatabaseScope` using the active WordPress site on every access. The same container and database services may be reused after `switch_to_blog()` between complete `Migrator` calls. Each migration operation must capture its starting scope and reject a context change before lock renewal, ledger writes, or lock release; when the context is uncertain, leave the original lock to expire rather than touching another site's lock table. Migrations must not return in a different blog context. Keep developer-authored `Migration` and `Schema` contracts independent of site scope so a future network-wide implementation can use `$wpdb->base_prefix` and network-specific state without requiring migration rewrites.
+
 When adding a new split package, set its package `composer.json` PHP constraint to `>=8.3` unless the user explicitly says otherwise. PHP 7.4 release compatibility will be handled later by an automated Rector downgrade workflow, not by lowering the package PHP constraint during development.
 
 When adding external dependencies for split packages, choose version constraints whose package line supports PHP 7.4. Use `>=` constraints for those dependencies instead of caret constraints when preserving the PHP 7.4-compatible floor matters. For example, use a Symfony component version such as `>=5.4` rather than a newer line that requires PHP 8+.
@@ -237,6 +239,8 @@ Codeception tests run through SLIC. Use SLIC 2.3.0 or newer so PCOV-backed cover
 GitHub workflows should check out SLIC from `main`; do not pin SLIC to a release tag or commit.
 
 Test suite meanings: `Unit` is isolated class/package behavior, `Feature` is Foundation feature behavior without bootstrapping WordPress, `redis` is real Redis behavior shared across packages and run against SLIC's Redis service, `integration` is multi-provider/container behavior that may require WordPress runtime APIs such as hooks, `wpdb`, `dbDelta()`, or globals, `wpunit` is lower-level WordPress-loaded behavior through wp-browser, and `wpcli` is the shared monorepo suite for testing WP-CLI commands through wp-browser's WPCLI module. If a PHPUnit test uses `#[DataProvider]` and must run under Codeception, also include the matching `@dataProvider` docblock because Codeception's PHPUnit loader reads docblock providers for these tests.
+
+The `integration` suite boots WordPress in multisite mode so cross-provider behavior can exercise real site creation and `switch_to_blog()` lifecycles.
 
 Use `integration` for behavior where multiple providers/packages must be registered together to prove the container graph works. Use `wpunit` for a single package/class where the main concern is direct WordPress API behavior. Use `wpcli` for real WP-CLI command execution shared across packages. Keep unit tests focused on portable package behavior and pure collaborators; do not build large fake WordPress runtimes in unit tests when the behavior can be covered with wp-browser.
 

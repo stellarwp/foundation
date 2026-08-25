@@ -12,8 +12,10 @@ use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\InMemoryLock;
 use StellarWP\Foundation\Lock\SystemClock;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\InMemoryRepository;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchema;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestDatabaseScope;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
 use StellarWP\Foundation\Tests\TestCase;
 use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
@@ -30,11 +32,13 @@ final class MigrateTest extends TestCase
 
 		$this->loadWpCliUtilities();
 
-		$migrationTable = new MigrationTable('wp_nx_foundation_migrations');
+		$scope          = new TestDatabaseScope();
+		$database       = new FakeDatabase();
+		$migrationTable = new MigrationTable('nx_foundation_migrations', $database);
 		$repository     = new InMemoryRepository();
 		$schema         = new RecordingSchema();
 		$lock           = new InMemoryLock(new SystemClock());
-		$store          = new Store($schema, $lock, $migrationTable, new LockTable('wp_nx_foundation_locks'));
+		$store          = new Store($schema, $scope, $lock, $migrationTable, new LockTable('nx_foundation_locks', $database));
 		$command        = new Migrate(
 			$this->container,
 			new CommandPrefix('foundation'),
@@ -204,11 +208,13 @@ final class MigrateTest extends TestCase
 	private function newCommand(): array {
 		$this->loadWpCliUtilities();
 
+		$scope          = new TestDatabaseScope();
+		$database       = new FakeDatabase();
 		$wpSchema       = new RecordingSchema();
 		$repository     = new InMemoryRepository();
-		$migrationTable = new MigrationTable('wp_nx_foundation_migrations');
+		$migrationTable = new MigrationTable('nx_foundation_migrations', $database);
 		$lock           = new InMemoryLock(new SystemClock());
-		$store          = new Store($wpSchema, $lock, $migrationTable, new LockTable('wp_nx_foundation_locks'));
+		$store          = new Store($wpSchema, $scope, $lock, $migrationTable, new LockTable('nx_foundation_locks', $database));
 		$command        = new Migrate(
 			$this->container,
 			new CommandPrefix('foundation'),

@@ -95,6 +95,10 @@ Database-backed locks have these operational constraints:
 - Every contender must read and write through the same primary database. Replica reads can report stale ownership.
 - The TTL must exceed the protected operation, or the owner must refresh the token before it expires.
 
+:::caution[Keep each lock token in one site context]
+On multisite, acquire, refresh, and release a database lock without changing the active blog. `DatabaseLock` resolves its table from the current `$wpdb->prefix`; attempting to refresh or release a token after `switch_to_blog()` fails closed and leaves the original site's lease to expire.
+:::
+
 :::caution[Keep database and remote guarantees separate]
 A database lock prevents cooperating application processes from overlapping while its lease is valid. It cannot guarantee exactly-once behavior in a remote payment or messaging API. Use the remote system's idempotency key as well.
 :::

@@ -57,7 +57,7 @@ foundation/stubs/database/migration.stub
 
 ### Define the table
 
-The generated `src/Database/Tables/Reports_Table.php` owns its physical name and desired schema. `Database::tableName()` applies the current WordPress table prefix.
+The generated `src/Database/Tables/Reports_Table.php` owns its logical name and desired schema. `Database::tableName()` applies the current WordPress table prefix.
 
 ```php title="Reports_Table.php"
 <?php declare(strict_types=1);
@@ -203,6 +203,8 @@ wp your-plugin migrate --initialize
 ```
 
 Run this idempotent command during every deployment. Replace `your-plugin` with the configured command prefix; applications using the default prefix run `wp nx migrate --initialize`.
+
+On WordPress multisite, run the command once for each site by passing WP-CLI's `--url` global argument. Each site owns its migration ledger and lock table. See [Use database services on multisite](/components/database/#use-database-services-on-multisite) before migrating from code that calls `switch_to_blog()`.
 
 ### Apply pending migrations
 

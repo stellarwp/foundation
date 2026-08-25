@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\Database\Migration;
 
 use Closure;
 use InvalidArgumentException;
+use StellarWP\Foundation\Database\Contracts\DatabaseScope;
 use StellarWP\Foundation\Database\Contracts\Schema;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
@@ -28,6 +29,7 @@ final readonly class Store
 	 */
 	public function __construct(
 		private Schema $schema,
+		private DatabaseScope $scope,
 		private Lock $lock,
 		private MigrationTable $migrationTable,
 		private LockTable $lockTable,
@@ -51,11 +53,13 @@ final readonly class Store
 	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
 	 */
 	public function initialize(): void {
+		$scopeId = $this->scope->capture();
+
 		$this->schema->createOrUpdate($this->lockTable);
 
 		$this->withLock(function (): void {
 			$this->schema->createOrUpdate($this->migrationTable);
-		});
+		}, $scopeId);
 	}
 
 	/**
@@ -105,17 +109,23 @@ final readonly class Store
 	 * @return T
 	 */
 	public function withMigrationLock(callable $operation): mixed {
+		$scopeId = $this->scope->capture();
+
 		// Migration lock storage must exist before lock acquisition.
-		if (! $this->schema->hasTable($this->lockTable)) {
+		$hasLockTable = $this->schema->hasTable($this->lockTable);
+		$this->scope->assertCurrent($scopeId);
+
+		if (! $hasLockTable) {
 			throw new UninitializedStore();
 		}
 
-		return $this->withLock(function (Closure $renewLock) use ($operation): mixed {
+		return $this->withLock(function (Closure $renewLock) use ($operation, $scopeId): mixed {
 			// The ledger may have changed before this process acquired the lock.
 			$this->assertInitialized();
+			$this->scope->assertCurrent($scopeId);
 
 			return $operation($this->schema, $renewLock);
-		});
+		}, $scopeId);
 	}
 
 	/**
@@ -139,6 +149,7 @@ final readonly class Store
 	 * @template T
 	 *
 	 * @param callable(Closure(): void): T $operation
+	 * @param int                          $scopeId   The database scope captured when the operation started.
 	 *
 	 * @throws DatabaseException        When migration storage access fails.
 	 * @throws MigrationLockFailed      When the lock cannot be acquired, renewed, or released.
@@ -146,15 +157,19 @@ final readonly class Store
 	 *
 	 * @return T
 	 */
-	private function withLock(callable $operation): mixed {
+	private function withLock(callable $operation, int $scopeId): mixed {
+		$this->scope->assertCurrent($scopeId);
 		$token = $this->lock->acquire($this->lockName, $this->lockTtl);
+		$this->scope->assertCurrent($scopeId);
 
 		if ($token === null) {
 			throw MigrationLockFailed::forLock($this->lockName);
 		}
 
-		$renewLock = function () use (&$token): void {
+		$renewLock = function () use (&$token, $scopeId): void {
+			$this->scope->assertCurrent($scopeId);
 			$refreshed = $this->lock->refresh($token, $this->lockTtl);
+			$this->scope->assertCurrent($scopeId);
 
 			if ($refreshed === null) {
 				throw MigrationLockFailed::forLostOwnership($this->lockName);
@@ -167,15 +182,20 @@ final readonly class Store
 			$result = $operation($renewLock);
 		} catch (Throwable $failure) {
 			try {
+				$this->scope->assertCurrent($scopeId);
 				$this->lock->release($token);
 			} catch (Throwable) {
-				// Preserve the primary migration failure when cleanup also fails.
+				// Preserve the primary failure and let the original lock expire when its scope is uncertain.
 			}
 
 			throw $failure;
 		}
 
-		if (! $this->lock->release($token)) {
+		$this->scope->assertCurrent($scopeId);
+		$released = $this->lock->release($token);
+		$this->scope->assertCurrent($scopeId);
+
+		if (! $released) {
 			throw MigrationLockFailed::forUnconfirmedOwnership($this->lockName);
 		}
 

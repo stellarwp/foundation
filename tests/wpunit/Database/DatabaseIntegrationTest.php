@@ -21,6 +21,7 @@ use StellarWP\Foundation\Database\Migration\Repository;
 use StellarWP\Foundation\Database\Schema;
 use StellarWP\Foundation\Database\Schema\DbDelta;
 use StellarWP\Foundation\Database\Schema\Reconciler;
+use StellarWP\Foundation\Database\Scope\SiteScope;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
@@ -53,7 +54,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 			throw new RuntimeException('WordPress must be loaded before running database integration tests.');
 		}
 
-		$this->database = new Database($GLOBALS['wpdb']);
+		$this->database = new Database($GLOBALS['wpdb'], new SiteScope($GLOBALS['wpdb']));
 		$this->schema   = new Schema($this->database, new Reconciler($this->database, new DbDelta()));
 	}
 
@@ -89,6 +90,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 		);
 
 		$this->assertSame($GLOBALS['wpdb']->prefix . 'example', $this->database->tableName('example'));
+		$this->assertSame($GLOBALS['wpdb']->prefix . 'wp_reports', $this->database->tableName('wp_reports'));
 		$this->assertSame(['name' => 'first'], $this->database->row(sprintf(
 			'SELECT name FROM %s WHERE id = 1',
 			$this->database->quoteIdentifier($table)
@@ -102,7 +104,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 		)));
 		$this->assertSame([
 			['name' => 'first'],
-		], $this->database->table($table)->select('name')->where('id', '=', 1)->get());
+		], $this->database->table(new TestTable('database_table', $table))->select('name')->where('id', '=', 1)->get());
 	}
 
 	public function test_database_rejects_table_names_beyond_the_mysql_identifier_limit(): void {
@@ -124,7 +126,8 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	public function test_database_crud_helpers_and_schema_inspection_use_wordpress(): void {
-		$table = $this->table('crud');
+		$table       = $this->table('crud');
+		$tableObject = new TestTable('crud_table', $table);
 
 		$this->database->execute(sprintf(
 			'CREATE TABLE %s (
@@ -138,22 +141,22 @@ final class DatabaseIntegrationTest extends WPTestCase
 			$this->database->charsetCollate()
 		));
 
-		$this->assertTrue($this->database->tableExists($table));
-		$this->assertTrue($this->database->columnExists($table, 'status'));
-		$this->assertTrue($this->database->indexExists($table, 'status'));
-		$this->assertFalse($this->database->columnExists($table, 'missing'));
-		$this->assertFalse($this->database->indexExists($table, 'missing'));
+		$this->assertTrue($this->database->tableExists($tableObject));
+		$this->assertTrue($this->database->columnExists($tableObject, 'status'));
+		$this->assertTrue($this->database->indexExists($tableObject, 'status'));
+		$this->assertFalse($this->database->columnExists($tableObject, 'missing'));
+		$this->assertFalse($this->database->indexExists($tableObject, 'missing'));
 
-		$id = $this->database->insertGetId($table, [
+		$id = $this->database->insertGetId($tableObject, [
 			'name'   => 'draft report',
 			'status' => 'draft',
 		]);
 
 		$this->assertGreaterThan(0, $id);
 		$this->assertSame('draft', $this->database->value('SELECT status FROM %i WHERE id = %d', $table, $id));
-		$this->assertSame(1, $this->database->update($table, ['status' => 'published'], ['id' => $id]));
+		$this->assertSame(1, $this->database->update($tableObject, ['status' => 'published'], ['id' => $id]));
 		$this->assertSame('published', $this->database->value('SELECT status FROM %i WHERE id = %d', $table, $id));
-		$this->assertSame(1, $this->database->delete($table, ['id' => $id]));
+		$this->assertSame(1, $this->database->delete($tableObject, ['id' => $id]));
 		$this->assertSame('0', (string) $this->database->value('SELECT COUNT(*) FROM %i', $table));
 	}
 
@@ -170,7 +173,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 			$this->database->charsetCollate()
 		));
 
-		$this->assertSame(1, $this->database->insert($table, [
+		$this->assertSame(1, $this->database->insert(new TestTable('string_ids_table', $table), [
 			'id'   => '01J2Z3Y4X5W6V7T8S9R0Q1P2N3',
 			'name' => 'report',
 		]));
@@ -241,33 +244,34 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	public function test_schema_creates_inspects_and_changes_tables_through_wordpress(): void {
-		$table  = $this->table('schema');
-		$schema = $this->schema;
+		$table       = $this->table('schema');
+		$tableObject = new TestTable('schema_table', $table);
+		$schema      = $this->schema;
 
-		$schema->createOrUpdate(new TestTable('schema_table', $table));
+		$schema->createOrUpdate($tableObject);
 		$schema->execute(sprintf(
 			'ALTER TABLE %s ADD KEY %s (%s)',
 			$this->database->quoteIdentifier($table),
 			$this->database->quoteIdentifier('name'),
 			$this->database->quoteIdentifier('id')
 		));
-		$this->assertTrue($schema->hasTable($table));
-		$this->assertTrue($schema->hasIndex($table, 'name'));
+		$this->assertTrue($schema->hasTable($tableObject));
+		$this->assertTrue($schema->hasIndex($tableObject, 'name'));
 
-		$schema->dropIndex($table, 'name');
+		$schema->dropIndex($tableObject, 'name');
 
-		$this->assertFalse($schema->hasIndex($table, 'name'));
+		$this->assertFalse($schema->hasIndex($tableObject, 'name'));
 
 		$schema->execute(sprintf(
 			'DROP TABLE IF EXISTS %s',
 			$this->database->quoteIdentifier($table)
 		));
 
-		$this->assertFalse($schema->hasTable($table));
+		$this->assertFalse($schema->hasTable($tableObject));
 	}
 
 	public function test_schema_creates_queue_style_table_definitions_through_wordpress(): void {
-		$table  = $this->table('queue_schema');
+		$table  = $this->logicalTable('queue_schema');
 		$schema = $this->schema;
 		$queue  = new class($this->database, $table) implements Table {
 			public function __construct(
@@ -385,10 +389,11 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	public function test_schema_rejects_an_index_that_db_delta_does_not_remove(): void {
-		$table = $this->table('removed_index');
+		$table      = $this->table('removed_index');
+		$definition = new IndexReconciliationTable($table, true);
 
-		$this->schema->createOrUpdate(new IndexReconciliationTable($table, true));
-		$this->assertTrue($this->schema->hasIndex($table, 'email_unique'));
+		$this->schema->createOrUpdate($definition);
+		$this->assertTrue($this->schema->hasIndex($definition, 'email_unique'));
 
 		$this->expectException(DatabaseException::class);
 		$this->expectExceptionMessage('unexpected index email_unique');
@@ -417,10 +422,11 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	public function test_migration_repository_persists_records_in_wordpress(): void {
-		$table          = $this->table('migrations');
+		$tableName      = $this->logicalTable('migrations');
+		$table          = $this->database->tableName($tableName);
 		$schema         = $this->schema;
-		$migrationTable = new MigrationTable($table);
-		$repository     = new Repository($this->database, $table);
+		$migrationTable = new MigrationTable($tableName, $this->database);
+		$repository     = new Repository($this->database, $migrationTable);
 
 		$this->assertFalse($schema->hasTable($migrationTable));
 
@@ -454,10 +460,11 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	public function test_database_lock_coordinates_ownership_in_wordpress(): void {
-		$table     = $this->table('locks');
+		$tableName = $this->logicalTable('locks');
+		$table     = $this->database->tableName($tableName);
 		$wpSchema  = $this->schema;
-		$lockTable = new LockTable($table);
-		$lock      = new DatabaseLock($this->database, $table);
+		$lockTable = new LockTable($tableName, $this->database);
+		$lock      = new DatabaseLock($this->database, $lockTable);
 
 		$this->assertFalse($wpSchema->hasTable($lockTable));
 
@@ -481,10 +488,11 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	public function test_database_lock_replaces_expired_ownership_without_allowing_the_previous_owner_to_release_it(): void {
-		$table     = $this->table('expired_locks');
+		$tableName = $this->logicalTable('expired_locks');
+		$table     = $this->database->tableName($tableName);
 		$wpSchema  = $this->schema;
-		$lockTable = new LockTable($table);
-		$lock      = new DatabaseLock($this->database, $table);
+		$lockTable = new LockTable($tableName, $this->database);
+		$lock      = new DatabaseLock($this->database, $lockTable);
 
 		$wpSchema->createOrUpdate($lockTable);
 
@@ -510,10 +518,11 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	public function test_database_lock_compares_names_and_owners_by_exact_bytes(): void {
-		$table     = $this->table('exact_locks');
+		$tableName = $this->logicalTable('exact_locks');
+		$table     = $this->database->tableName($tableName);
 		$wpSchema  = $this->schema;
-		$lockTable = new LockTable($table);
-		$lock      = new DatabaseLock($this->database, $table);
+		$lockTable = new LockTable($tableName, $this->database);
+		$lock      = new DatabaseLock($this->database, $lockTable);
 
 		$wpSchema->createOrUpdate($lockTable);
 
@@ -538,9 +547,10 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	public function test_lock_table_reconciles_an_existing_previous_definition(): void {
-		$table     = $this->table('previous_lock_schema');
+		$tableName = $this->logicalTable('previous_lock_schema');
+		$table     = $this->database->tableName($tableName);
 		$wpSchema  = $this->schema;
-		$lockTable = new LockTable($table);
+		$lockTable = new LockTable($tableName, $this->database);
 
 		$this->database->execute(sprintf(
 			'CREATE TABLE %s (
@@ -570,9 +580,10 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	public function test_migration_table_reconciles_case_insensitive_identifiers(): void {
-		$table          = $this->table('previous_migration_schema');
+		$tableName      = $this->logicalTable('previous_migration_schema');
+		$table          = $this->database->tableName($tableName);
 		$wpSchema       = $this->schema;
-		$migrationTable = new MigrationTable($table);
+		$migrationTable = new MigrationTable($tableName, $this->database);
 
 		$this->database->execute(sprintf(
 			'CREATE TABLE %s (
@@ -602,22 +613,26 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 		$container->register(DatabaseProvider::class);
 
-		$this->assertSame($GLOBALS['wpdb']->prefix . 'nx_foundation_migrations', $container->get(DatabaseProvider::MIGRATIONS_TABLE));
-		$this->assertSame($GLOBALS['wpdb']->prefix . 'nx_foundation_locks', $container->get(DatabaseProvider::LOCKS_TABLE));
+		$this->assertSame('nx_foundation_migrations', $container->get(DatabaseProvider::MIGRATIONS_TABLE));
+		$this->assertSame('nx_foundation_locks', $container->get(DatabaseProvider::LOCKS_TABLE));
 		$this->assertInstanceOf(Database::class, $container->get(Database::class));
 		$this->assertInstanceOf(Database::class, $container->get(DatabaseContract::class));
 		$this->assertInstanceOf(Schema::class, $container->get(Schema::class));
-		$this->assertInstanceOf(MigrationTable::class, $container->get(MigrationTable::class));
-		$this->assertInstanceOf(LockTable::class, $container->get(LockTable::class));
+		$this->assertSame($GLOBALS['wpdb']->prefix . 'nx_foundation_migrations', $container->get(MigrationTable::class)->name());
+		$this->assertSame($GLOBALS['wpdb']->prefix . 'nx_foundation_locks', $container->get(LockTable::class)->name());
 		$this->assertInstanceOf(Repository::class, $container->get(MigrationRecordRepositoryContract::class));
 		$this->assertInstanceOf(Migrator::class, $container->get(Migrator::class));
 		$this->assertFalse($container->has(Lock::class));
 	}
 
 	private function table(string $suffix): string {
-		$table = $GLOBALS['wpdb']->prefix . 'foundation_' . $suffix . '_' . str_replace('.', '_', uniqid('', true));
+		return $this->database->tableName($this->logicalTable($suffix));
+	}
 
-		$this->tables[] = $table;
+	private function logicalTable(string $suffix): string {
+		$table = 'foundation_' . $suffix . '_' . str_replace('.', '_', uniqid('', true));
+
+		$this->tables[] = $this->database->tableName($table);
 
 		return $table;
 	}

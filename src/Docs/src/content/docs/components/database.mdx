@@ -97,11 +97,47 @@ return [
 ];
 ```
 
-Leave table names empty to use the scoped defaults. An overridden table name is the complete physical name and must include the WordPress table prefix itself. All physical table names must fit MySQL's 64-character identifier limit.
+Leave table names empty to use the scoped defaults. Override values are logical names without a WordPress table prefix; the active database scope applies the correct site prefix. For example, `your_plugin_migrations` becomes `wp_2_your_plugin_migrations` on site 2 of a typical multisite installation. All resulting physical table names must fit MySQL's 64-character identifier limit.
 
 The migration lock settings coordinate migration execution only. Applications selecting `DatabaseLock` for their own work choose each lock name and TTL when calling `acquire()`.
 
 Set `database.lock_ttl` longer than the longest uninterrupted operation between renewals. Foundation renews the migration lock immediately before and after every `up()` and `down()` call, but it cannot renew the lease while a blocking migration method or ledger update is still running. Split unusually long work into separate migrations or increase `FOUNDATION_DATABASE_LOCK_TTL` before deployment.
+
+### Use database services on multisite
+
+Foundation resolves migration and lock table names from the active WordPress site's `$wpdb->prefix` whenever they are used. You can therefore reuse the same container and `Migrator` while iterating over sites, provided each migration operation completes before the blog changes:
+
+```php title="Migrate_Network.php"
+foreach ( $site_ids as $site_id ) {
+	switch_to_blog( $site_id );
+
+	try {
+		$migrator->initialize();
+		$migrator->run();
+	} finally {
+		restore_current_blog();
+	}
+}
+```
+
+Each `initialize()`, `run()`, `rollback()`, `refresh()`, and `dropStore()` operation captures the active blog ID when it starts. Foundation confirms that context before renewing the migration lock, writing to the ledger, and releasing the lock.
+
+:::caution[Do not leave a migration in another blog context]
+A migration may temporarily call `switch_to_blog()` only if it restores the original blog before returning. If the context changes during an operation, Foundation aborts and leaves the original lock to expire instead of risking a write to another site's ledger or lock table.
+:::
+
+WP-CLI can also select each site without an in-process loop:
+
+```shell
+wp --url=https://site.example your-plugin migrate --initialize
+wp --url=https://site.example your-plugin migrate --run
+```
+
+Applications that create sites dynamically can use WordPress's `wp_initialize_site` action to schedule the same initialization and migration workflow. Do not run migrations during every normal request.
+
+:::note[Network-wide migrations]
+Foundation Database currently manages site-specific migration state. It does not provide a network-wide migration ledger for shared global tables.
+:::
 
 ### Register the providers
 

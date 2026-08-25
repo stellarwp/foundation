@@ -8,6 +8,7 @@ use StellarWP\Foundation\Database\Contracts\Migration;
 use StellarWP\Foundation\Database\Contracts\Repository;
 use StellarWP\Foundation\Database\Contracts\Schema;
 use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Exceptions\DatabaseContextChanged;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\MigrationFailed;
 use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
@@ -24,9 +25,12 @@ use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use StellarWP\Foundation\Lock\InMemoryLock;
 use StellarWP\Foundation\Lock\LockToken;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\ContextChangingMigration;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FailingMigration;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\InMemoryRepository;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchema;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestDatabaseScope;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
 use StellarWP\Foundation\Tests\Support\Fixtures\Lock\MutableClock;
 use StellarWP\Foundation\Tests\TestCase;
@@ -41,6 +45,10 @@ final class MigratorExecutionTest extends TestCase
 
 	private InMemoryLock $lock;
 
+	private TestDatabaseScope $scope;
+
+	private FakeDatabase $database;
+
 	protected function setUp(): void {
 		parent::setUp();
 
@@ -48,12 +56,15 @@ final class MigratorExecutionTest extends TestCase
 		$this->schema     = new RecordingSchema();
 		$this->clock      = new MutableClock(new DateTimeImmutable('2026-01-01 00:00:00'));
 		$this->lock       = new InMemoryLock($this->clock);
+		$this->scope      = new TestDatabaseScope();
+		$this->database   = new FakeDatabase();
 
 		(new Store(
 			$this->schema,
+			$this->scope,
 			$this->lock,
-			new MigrationTable('wp_nx_foundation_migrations'),
-			new LockTable('wp_nx_foundation_locks')
+			new MigrationTable('nx_foundation_migrations', $this->database),
+			new LockTable('nx_foundation_locks', $this->database)
 		))->initialize();
 
 		$this->schema->statements = [];
@@ -65,9 +76,10 @@ final class MigratorExecutionTest extends TestCase
 
 		new Store(
 			$this->schema,
+			$this->scope,
 			$this->lock,
-			new MigrationTable('wp_nx_foundation_migrations'),
-			new LockTable('wp_nx_foundation_locks'),
+			new MigrationTable('nx_foundation_migrations', $this->database),
+			new LockTable('nx_foundation_locks', $this->database),
 			lockName: '   '
 		);
 	}
@@ -78,9 +90,10 @@ final class MigratorExecutionTest extends TestCase
 
 		new Store(
 			$this->schema,
+			$this->scope,
 			$this->lock,
-			new MigrationTable('wp_nx_foundation_migrations'),
-			new LockTable('wp_nx_foundation_locks'),
+			new MigrationTable('nx_foundation_migrations', $this->database),
+			new LockTable('nx_foundation_locks', $this->database),
 			lockTtl: 0
 		);
 	}
@@ -491,6 +504,22 @@ final class MigratorExecutionTest extends TestCase
 		)->run();
 	}
 
+	public function test_it_reports_a_scope_change_before_lock_contention(): void {
+		$lock = $this->createMock(Lock::class);
+		$lock->expects($this->once())
+			->method('acquire')
+			->willReturnCallback(function (): null {
+				$this->scope->currentId = 2;
+
+				return null;
+			});
+		$lock->expects($this->never())->method('release');
+
+		$this->expectException(DatabaseContextChanged::class);
+
+		$this->migrator(new Collection(), lock: $lock)->run();
+	}
+
 	public function test_it_propagates_lock_acquisition_failures_with_the_configured_policy(): void {
 		$lock = $this->createMock(Lock::class);
 		$lock->expects($this->once())
@@ -618,9 +647,10 @@ final class MigratorExecutionTest extends TestCase
 
 		$store = new Store(
 			$storeSchema,
+			$this->scope,
 			$this->lock,
-			new MigrationTable('wp_nx_foundation_migrations'),
-			new LockTable('wp_nx_foundation_locks')
+			new MigrationTable('nx_foundation_migrations', $this->database),
+			new LockTable('nx_foundation_locks', $this->database)
 		);
 
 		$this->expectException(DatabaseException::class);
@@ -661,6 +691,28 @@ final class MigratorExecutionTest extends TestCase
 		} finally {
 			$this->assertTrue($this->repository->hasRun('2026_01_01_000001_create_users'));
 		}
+	}
+
+	public function test_it_reports_a_scope_change_during_lock_release(): void {
+		$token = new LockToken(
+			'nx-foundation-database-migrations',
+			'owner',
+			new DateTimeImmutable('2026-01-01 00:05:00')
+		);
+		$lock = $this->createMock(Lock::class);
+		$lock->expects($this->once())->method('acquire')->willReturn($token);
+		$lock->expects($this->once())
+			->method('release')
+			->with($token)
+			->willReturnCallback(function (): bool {
+				$this->scope->currentId = 2;
+
+				return true;
+			});
+
+		$this->expectException(DatabaseContextChanged::class);
+
+		$this->migrator(new Collection(), lock: $lock)->run();
 	}
 
 	public function test_it_preserves_the_migration_failure_when_lock_release_is_unavailable(): void {
@@ -757,6 +809,23 @@ final class MigratorExecutionTest extends TestCase
 		}
 	}
 
+	public function test_it_aborts_when_a_migration_changes_the_database_scope(): void {
+		$migration = new ContextChangingMigration(
+			'2026_01_01_000001_change_context',
+			$this->scope,
+			2
+		);
+
+		$this->expectException(DatabaseContextChanged::class);
+
+		try {
+			$this->configured($migration)->run();
+		} finally {
+			$this->assertFalse($this->repository->hasRun($migration->id()));
+			$this->assertTrue($this->lock->isAcquired('nx-foundation-database-migrations'));
+		}
+	}
+
 	public function test_it_does_not_delete_a_record_when_rollback_fails(): void {
 		$this->configured(
 			new TestMigration('2026_01_01_000001_create_users'),
@@ -821,9 +890,10 @@ final class MigratorExecutionTest extends TestCase
 		$repository ??= $this->repository;
 		$store = new Store(
 			$schema,
+			$this->scope,
 			$lock,
-			new MigrationTable('wp_nx_foundation_migrations'),
-			new LockTable('wp_nx_foundation_locks'),
+			new MigrationTable('nx_foundation_migrations', $this->database),
+			new LockTable('nx_foundation_locks', $this->database),
 			$lockName,
 			$lockTtl
 		);

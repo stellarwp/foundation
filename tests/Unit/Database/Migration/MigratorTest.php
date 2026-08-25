@@ -14,8 +14,10 @@ use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\InMemoryLock;
 use StellarWP\Foundation\Lock\LockToken;
 use StellarWP\Foundation\Lock\SystemClock;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\InMemoryRepository;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchema;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestDatabaseScope;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
 use StellarWP\Foundation\Tests\Support\Fixtures\Lock\MutableClock;
 use StellarWP\Foundation\Tests\TestCase;
@@ -162,8 +164,10 @@ final class MigratorTest extends TestCase
 
 	public function test_it_rechecks_storage_after_acquiring_the_migration_lock(): void {
 		$schema         = new RecordingSchema();
-		$migrationTable = new MigrationTable('wp_nx_foundation_migrations');
-		$lockTable      = new LockTable('wp_nx_foundation_locks');
+		$scope          = new TestDatabaseScope();
+		$database       = new FakeDatabase();
+		$migrationTable = new MigrationTable('nx_foundation_migrations', $database);
+		$lockTable      = new LockTable('nx_foundation_locks', $database);
 		$token          = new LockToken(
 			'nx-foundation-database-migrations',
 			'owner',
@@ -189,7 +193,7 @@ final class MigratorTest extends TestCase
 		$migrator = new Migrator(
 			new Collection([new TestMigration('2026_06_23_000001_create_example')]),
 			new InMemoryRepository(),
-			new Store($schema, $lock, $migrationTable, $lockTable)
+			new Store($schema, $scope, $lock, $migrationTable, $lockTable)
 		);
 
 		$this->expectException(UninitializedStore::class);
@@ -205,9 +209,11 @@ final class MigratorTest extends TestCase
 
 		$schema         = new RecordingSchema();
 		$repository     = new InMemoryRepository();
-		$migrationTable = new MigrationTable('wp_nx_foundation_migrations');
-		$lockTable      = new LockTable('wp_nx_foundation_locks');
-		$store          = new Store($schema, $lock, $migrationTable, $lockTable);
+		$scope          = new TestDatabaseScope();
+		$database       = new FakeDatabase();
+		$migrationTable = new MigrationTable('nx_foundation_migrations', $database);
+		$lockTable      = new LockTable('nx_foundation_locks', $database);
+		$store          = new Store($schema, $scope, $lock, $migrationTable, $lockTable);
 
 		$migrator = new Migrator(
 			new Collection([

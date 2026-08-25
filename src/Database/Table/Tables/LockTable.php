@@ -2,7 +2,9 @@
 
 namespace StellarWP\Foundation\Database\Table\Tables;
 
+use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Table\Column;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 
@@ -14,7 +16,8 @@ final readonly class LockTable implements Table
 	public const string ID = 'foundation_database_locks_table';
 
 	public function __construct(
-		private string $table
+		private string $table,
+		private Database $database
 	) {
 	}
 
@@ -22,8 +25,11 @@ final readonly class LockTable implements Table
 		return self::ID;
 	}
 
+	/**
+	 * @throws DatabaseException When the resolved physical table name is invalid.
+	 */
 	public function name(): string {
-		return $this->table;
+		return $this->database->tableName($this->table);
 	}
 
 	public function definition(): TableDefinition {

@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Database;
 
 use StellarWP\Foundation\Database\Contracts\Database as DatabaseContract;
+use StellarWP\Foundation\Database\Contracts\DatabaseScope;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\QueryException;
@@ -16,7 +17,8 @@ final readonly class Database implements DatabaseContract
 	private const string ARRAY_A = 'ARRAY_A';
 
 	public function __construct(
-		private \wpdb $wpdb
+		private \wpdb $wpdb,
+		private DatabaseScope $scope
 	) {
 	}
 
@@ -31,7 +33,7 @@ final readonly class Database implements DatabaseContract
 		if ($table instanceof Table) {
 			$tableName = $table->name();
 		} else {
-			$tableName = str_starts_with($table, $this->wpdb->prefix) ? $table : $this->wpdb->prefix . $table;
+			$tableName = $this->scope->resolveTableName($table);
 		}
 
 		$length = preg_match_all('/./us', $tableName);

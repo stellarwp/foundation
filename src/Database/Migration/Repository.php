@@ -10,6 +10,7 @@ use StellarWP\Foundation\Database\Migration\Exceptions\InvalidMigrationId;
 use StellarWP\Foundation\Database\Migration\Exceptions\LedgerFailure;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Id;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Record;
+use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 
 /**
  * Stores migration records in a WordPress database table.
@@ -18,7 +19,7 @@ final readonly class Repository implements RepositoryContract
 {
 	public function __construct(
 		private Database $database,
-		private string $table
+		private MigrationTable $table
 	) {
 	}
 
@@ -32,7 +33,7 @@ final readonly class Repository implements RepositoryContract
 
 		foreach ($this->database->rows(sprintf(
 			'SELECT id, migration, batch, ran_at FROM %s ORDER BY id ASC',
-			$this->database->quoteIdentifier($this->table)
+			$this->database->quoteIdentifier($this->table->name())
 		)) as $row) {
 			$record = $this->recordFromRow($row);
 
@@ -50,7 +51,7 @@ final readonly class Repository implements RepositoryContract
 
 		return $this->database->row(
 			'SELECT id FROM %i WHERE migration = %s LIMIT 1',
-			$this->table,
+			$this->table->name(),
 			$migration
 		) !== null;
 	}
@@ -63,9 +64,11 @@ final readonly class Repository implements RepositoryContract
 		$migration = (new Id($migration))->value;
 		$ranAt     = new DateTimeImmutable('now', new DateTimeZone('UTC'));
 
+		$table = $this->table->name();
+
 		$this->database->execute(
 			'INSERT INTO %i (migration, batch, ran_at) VALUES (%s, %d, %s)',
-			$this->table,
+			$table,
 			$migration,
 			$batch,
 			$ranAt->format('Y-m-d H:i:s')
@@ -73,7 +76,7 @@ final readonly class Repository implements RepositoryContract
 
 		$row = $this->database->row(
 			'SELECT id, migration, batch, ran_at FROM %i WHERE migration = %s LIMIT 1',
-			$this->table,
+			$table,
 			$migration
 		);
 
@@ -92,7 +95,7 @@ final readonly class Repository implements RepositoryContract
 
 		return $this->database->execute(
 			'DELETE FROM %i WHERE migration = %s',
-			$this->table,
+			$this->table->name(),
 			$migration
 		) > 0;
 	}
@@ -106,7 +109,7 @@ final readonly class Repository implements RepositoryContract
 	public function latestBatch(): ?int {
 		$row = $this->database->row(sprintf(
 			'SELECT MAX(batch) AS batch FROM %s',
-			$this->database->quoteIdentifier($this->table)
+			$this->database->quoteIdentifier($this->table->name())
 		));
 
 		if ($row === null || $row['batch'] === null) {
@@ -126,7 +129,7 @@ final readonly class Repository implements RepositoryContract
 			fn (array $row): Record => $this->recordFromRow($row),
 			$this->database->rows(
 				'SELECT id, migration, batch, ran_at FROM %i WHERE batch = %d ORDER BY id ASC',
-				$this->table,
+				$this->table->name(),
 				$batch
 			)
 		);

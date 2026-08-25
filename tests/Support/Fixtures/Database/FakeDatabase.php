@@ -8,6 +8,8 @@ use StellarWP\Foundation\Database\Query\QueryBuilder;
 
 final class FakeDatabase implements Database
 {
+	public string $prefix = 'wp_';
+
 	/**
 	 * @var list<string>
 	 */
@@ -51,11 +53,7 @@ final class FakeDatabase implements Database
 			return $table->name();
 		}
 
-		if (str_starts_with($table, 'wp_')) {
-			return $table;
-		}
-
-		return 'wp_' . $table;
+		return $this->prefix . $table;
 	}
 
 	public function tableExists(Table|string $table): bool {

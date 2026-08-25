@@ -8,6 +8,7 @@ use DateTimeZone;
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
+use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use StellarWP\Foundation\Lock\LockToken;
@@ -24,7 +25,7 @@ final readonly class DatabaseLock implements Lock
 
 	public function __construct(
 		private Database $database,
-		private string $table
+		private LockTable $table
 	) {
 	}
 
@@ -37,6 +38,7 @@ final readonly class DatabaseLock implements Lock
 		$this->assertValidLockTtl($ttl);
 
 		$owner = $this->generateLockOwner();
+		$table = $this->table->name();
 
 		try {
 			$this->database->execute(
@@ -50,7 +52,7 @@ final readonly class DatabaseLock implements Lock
 							TIMESTAMPADD(SECOND, %d, UTC_TIMESTAMP(6)),
 							expires_at
 						)',
-				$this->table,
+				$table,
 				$name,
 				$owner,
 				$ttl,
@@ -62,7 +64,7 @@ final readonly class DatabaseLock implements Lock
 				'SELECT expires_at FROM %i
 					WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6)
 					LIMIT 1',
-				$this->table,
+				$table,
 				$name,
 				$owner
 			);
@@ -88,7 +90,7 @@ final readonly class DatabaseLock implements Lock
 		try {
 			return $this->database->execute(
 				'DELETE FROM %i WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6)',
-				$this->table,
+				$this->table->name(),
 				$token->name,
 				$token->owner
 			) > 0;
@@ -103,12 +105,13 @@ final readonly class DatabaseLock implements Lock
 	 */
 	public function refresh(LockToken $token, int $ttl): ?LockToken {
 		$this->assertValidLockTtl($ttl);
+		$table = $this->table->name();
 
 		try {
 			$this->database->execute(
 				'UPDATE %i SET expires_at = TIMESTAMPADD(SECOND, %d, UTC_TIMESTAMP(6)), updated_at = UTC_TIMESTAMP(6)
 					WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6)',
-				$this->table,
+				$table,
 				$ttl,
 				$token->name,
 				$token->owner
@@ -116,7 +119,7 @@ final readonly class DatabaseLock implements Lock
 
 			$row = $this->database->row(
 				'SELECT expires_at FROM %i WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6) LIMIT 1',
-				$this->table,
+				$table,
 				$token->name,
 				$token->owner
 			);
@@ -141,7 +144,7 @@ final readonly class DatabaseLock implements Lock
 		try {
 			return $this->database->row(
 				'SELECT name FROM %i WHERE name = %s AND expires_at > UTC_TIMESTAMP(6) LIMIT 1',
-				$this->table,
+				$this->table->name(),
 				$name
 			) !== null;
 		} catch (DatabaseException $exception) {

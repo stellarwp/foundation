@@ -14,6 +14,9 @@ interface Database
 	public function table(Table|string $table, ?string $alias = null): QueryBuilder;
 
 	/**
+	 * String arguments are logical table names. The active DatabaseScope applies the physical prefix.
+	 * Table objects return their complete physical name from Table::name().
+	 *
 	 * @throws DatabaseException When the resulting WordPress table name exceeds MySQL's identifier limit.
 	 */
 	public function tableName(Table|string $table): string;

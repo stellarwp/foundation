@@ -24,13 +24,13 @@ final class MigrationTableTest extends TestCase
 		];
 		$executor = new RecordingSchemaExecutor();
 		$schema   = new DatabaseSchema($database, new Reconciler($database, $executor));
-		$table    = new MigrationTable('network_foundation_migrations');
+		$table    = new MigrationTable('network_foundation_migrations', $database);
 
 		$schema->createOrUpdate($table);
 
 		$this->assertSame(MigrationTable::ID, $table->id());
-		$this->assertSame('network_foundation_migrations', $table->name());
-		$this->assertStringContainsString('CREATE TABLE `network_foundation_migrations`', $executor->statements[0]);
+		$this->assertSame('wp_network_foundation_migrations', $table->name());
+		$this->assertStringContainsString('CREATE TABLE `wp_network_foundation_migrations`', $executor->statements[0]);
 		$this->assertStringContainsString('`migration` varbinary(191)', $executor->statements[0]);
 		$this->assertStringContainsString('UNIQUE KEY `migration`', $executor->statements[0]);
 	}
@@ -38,10 +38,23 @@ final class MigrationTableTest extends TestCase
 	public function test_it_drops_the_migration_table(): void {
 		$database = new FakeDatabase();
 		$schema   = new DatabaseSchema($database, new Reconciler($database, new RecordingSchemaExecutor()));
-		$table    = new MigrationTable('network_foundation_migrations');
+		$table    = new MigrationTable('network_foundation_migrations', $database);
 
 		$schema->drop($table);
 
-		$this->assertSame('DROP TABLE IF EXISTS `network_foundation_migrations`', $database->executed[0]);
+		$this->assertSame('DROP TABLE IF EXISTS `wp_network_foundation_migrations`', $database->executed[0]);
+	}
+
+	public function test_it_resolves_its_name_from_the_active_scope(): void {
+		$database = new FakeDatabase();
+		$table    = new MigrationTable('foundation_migrations', $database);
+
+		$database->prefix = 'wp_2_';
+
+		$this->assertSame('wp_2_foundation_migrations', $table->name());
+
+		$database->prefix = 'wp_3_';
+
+		$this->assertSame('wp_3_foundation_migrations', $table->name());
 	}
 }

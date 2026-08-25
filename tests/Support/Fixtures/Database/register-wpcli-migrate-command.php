@@ -17,6 +17,7 @@ use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Schema;
 use StellarWP\Foundation\Database\Schema\DbDelta;
 use StellarWP\Foundation\Database\Schema\Reconciler;
+use StellarWP\Foundation\Database\Scope\SiteScope;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestTable;
@@ -44,16 +45,17 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 	$container->bind(ContainerInterface::class, $container);
 	$container->singleton(Dot::class, new Dot());
 
-	$database           = new Database($wpdb);
+	$scope              = new SiteScope($wpdb);
+	$database           = new Database($wpdb, $scope);
 	$schema             = new Schema($database, new Reconciler($database, new DbDelta()));
-	$migrationTableName = $wpdb->prefix . 'foundation_cli_migrations';
-	$lockTableName      = $wpdb->prefix . 'foundation_cli_locks';
+	$migrationTableName = 'foundation_cli_migrations';
+	$lockTableName      = 'foundation_cli_locks';
 	$exampleTable       = $wpdb->prefix . 'foundation_cli_example';
-	$migrationTable     = new MigrationTable($migrationTableName);
-	$lockTable          = new LockTable($lockTableName);
-	$repository         = new Repository($database, $migrationTableName);
-	$lock               = new DatabaseLock($database, $lockTableName);
-	$store              = new Store($schema, $lock, $migrationTable, $lockTable);
+	$migrationTable     = new MigrationTable($migrationTableName, $database);
+	$lockTable          = new LockTable($lockTableName, $database);
+	$repository         = new Repository($database, $migrationTable);
+	$lock               = new DatabaseLock($database, $lockTable);
+	$store              = new Store($schema, $scope, $lock, $migrationTable, $lockTable);
 
 	$migration = new class(new TestTable('foundation_cli_example', $exampleTable)) implements Migration {
 		public function __construct(

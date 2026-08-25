@@ -16,8 +16,8 @@ final class SchemaTest extends TestCase
 		$database->rowResults[] = ['Key_name' => 'example_key'];
 		$schema                 = new Schema($database, new Reconciler($database, new RecordingSchemaExecutor()));
 
-		$this->assertTrue($schema->hasTable('wp_example%'));
-		$this->assertTrue($schema->hasIndex('wp_example', 'example_key'));
+		$this->assertTrue($schema->hasTable('example%'));
+		$this->assertTrue($schema->hasIndex('example', 'example_key'));
 		$this->assertStringContainsString("SHOW TABLES LIKE 'wp\\\\_example\\\\%'", $database->rowQueries[0]);
 		$this->assertStringContainsString('SHOW INDEX FROM `wp_example`', $database->rowQueries[1]);
 	}
@@ -26,7 +26,7 @@ final class SchemaTest extends TestCase
 		$database = new FakeDatabase();
 		$schema   = new Schema($database, new Reconciler($database, new RecordingSchemaExecutor()));
 
-		$schema->dropIndex('wp_example', 'example_key');
+		$schema->dropIndex('example', 'example_key');
 
 		$this->assertSame('ALTER TABLE `wp_example` DROP INDEX `example_key`', $database->executed[0]);
 	}

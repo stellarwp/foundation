@@ -8,6 +8,7 @@ use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Traits\ResolvesFoundationPrefix;
 use StellarWP\Foundation\Database\Cli\Migrate;
 use StellarWP\Foundation\Database\Contracts\Database as DatabaseContract;
+use StellarWP\Foundation\Database\Contracts\DatabaseScope;
 use StellarWP\Foundation\Database\Contracts\Repository;
 use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
 use StellarWP\Foundation\Database\Contracts\SchemaExecutor;
@@ -19,6 +20,7 @@ use StellarWP\Foundation\Database\Migration\Repository as MigrationRecordReposit
 use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Schema\DbDelta;
 use StellarWP\Foundation\Database\Schema\Reconciler;
+use StellarWP\Foundation\Database\Scope\SiteScope;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
@@ -41,8 +43,9 @@ final class DatabaseProvider extends Provider
 	 * @throws InvalidArgumentException When the configured Foundation prefix is invalid.
 	 */
 	public function register(): void {
-		$this->registerConfiguration();
 		$this->registerDatabase();
+		$this->registerDatabaseScope();
+		$this->registerConfiguration();
 		$this->registerTables();
 		$this->registerMigrations();
 		$this->registerLocks();
@@ -71,21 +74,27 @@ final class DatabaseProvider extends Provider
 	}
 
 	private function registerDatabase(): void {
-		$this->container->singleton(Database::class, static function (): Database {
+		$this->container->singleton(\wpdb::class, static function (): \wpdb {
 			$wpdb = $GLOBALS['wpdb'] ?? null;
 
 			if (! $wpdb instanceof \wpdb) {
 				throw new DatabaseException('The global wpdb instance is not available.');
 			}
 
-			return new Database($wpdb);
+			return $wpdb;
 		});
+		$this->container->singleton(Database::class);
 		$this->container->singleton(DatabaseContract::class, static fn (C $c): Database => $c->get(Database::class));
 		$this->container->singleton(DbDelta::class);
 		$this->container->singleton(SchemaExecutor::class, static fn (C $c): DbDelta => $c->get(DbDelta::class));
 		$this->container->singleton(Reconciler::class);
 		$this->container->singleton(Schema::class);
 		$this->container->singleton(SchemaContract::class, static fn (C $c): Schema => $c->get(Schema::class));
+	}
+
+	private function registerDatabaseScope(): void {
+		$this->container->singleton(SiteScope::class);
+		$this->container->singleton(DatabaseScope::class, static fn (C $c): SiteScope => $c->get(SiteScope::class));
 	}
 
 	private function registerTables(): void {
@@ -106,10 +115,6 @@ final class DatabaseProvider extends Provider
 			->needs('$migrations')
 			->give(static fn (C $c): iterable => $c->get(self::MIGRATIONS));
 
-		$this->container->when(MigrationRecordRepository::class)
-			->needs('$table')
-			->give(static fn (C $c): string => $c->get(self::MIGRATIONS_TABLE));
-
 		$this->container->when(Store::class)
 			->needs('$lockName')
 			->give(static fn (C $c): string => $c->get(self::LOCK_NAME));
@@ -129,10 +134,6 @@ final class DatabaseProvider extends Provider
 	}
 
 	private function registerLocks(): void {
-		$this->container->when(DatabaseLock::class)
-			->needs('$table')
-			->give(static fn (C $c): string => $c->get(self::LOCKS_TABLE));
-
 		$this->container->singleton(DatabaseLock::class);
 	}
 
@@ -142,11 +143,7 @@ final class DatabaseProvider extends Provider
 		]);
 	}
 
-	private function tableName(mixed $configured, string $default): mixed {
-		if (is_string($configured) && $configured !== '') {
-			return $configured;
-		}
-
-		return static fn (C $c): string => $c->get(DatabaseContract::class)->tableName($default);
+	private function tableName(mixed $configured, string $default): string {
+		return is_string($configured) && $configured !== '' ? $configured : $default;
 	}
 }

@@ -10,11 +10,13 @@ use StellarWP\ContainerContract\ContainerInterface;
 use StellarWP\Foundation\Container\ContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Database\Cli\Migrate;
+use StellarWP\Foundation\Database\Contracts\DatabaseScope;
 use StellarWP\Foundation\Database\Database;
 use StellarWP\Foundation\Database\DatabaseProvider;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Collection;
 use StellarWP\Foundation\Database\Migration\Migrator;
+use StellarWP\Foundation\Database\Scope\SiteScope;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\NoopMigration;
@@ -38,6 +40,7 @@ final class DatabaseProviderTest extends WPTestCase
 		$this->assertContainsOnlyInstancesOf(Command::class, $commands);
 		$this->assertTrue($this->containsMigrateCommand((array) $commands));
 		$this->assertInstanceOf(DatabaseLock::class, $this->container->get(DatabaseLock::class));
+		$this->assertInstanceOf(SiteScope::class, $this->container->get(DatabaseScope::class));
 		$this->assertInstanceOf(Migrator::class, $this->container->get(Migrator::class));
 		$this->assertInstanceOf(Migrate::class, $this->container->get(Migrate::class));
 	}
@@ -63,8 +66,8 @@ final class DatabaseProviderTest extends WPTestCase
 
 		$this->assertSame('custom_migrations', $container->get(DatabaseProvider::MIGRATIONS_TABLE));
 		$this->assertSame('custom_locks', $container->get(DatabaseProvider::LOCKS_TABLE));
-		$this->assertSame('custom_migrations', $container->get(MigrationTable::class)->name());
-		$this->assertSame('custom_locks', $container->get(LockTable::class)->name());
+		$this->assertSame($GLOBALS['wpdb']->prefix . 'custom_migrations', $container->get(MigrationTable::class)->name());
+		$this->assertSame($GLOBALS['wpdb']->prefix . 'custom_locks', $container->get(LockTable::class)->name());
 		$this->assertSame('custom-migrations', $container->get(DatabaseProvider::LOCK_NAME));
 		$this->assertSame(120, $container->get(DatabaseProvider::LOCK_TTL));
 		$this->assertSame('custom', $container->get(CommandPrefix::class)->value);
@@ -98,10 +101,80 @@ final class DatabaseProviderTest extends WPTestCase
 		$container->register(WPCliProvider::class);
 		$container->register(DatabaseProvider::class);
 
-		$this->assertSame($GLOBALS['wpdb']->prefix . 'your_plugin_foundation_migrations', $container->get(DatabaseProvider::MIGRATIONS_TABLE));
-		$this->assertSame($GLOBALS['wpdb']->prefix . 'your_plugin_foundation_locks', $container->get(DatabaseProvider::LOCKS_TABLE));
+		$this->assertSame('your_plugin_foundation_migrations', $container->get(DatabaseProvider::MIGRATIONS_TABLE));
+		$this->assertSame('your_plugin_foundation_locks', $container->get(DatabaseProvider::LOCKS_TABLE));
+		$this->assertSame($GLOBALS['wpdb']->prefix . 'your_plugin_foundation_migrations', $container->get(MigrationTable::class)->name());
+		$this->assertSame($GLOBALS['wpdb']->prefix . 'your_plugin_foundation_locks', $container->get(LockTable::class)->name());
 		$this->assertSame('your-plugin-foundation-database-migrations', $container->get(DatabaseProvider::LOCK_NAME));
 		$this->assertSame('your-plugin', $container->get(CommandPrefix::class)->value);
+	}
+
+	public function test_migrator_reuses_the_same_services_across_complete_site_operations(): void {
+		$suffix          = str_replace('.', '_', uniqid('', true));
+		$migrationsTable = 'foundation_multisite_migrations_' . $suffix;
+		$locksTable      = 'foundation_multisite_locks_' . $suffix;
+		$migration       = new NoopMigration('2026_08_24_000001_multisite_migration');
+		$container       = $this->newContainer([
+			'database' => [
+				'migrations_table' => $migrationsTable,
+				'locks_table'      => $locksTable,
+			],
+		]);
+		$container->mergeArrayVar(DatabaseProvider::MIGRATIONS, [$migration]);
+		$container->register(WPCliProvider::class);
+		$container->register(DatabaseProvider::class);
+
+		$migrator       = $container->get(Migrator::class);
+		$database       = $container->get(Database::class);
+		$migrationTable = $container->get(MigrationTable::class);
+		$lockTable      = $container->get(LockTable::class);
+		$mainSiteId     = get_current_blog_id();
+		$mainTables     = [$migrationTable->name(), $lockTable->name()];
+		$siteId         = 0;
+		$siteTables     = [];
+
+		try {
+			$migrator->initialize();
+			$this->assertSame([$migration->id()], $migrator->run()->ran);
+
+			$createdSite = $this->factory()->blog->create();
+
+			if ($createdSite instanceof \WP_Error) {
+				$this->fail($createdSite->get_error_message());
+			}
+
+			$siteId = $createdSite;
+			switch_to_blog($siteId);
+			$siteTables = [$migrationTable->name(), $lockTable->name()];
+
+			$this->assertNotSame($mainTables, $siteTables);
+			$migrator->initialize();
+			$this->assertSame([$migration->id()], $migrator->run()->ran);
+
+			restore_current_blog();
+			$this->assertSame($mainSiteId, get_current_blog_id());
+			$this->assertSame($mainTables, [$migrationTable->name(), $lockTable->name()]);
+			$this->assertSame([$migration->id()], $migrator->run()->skipped);
+		} finally {
+			if (get_current_blog_id() !== $mainSiteId) {
+				restore_current_blog();
+			}
+
+			foreach ($mainTables as $table) {
+				$database->execute('DROP TABLE IF EXISTS %i', $table);
+			}
+
+			if ($siteId !== 0) {
+				switch_to_blog($siteId);
+
+				foreach ($siteTables as $table) {
+					$database->execute('DROP TABLE IF EXISTS %i', $table);
+				}
+
+				restore_current_blog();
+				wp_delete_site($siteId);
+			}
+		}
 	}
 
 	public function test_it_applies_configured_lock_policy_to_the_migration_store(): void {
@@ -151,14 +224,16 @@ final class DatabaseProviderTest extends WPTestCase
 	}
 
 	public function test_provider_built_migrator_executes_against_wordpress(): void {
-		$suffix          = str_replace('.', '_', uniqid('', true));
-		$migrationsTable = $GLOBALS['wpdb']->prefix . 'foundation_provider_migrations_' . $suffix;
-		$locksTable      = $GLOBALS['wpdb']->prefix . 'foundation_provider_locks_' . $suffix;
-		$migration       = new NoopMigration('2026_08_20_000001_provider_migration');
-		$container       = $this->newContainer([
+		$suffix              = str_replace('.', '_', uniqid('', true));
+		$migrationsTableName = 'foundation_provider_migrations_' . $suffix;
+		$locksTableName      = 'foundation_provider_locks_' . $suffix;
+		$migrationsTable     = $GLOBALS['wpdb']->prefix . $migrationsTableName;
+		$locksTable          = $GLOBALS['wpdb']->prefix . $locksTableName;
+		$migration           = new NoopMigration('2026_08_20_000001_provider_migration');
+		$container           = $this->newContainer([
 			'database' => [
-				'migrations_table' => $migrationsTable,
-				'locks_table'      => $locksTable,
+				'migrations_table' => $migrationsTableName,
+				'locks_table'      => $locksTableName,
 			],
 		]);
 		$container->mergeArrayVar(DatabaseProvider::MIGRATIONS, [$migration]);
@@ -173,8 +248,8 @@ final class DatabaseProviderTest extends WPTestCase
 			$result = $migrator->run();
 
 			$this->assertSame([$migration->id()], $result->ran);
-			$this->assertTrue($database->tableExists($migrationsTable));
-			$this->assertTrue($database->tableExists($locksTable));
+			$this->assertTrue($database->tableExists($migrationsTableName));
+			$this->assertTrue($database->tableExists($locksTableName));
 			$this->assertTrue($migrator->status()[0]->ran);
 		} finally {
 			$database->execute('DROP TABLE IF EXISTS %i', $migrationsTable);
