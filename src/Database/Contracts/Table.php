@@ -2,7 +2,6 @@
 
 namespace StellarWP\Foundation\Database\Contracts;
 
-use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 
 /**
@@ -13,14 +12,12 @@ interface Table
 	public function id(): string;
 
 	/**
-	 * Return the complete physical table name, including the WordPress table prefix.
+	 * Return the table name without a WordPress database prefix.
 	 *
-	 * For example, an unprefixed table name of `reports` with the WordPress prefix
-	 * `wp_` must return `wp_reports`.
-	 *
-	 * @throws DatabaseException When the resolved physical table name is invalid.
+	 * The database resolves this stable name against the active WordPress scope
+	 * when an operation begins. For example, return `reports`, not `wp_reports`.
 	 */
-	public function name(): string;
+	public function unprefixedName(): string;
 
 	public function definition(): TableDefinition;
 }

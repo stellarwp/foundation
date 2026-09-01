@@ -91,9 +91,9 @@ final class MigratorTest extends TestCase
 		$migrator->dropStore();
 
 		$this->assertFalse($migrator->isInitialized());
-		$this->assertContains('drop:wp_nx_foundation_migrations', $schema->statements);
-		$this->assertNotContains('drop:wp_nx_foundation_locks', $schema->statements);
-		$this->assertTrue($schema->tables['wp_nx_foundation_locks']);
+		$this->assertContains('drop:nx_foundation_migrations', $schema->statements);
+		$this->assertNotContains('drop:nx_foundation_locks', $schema->statements);
+		$this->assertTrue($schema->tables['nx_foundation_locks']);
 	}
 
 	public function test_it_does_not_drop_the_store_while_another_migration_owns_the_lock(): void {
@@ -108,7 +108,7 @@ final class MigratorTest extends TestCase
 		try {
 			$migrator->dropStore();
 		} finally {
-			$this->assertTrue($schema->tables['wp_nx_foundation_migrations']);
+			$this->assertTrue($schema->tables['nx_foundation_migrations']);
 		}
 	}
 
@@ -123,8 +123,8 @@ final class MigratorTest extends TestCase
 		try {
 			$migrator->initialize();
 		} finally {
-			$this->assertTrue($schema->tables['wp_nx_foundation_locks']);
-			$this->assertArrayNotHasKey('wp_nx_foundation_migrations', $schema->tables);
+			$this->assertTrue($schema->tables['nx_foundation_locks']);
+			$this->assertArrayNotHasKey('nx_foundation_migrations', $schema->tables);
 		}
 	}
 
@@ -132,7 +132,7 @@ final class MigratorTest extends TestCase
 		[$migrator, , $schema] = $this->newMigrator();
 
 		$migrator->run();
-		unset($schema->tables['wp_nx_foundation_locks']);
+		unset($schema->tables['nx_foundation_locks']);
 
 		$this->assertFalse($migrator->isInitialized());
 		$this->assertTrue($migrator->status()[0]->ran);
@@ -154,8 +154,8 @@ final class MigratorTest extends TestCase
 		$lock = $this->createMock(Lock::class);
 		$lock->expects($this->never())->method('acquire');
 
-		[$migrator, , $schema]                         = $this->newMigrator($lock, initialize: false);
-		$schema->tables['wp_nx_foundation_migrations'] = true;
+		[$migrator, , $schema]                      = $this->newMigrator($lock, initialize: false);
+		$schema->tables['nx_foundation_migrations'] = true;
 
 		$this->expectException(UninitializedStore::class);
 
@@ -175,13 +175,13 @@ final class MigratorTest extends TestCase
 		);
 		$lock = $this->createMock(Lock::class);
 
-		$schema->tables[$migrationTable->name()] = true;
-		$schema->tables[$lockTable->name()]      = true;
+		$schema->tables[$migrationTable->unprefixedName()] = true;
+		$schema->tables[$lockTable->unprefixedName()]      = true;
 
 		$lock->expects($this->once())
 			->method('acquire')
 			->willReturnCallback(static function () use ($schema, $migrationTable, $token): LockToken {
-				unset($schema->tables[$migrationTable->name()]);
+				unset($schema->tables[$migrationTable->unprefixedName()]);
 
 				return $token;
 			});

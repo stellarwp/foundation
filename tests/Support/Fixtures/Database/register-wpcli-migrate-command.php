@@ -50,7 +50,7 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 	$schema             = new Schema($database, new Reconciler($database, new DbDelta()));
 	$migrationTableName = 'foundation_cli_migrations';
 	$lockTableName      = 'foundation_cli_locks';
-	$exampleTable       = $wpdb->prefix . 'foundation_cli_example';
+	$exampleTable       = 'foundation_cli_example';
 	$migrationTable     = new MigrationTable($migrationTableName, $database);
 	$lockTable          = new LockTable($lockTableName, $database);
 	$repository         = new Repository($migrationTable);
@@ -72,10 +72,7 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 		}
 
 		public function down(SchemaContract $schema): void {
-			$schema->execute(sprintf(
-				'DROP TABLE IF EXISTS %s',
-				$schema->quoteIdentifier($this->table->name())
-			));
+			$schema->drop($this->table);
 		}
 	};
 

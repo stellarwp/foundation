@@ -6,6 +6,9 @@ use StellarWP\Foundation\Database\Contracts\Database;
 
 /**
  * Represents a prepared-query template and bindings that can be inspected before execution.
+ *
+ * The SQL is materialized for the active database scope when this object is created.
+ * Rebuild the query after changing the active WordPress site.
  */
 final readonly class Query
 {

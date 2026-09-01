@@ -8,7 +8,7 @@ use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
 
 final class SiteScopeTest extends WPTestCase
 {
-	public function test_it_resolves_logical_tables_for_the_active_site(): void {
+	public function test_it_applies_the_active_site_prefix_to_table_names(): void {
 		$scope = new SiteScope($GLOBALS['wpdb']);
 
 		$this->assertSame($GLOBALS['wpdb']->prefix . 'jobs', $scope->resolveTableName('jobs'));

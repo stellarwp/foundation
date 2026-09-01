@@ -2,7 +2,6 @@
 
 namespace StellarWP\Foundation\Database\Table;
 
-use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\Table as TableContract;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
@@ -17,32 +16,36 @@ use StellarWP\Foundation\Database\Query\QueryBuilder;
  */
 abstract readonly class Table implements TableContract
 {
-	/**
-	 * @throws InvalidArgumentException When the unprefixed table name is blank or padded.
-	 */
 	public function __construct(
 		private string $unprefixedTableName,
 		private Database $database
 	) {
-		if ($this->unprefixedTableName === '' || trim($this->unprefixedTableName) !== $this->unprefixedTableName) {
-			throw new InvalidArgumentException('The unprefixed database table name cannot be blank or contain surrounding whitespace.');
-		}
 	}
 
 	/**
-	 * Resolve the physical table name for the active WordPress database scope.
+	 * Return the stable table name before WordPress scope is applied.
+	 */
+	final public function unprefixedName(): string {
+		return $this->unprefixedTableName;
+	}
+
+	/**
+	 * Resolve a validated physical table name for the active WordPress database scope.
+	 *
+	 * Prefixing and MySQL identifier-length validation are owned by the database
+	 * name-resolution boundary so callers can rely on the returned name.
 	 *
 	 * @throws DatabaseException When the resolved physical table name is invalid.
 	 */
 	final public function name(): string {
-		return $this->database->tableName($this->unprefixedTableName);
+		return $this->database->tableName($this);
 	}
 
 	/**
 	 * Begin a query against this table.
 	 */
 	final public function query(?string $alias = null): QueryBuilder {
-		return $this->database->table($this->unprefixedTableName, $alias);
+		return new QueryBuilder($this->database, $this, $alias);
 	}
 
 	/**
@@ -52,7 +55,7 @@ abstract readonly class Table implements TableContract
 	 * @throws QueryException    When the insert fails.
 	 */
 	final public function insert(array $data): int {
-		return $this->database->insert($this->unprefixedTableName, $data);
+		return $this->database->insert($this, $data);
 	}
 
 	/**
@@ -62,7 +65,7 @@ abstract readonly class Table implements TableContract
 	 * @throws QueryException    When the insert fails.
 	 */
 	final public function insertGetId(array $data): int {
-		return $this->database->insertGetId($this->unprefixedTableName, $data);
+		return $this->database->insertGetId($this, $data);
 	}
 
 	/**
@@ -73,7 +76,7 @@ abstract readonly class Table implements TableContract
 	 * @throws QueryException    When the update fails.
 	 */
 	final public function update(array $data, array $where): int {
-		return $this->database->update($this->unprefixedTableName, $data, $where);
+		return $this->database->update($this, $data, $where);
 	}
 
 	/**
@@ -83,6 +86,6 @@ abstract readonly class Table implements TableContract
 	 * @throws QueryException    When the delete fails.
 	 */
 	final public function delete(array $where): int {
-		return $this->database->delete($this->unprefixedTableName, $where);
+		return $this->database->delete($this, $where);
 	}
 }

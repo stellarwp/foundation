@@ -7,7 +7,6 @@ use StellarWP\Foundation\Database\Contracts\DatabaseScope;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\QueryException;
-use StellarWP\Foundation\Database\Query\QueryBuilder;
 
 /**
  * WordPress database service backed by wpdb.
@@ -22,39 +21,39 @@ final readonly class Database implements DatabaseContract
 	) {
 	}
 
-	public function table(Table|string $table, ?string $alias = null): QueryBuilder {
-		return new QueryBuilder($this, $table, $alias);
-	}
-
 	/**
-	 * @throws DatabaseException When the resulting WordPress table name exceeds MySQL's identifier limit.
+	 * Resolve and validate a table's physical name for the active WordPress database scope.
+	 *
+	 * @throws DatabaseException When the unprefixed name is invalid or the physical name is unsafe or exceeds MySQL's identifier limit.
 	 */
-	public function tableName(Table|string $table): string {
-		if ($table instanceof Table) {
-			$tableName = $table->name();
-		} else {
-			$tableName = $this->scope->resolveTableName($table);
+	public function tableName(Table $table): string {
+		$unprefixedTableName = $table->unprefixedName();
+
+		if ($unprefixedTableName === '' || trim($unprefixedTableName) !== $unprefixedTableName) {
+			throw new DatabaseException('The unprefixed database table name cannot be blank or contain surrounding whitespace.');
 		}
 
-		$length = preg_match_all('/./us', $tableName);
+		$tableName = $this->scope->resolveTableName($unprefixedTableName);
 
-		if (($length === false ? strlen($tableName) : $length) > 64) {
+		if (preg_match('/\A[A-Za-z0-9_]+\z/', $tableName) !== 1) {
+			throw new DatabaseException('Database table names may contain only ASCII letters, numbers, and underscores.');
+		}
+
+		if (strlen($tableName) > 64) {
 			throw new DatabaseException(sprintf('Database table name "%s" exceeds MySQL\'s 64-character identifier limit.', $tableName));
 		}
 
 		return $tableName;
 	}
 
-	public function tableExists(Table|string $table): bool {
-		$tableName = $this->tableName($table);
-
+	public function tableExists(Table $table): bool {
 		return $this->row(
 			'SHOW TABLES LIKE %s',
-			$this->escLike($tableName)
+			$this->escLike($this->tableName($table))
 		) !== null;
 	}
 
-	public function columnExists(Table|string $table, string $column): bool {
+	public function columnExists(Table $table, string $column): bool {
 		return $this->row(
 			'SHOW COLUMNS FROM %i LIKE %s',
 			$this->tableName($table),
@@ -62,7 +61,7 @@ final readonly class Database implements DatabaseContract
 		) !== null;
 	}
 
-	public function indexExists(Table|string $table, string $index): bool {
+	public function indexExists(Table $table, string $index): bool {
 		return $this->row(
 			'SHOW INDEX FROM %i WHERE Key_name = %s',
 			$this->tableName($table),
@@ -151,10 +150,10 @@ final readonly class Database implements DatabaseContract
 	/**
 	 * @param array<string, mixed> $data
 	 *
-	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException When table-name resolution or validation fails.
 	 * @throws QueryException    When the insert fails.
 	 */
-	public function insert(Table|string $table, array $data): int {
+	public function insert(Table $table, array $data): int {
 		$result = $this->wpdb->insert($this->tableName($table), $data);
 
 		if ($result === false) {
@@ -167,10 +166,10 @@ final readonly class Database implements DatabaseContract
 	/**
 	 * @param array<string, mixed> $data
 	 *
-	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException When table-name resolution or validation fails.
 	 * @throws QueryException    When the insert fails.
 	 */
-	public function insertGetId(Table|string $table, array $data): int {
+	public function insertGetId(Table $table, array $data): int {
 		$this->insert($table, $data);
 
 		return (int) $this->wpdb->insert_id;
@@ -180,10 +179,10 @@ final readonly class Database implements DatabaseContract
 	 * @param array<string, mixed> $data
 	 * @param array<string, mixed> $where
 	 *
-	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException When table-name resolution or validation fails.
 	 * @throws QueryException    When the update fails.
 	 */
-	public function update(Table|string $table, array $data, array $where): int {
+	public function update(Table $table, array $data, array $where): int {
 		$result = $this->wpdb->update($this->tableName($table), $data, $where);
 
 		if ($result === false) {
@@ -196,10 +195,10 @@ final readonly class Database implements DatabaseContract
 	/**
 	 * @param array<string, mixed> $where
 	 *
-	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException When table-name resolution or validation fails.
 	 * @throws QueryException    When the delete fails.
 	 */
-	public function delete(Table|string $table, array $where): int {
+	public function delete(Table $table, array $where): int {
 		$result = $this->wpdb->delete($this->tableName($table), $where);
 
 		if ($result === false) {

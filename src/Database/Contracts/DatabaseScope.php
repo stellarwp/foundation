@@ -12,7 +12,7 @@ interface DatabaseScope
 	/**
 	 * Apply the current database scope to an unprefixed table name.
 	 */
-	public function resolveTableName(string $table): string;
+	public function resolveTableName(string $unprefixedTableName): string;
 
 	/**
 	 * Capture the identifier of the currently active database scope.

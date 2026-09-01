@@ -64,9 +64,9 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Table\\Table;', $contents);
 		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Table\\TableDefinition;', $contents);
 		$this->assertStringContainsString('final readonly class Reports_Table extends Table {', $contents);
-		$this->assertStringContainsString("public const string ID    = 'reports_table';", $contents);
-		$this->assertStringContainsString("public const string TABLE = 'reports';", $contents);
-		$this->assertStringContainsString('parent::__construct( self::TABLE, $database );', $contents);
+		$this->assertStringContainsString("public const string ID = 'reports_table';", $contents);
+		$this->assertStringContainsString("private const string UNPREFIXED_TABLE_NAME = 'reports';", $contents);
+		$this->assertStringContainsString('parent::__construct( self::UNPREFIXED_TABLE_NAME, $database );', $contents);
 		$this->assertStringContainsString("->longText( 'payload' )", $contents);
 	}
 
@@ -236,8 +236,8 @@ final class DatabaseCommandTest extends TestCase
 
 		$this->assertSame(Command::SUCCESS, $tableStatus);
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Storage;', $tableContents);
-		$this->assertStringContainsString("public const string ID    = 'audit_log_storage';", $tableContents);
-		$this->assertStringContainsString("public const string TABLE = 'custom_audit_log';", $tableContents);
+		$this->assertStringContainsString("public const string ID = 'audit_log_storage';", $tableContents);
+		$this->assertStringContainsString("private const string UNPREFIXED_TABLE_NAME = 'custom_audit_log';", $tableContents);
 		$this->assertSame(Command::SUCCESS, $migrationStatus);
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Storage\\Migrations;', $migrationContents);
 		$this->assertStringContainsString('use Acme\\Plugin\\Storage\\Audit_Log_Table;', $migrationContents);

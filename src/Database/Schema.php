@@ -35,21 +35,21 @@ final readonly class Schema implements SchemaContract
 	/**
 	 * @throws DatabaseException When table inspection fails.
 	 */
-	public function hasTable(Table|string $table): bool {
+	public function hasTable(Table $table): bool {
 		return $this->database->tableExists($table);
 	}
 
 	/**
 	 * @throws DatabaseException When index inspection fails.
 	 */
-	public function hasIndex(Table|string $table, string $index): bool {
+	public function hasIndex(Table $table, string $index): bool {
 		return $this->database->indexExists($table, $index);
 	}
 
 	/**
 	 * @throws DatabaseException When the table name is invalid or the statement cannot be executed.
 	 */
-	public function dropIndex(Table|string $table, string $index): void {
+	public function dropIndex(Table $table, string $index): void {
 		$this->database->execute(sprintf(
 			'ALTER TABLE %s DROP INDEX %s',
 			$this->database->quoteIdentifier($this->database->tableName($table)),
@@ -60,7 +60,7 @@ final readonly class Schema implements SchemaContract
 	/**
 	 * @throws DatabaseException When the table name is invalid or the statement cannot be executed.
 	 */
-	public function drop(Table|string $table): void {
+	public function drop(Table $table): void {
 		$this->database->execute(sprintf(
 			'DROP TABLE IF EXISTS %s',
 			$this->database->quoteIdentifier($this->database->tableName($table))

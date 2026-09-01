@@ -2,7 +2,6 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Database\Table;
 
-use InvalidArgumentException;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestDatabaseTable;
 use StellarWP\Foundation\Tests\TestCase;
@@ -13,6 +12,7 @@ final class TableTest extends TestCase
 		$database = new FakeDatabase();
 		$table    = new TestDatabaseTable('reports', $database);
 
+		$this->assertSame('reports', $table->unprefixedName());
 		$this->assertSame('wp_reports', $table->name());
 
 		$database->prefix = 'wp_2_';
@@ -38,18 +38,5 @@ final class TableTest extends TestCase
 			'UPDATE wp_reports',
 			'DELETE wp_reports',
 		], $database->executed);
-	}
-
-	public function test_it_rejects_an_invalid_unprefixed_table_name(): void {
-		$this->expectException(InvalidArgumentException::class);
-		$this->expectExceptionMessage('cannot be blank or contain surrounding whitespace');
-
-		new TestDatabaseTable(' reports ', new FakeDatabase());
-	}
-
-	public function test_it_rejects_an_empty_unprefixed_table_name(): void {
-		$this->expectException(InvalidArgumentException::class);
-
-		new TestDatabaseTable('', new FakeDatabase());
 	}
 }

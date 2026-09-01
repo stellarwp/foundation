@@ -57,7 +57,7 @@ foundation/stubs/database/migration.stub
 
 ### Define the table
 
-The generated `src/Database/Tables/Reports_Table.php` owns its unprefixed table name and desired schema. `Database::tableName()` applies the current WordPress table prefix.
+The generated `src/Database/Tables/Reports_Table.php` owns its stable, unprefixed table name and desired schema. Its inherited `name()` method asks the database service to apply the current WordPress table prefix and validate the resulting physical name when the table is used.
 
 ```php title="Reports_Table.php"
 <?php declare(strict_types=1);
@@ -70,13 +70,14 @@ use StellarWP\Foundation\Database\Table\TableDefinition;
 
 final readonly class Reports_Table extends Table {
 
-	public const string ID    = 'reports_table';
-	public const string TABLE = 'reports';
+	public const string ID = 'reports_table';
+
+	private const string UNPREFIXED_TABLE_NAME = 'reports';
 
 	public function __construct(
 		Database $database
 	) {
-		parent::__construct( self::TABLE, $database );
+		parent::__construct( self::UNPREFIXED_TABLE_NAME, $database );
 	}
 
 	public function id(): string {
@@ -94,6 +95,10 @@ final readonly class Reports_Table extends Table {
 	}
 }
 ```
+
+:::note[Custom table implementations]
+If an application implements `StellarWP\Foundation\Database\Contracts\Table` directly, `unprefixedName()` must return a stable name such as `reports`, never `wp_reports`. Pass that table object to Foundation's database and schema services; they apply the active WordPress prefix and validate the physical identifier at the point of use.
+:::
 
 ### Apply the table definition
 

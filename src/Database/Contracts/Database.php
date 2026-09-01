@@ -4,37 +4,33 @@ namespace StellarWP\Foundation\Database\Contracts;
 
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\QueryException;
-use StellarWP\Foundation\Database\Query\QueryBuilder;
 
 /**
  * Executes WordPress database queries and provides the package's developer-facing database API.
  */
 interface Database
 {
-	public function table(Table|string $table, ?string $alias = null): QueryBuilder;
-
 	/**
-	 * String arguments are unprefixed table names. The active DatabaseScope applies the WordPress prefix.
-	 * Table objects return their complete physical name from Table::name().
+	 * Resolve and validate a table's physical name for the active WordPress database scope.
 	 *
-	 * @throws DatabaseException When the resulting WordPress table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException When the unprefixed name is invalid or the physical name is unsafe or exceeds MySQL's identifier limit.
 	 */
-	public function tableName(Table|string $table): string;
+	public function tableName(Table $table): string;
 
 	/**
 	 * @throws DatabaseException When table inspection fails.
 	 */
-	public function tableExists(Table|string $table): bool;
+	public function tableExists(Table $table): bool;
 
 	/**
 	 * @throws DatabaseException When column inspection fails.
 	 */
-	public function columnExists(Table|string $table, string $column): bool;
+	public function columnExists(Table $table, string $column): bool;
 
 	/**
 	 * @throws DatabaseException When index inspection fails.
 	 */
-	public function indexExists(Table|string $table, string $index): bool;
+	public function indexExists(Table $table, string $index): bool;
 
 	/**
 	 * @throws QueryException When WordPress cannot prepare the statement.
@@ -68,39 +64,39 @@ interface Database
 	/**
 	 * @param array<string, mixed> $data
 	 *
-	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException When table-name resolution or validation fails.
 	 * @throws QueryException    When the insert fails.
 	 *
 	 * @return int Number of inserted rows.
 	 */
-	public function insert(Table|string $table, array $data): int;
+	public function insert(Table $table, array $data): int;
 
 	/**
 	 * Insert a row and return its auto-increment identifier.
 	 *
 	 * @param array<string, mixed> $data
 	 *
-	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException When table-name resolution or validation fails.
 	 * @throws QueryException    When the insert fails.
 	 */
-	public function insertGetId(Table|string $table, array $data): int;
+	public function insertGetId(Table $table, array $data): int;
 
 	/**
 	 * @param array<string, mixed> $data
 	 * @param array<string, mixed> $where
 	 *
-	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException When table-name resolution or validation fails.
 	 * @throws QueryException    When the update fails.
 	 */
-	public function update(Table|string $table, array $data, array $where): int;
+	public function update(Table $table, array $data, array $where): int;
 
 	/**
 	 * @param array<string, mixed> $where
 	 *
-	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException When table-name resolution or validation fails.
 	 * @throws QueryException    When the delete fails.
 	 */
-	public function delete(Table|string $table, array $where): int;
+	public function delete(Table $table, array $where): int;
 
 	public function quoteIdentifier(string $identifier): string;
 

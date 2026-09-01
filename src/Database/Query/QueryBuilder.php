@@ -40,7 +40,7 @@ final class QueryBuilder
 
 	public function __construct(
 		private readonly Database $database,
-		private readonly Table|string $table,
+		private readonly Table $table,
 		private readonly ?string $alias = null
 	) {
 	}
@@ -131,7 +131,7 @@ final class QueryBuilder
 	}
 
 	/**
-	 * @throws DatabaseException        When the table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException        When table-name resolution or validation fails.
 	 * @throws InvalidArgumentException When a selected column is invalid.
 	 */
 	public function toQuery(): Query {
@@ -139,7 +139,7 @@ final class QueryBuilder
 	}
 
 	/**
-	 * @throws DatabaseException        When the table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException        When table-name resolution or validation fails.
 	 * @throws InvalidArgumentException When a selected column is invalid.
 	 */
 	public function toSql(): string {
@@ -218,7 +218,7 @@ final class QueryBuilder
 	}
 
 	/**
-	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException When table-name resolution or validation fails.
 	 */
 	private function queryWithLimitBindings(): Query {
 		return new Query($this->database, $this->toSql(), $this->bindings());

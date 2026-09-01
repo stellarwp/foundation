@@ -9,7 +9,7 @@ use StellarWP\Foundation\Database\Table\TableDefinition;
 final readonly class SchemaReconciliationTable implements Table
 {
 	public function __construct(
-		private string $table,
+		private string $unprefixedName,
 		private int $attemptsDefault,
 		private bool $completedAtNullable
 	) {
@@ -19,8 +19,8 @@ final readonly class SchemaReconciliationTable implements Table
 		return 'schema_reconciliation_table';
 	}
 
-	public function name(): string {
-		return $this->table;
+	public function unprefixedName(): string {
+		return $this->unprefixedName;
 	}
 
 	public function definition(): TableDefinition {

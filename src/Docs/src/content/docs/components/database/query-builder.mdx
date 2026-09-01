@@ -112,6 +112,10 @@ $rows        = $query->get();
 
 Prefer `toSql()` plus `bindings()` for structured diagnostics. A fully prepared SQL string may contain customer or application data and should not be logged without considering its sensitivity.
 
+:::caution[Rebuild materialized queries after changing sites]
+`toQuery()` captures SQL for the active WordPress database scope. If code calls `switch_to_blog()`, build a new query before executing it so the table name uses the new site's prefix. Calling `get()`, `first()`, or `value()` directly on the table query builder resolves the active scope as part of that operation.
+:::
+
 Inject the `Database` contract in addition to the table only when a query does not fit the table gateway or query builder. Add it explicitly to that repository's constructor:
 
 ```php

@@ -11,7 +11,7 @@ use StellarWP\Foundation\Tests\TestCase;
 final class TableDefinitionTest extends TestCase
 {
 	public function test_it_collects_columns_and_indexes(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'))
 			->bigIncrements('id')
 			->string('status', 20)
 			->text('payload')
@@ -24,7 +24,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_defines_queue_style_columns_with_modifiers(): void {
-		$definition = TableDefinition::for(new TestTable('queue_table', 'wp_queue'))
+		$definition = TableDefinition::for(new TestTable('queue_table', 'queue'))
 			->bigIncrements('id')
 			->string('queue', 255)
 			->string('task_handler', 255)
@@ -57,7 +57,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_defines_less_common_column_helpers(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'))
 			->bigInteger('remote_id')->unsigned()
 			->string('status')->nullable()->notNull()->default('draft')
 			->text('payload')->extra('COMMENT \'json payload\'');
@@ -70,7 +70,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_defines_datetime_precision_boundaries(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'))
 			->dateTime('seconds', 0)
 			->dateTime('microseconds', 6);
 
@@ -88,7 +88,7 @@ final class TableDefinitionTest extends TestCase
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('Datetime precision must be between 0 and 6.');
 
-		TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+		TableDefinition::for(new TestTable('reports_table', 'reports'))
 			->dateTime('created_at', $precision);
 	}
 
@@ -103,7 +103,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_rejects_indexes_that_reference_missing_columns(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'))
 			->string('status', 20)
 			->index('missing_index', 'missing');
 
@@ -115,7 +115,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_rejects_tables_without_columns(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'));
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
 
 		$this->assertSame(['Table reports_table does not define any columns.'], $definition->validationErrors());
 	}
@@ -124,21 +124,21 @@ final class TableDefinitionTest extends TestCase
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('An index must define at least one column.');
 
-		TableDefinition::for(new TestTable('reports_table', 'wp_reports'))->index('empty_index');
+		TableDefinition::for(new TestTable('reports_table', 'reports'))->index('empty_index');
 	}
 
 	public function test_it_rejects_column_modifiers_without_a_column(): void {
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('A column modifier must follow a column definition.');
 
-		TableDefinition::for(new TestTable('reports_table', 'wp_reports'))->nullable();
+		TableDefinition::for(new TestTable('reports_table', 'reports'))->nullable();
 	}
 
 	public function test_it_rejects_column_modifiers_after_index_definitions(): void {
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('A column modifier must follow a column definition.');
 
-		TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+		TableDefinition::for(new TestTable('reports_table', 'reports'))
 			->string('status')
 			->index('status', 'status')
 			->default('draft');
@@ -148,13 +148,13 @@ final class TableDefinitionTest extends TestCase
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('Column status is already defined.');
 
-		TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+		TableDefinition::for(new TestTable('reports_table', 'reports'))
 			->string('Status')->nullable()
 			->text('status');
 	}
 
 	public function test_it_matches_index_column_references_case_insensitively(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'))
 			->string('Status')
 			->index('status_lookup', 'status');
 
@@ -162,7 +162,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_reports_duplicate_primary_keys(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'))
 			->bigIncrements('id')
 			->string('status')
 			->primary('status');
@@ -171,7 +171,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_reports_duplicate_index_names(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'))
 			->bigIncrements('id')
 			->string('status')
 			->string('type')
@@ -182,7 +182,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_reports_duplicate_index_names_case_insensitively(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'))
 			->string('status')
 			->string('type')
 			->index('Status_Lookup', 'status')
@@ -192,7 +192,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_rejects_primary_as_a_secondary_index_name(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'))
 			->bigIncrements('id')
 			->string('status')
 			->index('PRIMARY', 'status');

@@ -28,22 +28,22 @@ interface Schema
 	/**
 	 * @throws DatabaseException When table inspection fails.
 	 */
-	public function hasTable(Table|string $table): bool;
+	public function hasTable(Table $table): bool;
 
 	/**
 	 * @throws DatabaseException When index inspection fails.
 	 */
-	public function hasIndex(Table|string $table, string $index): bool;
+	public function hasIndex(Table $table, string $index): bool;
 
 	/**
 	 * @throws DatabaseException When the table name is invalid or the statement cannot be executed.
 	 */
-	public function dropIndex(Table|string $table, string $index): void;
+	public function dropIndex(Table $table, string $index): void;
 
 	/**
 	 * @throws DatabaseException When the table name is invalid or the statement cannot be executed.
 	 */
-	public function drop(Table|string $table): void;
+	public function drop(Table $table): void;
 
 	/**
 	 * Quote an identifier such as a table, column, or index name.

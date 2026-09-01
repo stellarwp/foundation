@@ -8,7 +8,7 @@ use StellarWP\Foundation\Database\Table\TableDefinition;
 final readonly class DateTimePrecisionTable implements Table
 {
 	public function __construct(
-		private string $table
+		private string $unprefixedName
 	) {
 	}
 
@@ -16,8 +16,8 @@ final readonly class DateTimePrecisionTable implements Table
 		return 'datetime_precision_table';
 	}
 
-	public function name(): string {
-		return $this->table;
+	public function unprefixedName(): string {
+		return $this->unprefixedName;
 	}
 
 	public function definition(): TableDefinition {

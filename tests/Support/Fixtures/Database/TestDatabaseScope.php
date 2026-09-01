@@ -14,8 +14,8 @@ final class TestDatabaseScope implements DatabaseScope
 
 	public int $assertions = 0;
 
-	public function resolveTableName(string $table): string {
-		return $table;
+	public function resolveTableName(string $unprefixedTableName): string {
+		return $unprefixedTableName;
 	}
 
 	public function capture(): int {

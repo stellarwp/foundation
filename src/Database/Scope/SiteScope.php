@@ -15,8 +15,8 @@ final readonly class SiteScope implements DatabaseScope
 	) {
 	}
 
-	public function resolveTableName(string $table): string {
-		return $this->wpdb->prefix . $table;
+	public function resolveTableName(string $unprefixedTableName): string {
+		return $this->wpdb->prefix . $unprefixedTableName;
 	}
 
 	public function capture(): int {

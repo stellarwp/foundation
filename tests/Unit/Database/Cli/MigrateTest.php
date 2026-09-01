@@ -109,8 +109,8 @@ final class MigrateTest extends TestCase
 
 		$this->assertSame([], $repository->all());
 		$this->assertSame([
-			'createOrUpdate:wp_nx_foundation_locks',
-			'createOrUpdate:wp_nx_foundation_migrations',
+			'createOrUpdate:nx_foundation_locks',
+			'createOrUpdate:nx_foundation_migrations',
 		], $schema->statements);
 	}
 
@@ -167,9 +167,9 @@ final class MigrateTest extends TestCase
 			'yes'        => true,
 		]));
 
-		$this->assertSame(['wp_nx_foundation_locks' => true], $schema->tables);
-		$this->assertContains('drop:wp_nx_foundation_migrations', $schema->statements);
-		$this->assertNotContains('drop:wp_nx_foundation_locks', $schema->statements);
+		$this->assertSame(['nx_foundation_locks' => true], $schema->tables);
+		$this->assertContains('drop:nx_foundation_migrations', $schema->statements);
+		$this->assertNotContains('drop:nx_foundation_locks', $schema->statements);
 	}
 
 	public function test_it_shows_a_warning_when_status_tables_do_not_exist(): void {
