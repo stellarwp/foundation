@@ -53,7 +53,7 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 	$exampleTable       = $wpdb->prefix . 'foundation_cli_example';
 	$migrationTable     = new MigrationTable($migrationTableName, $database);
 	$lockTable          = new LockTable($lockTableName, $database);
-	$repository         = new Repository($database, $migrationTable);
+	$repository         = new Repository($migrationTable);
 	$lock               = new DatabaseLock($database, $lockTable);
 	$store              = new Store($schema, $scope, $lock, $migrationTable, $lockTable);
 

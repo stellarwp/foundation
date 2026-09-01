@@ -101,7 +101,7 @@ final class TableCommand extends Command
 				'id_php'                               => $this->phpString($id),
 				'table_php'                            => $this->phpString($table),
 				'foundation_database_contract'         => $project->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Database'),
-				'foundation_database_table'            => $project->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Table'),
+				'foundation_database_table'            => $project->foundationClass('StellarWP\\Foundation\\Database\\Table\\Table'),
 				'foundation_database_table_definition' => $project->foundationClass('StellarWP\\Foundation\\Database\\Table\\TableDefinition'),
 			])
 		);

@@ -36,6 +36,8 @@ final class QueryBuilder
 
 	private ?int $offset = null;
 
+	private ?string $aggregate = null;
+
 	public function __construct(
 		private readonly Database $database,
 		private readonly Table|string $table,
@@ -111,10 +113,28 @@ final class QueryBuilder
 	}
 
 	/**
+	 * Return the maximum value for a column matching the current predicates.
+	 *
+	 * Ordering and pagination do not constrain aggregate input and are ignored.
+	 *
+	 * @throws DatabaseException        When table-name resolution or query execution fails.
+	 * @throws InvalidArgumentException When the column is invalid.
+	 */
+	public function max(string $column): mixed {
+		$query            = clone $this;
+		$query->aggregate = sprintf('MAX(%s)', $query->quoteColumn($column));
+		$query->orderBy   = [];
+		$query->limit     = null;
+		$query->offset    = null;
+
+		return $query->queryWithLimitBindings()->value();
+	}
+
+	/**
 	 * @throws DatabaseException        When the table name exceeds MySQL's identifier limit.
 	 * @throws InvalidArgumentException When a selected column is invalid.
 	 */
-	public function query(): Query {
+	public function toQuery(): Query {
 		return new Query($this->database, $this->toSql(), $this->bindings());
 	}
 
@@ -205,6 +225,10 @@ final class QueryBuilder
 	}
 
 	private function selectSql(): string {
+		if ($this->aggregate !== null) {
+			return $this->aggregate;
+		}
+
 		return implode(', ', array_map(fn (string $column): string => $this->quoteColumn($column, true), $this->columns));
 	}
 

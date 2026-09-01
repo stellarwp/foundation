@@ -3,33 +3,26 @@
 namespace StellarWP\Foundation\Database\Table\Tables;
 
 use StellarWP\Foundation\Database\Contracts\Database;
-use StellarWP\Foundation\Database\Contracts\Table;
-use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Table\Column;
+use StellarWP\Foundation\Database\Table\Table;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 
 /**
  * Defines the database-backed lock table used during migration runs.
  */
-final readonly class LockTable implements Table
+final readonly class LockTable extends Table
 {
 	public const string ID = 'foundation_database_locks_table';
 
 	public function __construct(
-		private string $table,
-		private Database $database
+		string $unprefixedTableName,
+		Database $database
 	) {
+		parent::__construct($unprefixedTableName, $database);
 	}
 
 	public function id(): string {
 		return self::ID;
-	}
-
-	/**
-	 * @throws DatabaseException When the resolved physical table name is invalid.
-	 */
-	public function name(): string {
-		return $this->database->tableName($this->table);
 	}
 
 	public function definition(): TableDefinition {

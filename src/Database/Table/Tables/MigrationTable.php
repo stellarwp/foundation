@@ -3,33 +3,26 @@
 namespace StellarWP\Foundation\Database\Table\Tables;
 
 use StellarWP\Foundation\Database\Contracts\Database;
-use StellarWP\Foundation\Database\Contracts\Table;
-use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Table\Column;
+use StellarWP\Foundation\Database\Table\Table;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 
 /**
  * Defines the migration ledger table used to record completed migrations.
  */
-final readonly class MigrationTable implements Table
+final readonly class MigrationTable extends Table
 {
 	public const string ID = 'foundation_database_migrations_table';
 
 	public function __construct(
-		private string $table,
-		private Database $database
+		string $unprefixedTableName,
+		Database $database
 	) {
+		parent::__construct($unprefixedTableName, $database);
 	}
 
 	public function id(): string {
 		return self::ID;
-	}
-
-	/**
-	 * @throws DatabaseException When the resolved physical table name is invalid.
-	 */
-	public function name(): string {
-		return $this->database->tableName($this->table);
 	}
 
 	public function definition(): TableDefinition {

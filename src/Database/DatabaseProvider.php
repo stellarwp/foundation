@@ -99,11 +99,11 @@ final class DatabaseProvider extends Provider
 
 	private function registerTables(): void {
 		$this->container->when(MigrationTable::class)
-			->needs('$table')
+			->needs('$unprefixedTableName')
 			->give(static fn (C $c): string => $c->get(self::MIGRATIONS_TABLE));
 
 		$this->container->when(LockTable::class)
-			->needs('$table')
+			->needs('$unprefixedTableName')
 			->give(static fn (C $c): string => $c->get(self::LOCKS_TABLE));
 
 		$this->container->singleton(MigrationTable::class);

@@ -97,7 +97,7 @@ return [
 ];
 ```
 
-Leave table names empty to use the scoped defaults. Override values are logical names without a WordPress table prefix; the active database scope applies the correct site prefix. For example, `your_plugin_migrations` becomes `wp_2_your_plugin_migrations` on site 2 of a typical multisite installation. All resulting physical table names must fit MySQL's 64-character identifier limit.
+Leave table names empty to use the scoped defaults. Override values are table names without a WordPress prefix; the active database scope applies the correct site prefix. For example, `your_plugin_migrations` becomes `wp_2_your_plugin_migrations` on site 2 of a typical multisite installation. All resulting prefixed table names must fit MySQL's 64-character identifier limit.
 
 The migration lock settings coordinate migration execution only. Applications selecting `DatabaseLock` for their own work choose each lock name and TTL when calling `acquire()`.
 
@@ -169,7 +169,7 @@ private const array PROVIDERS = [
   />
   <LinkCard
     title="Query Builder"
-    description="Read and write WordPress tables through the Database contract and inspect generated SQL."
+    description="Read and write through application table classes, with low-level SQL available when needed."
     href="/components/database/query-builder/"
   />
   <LinkCard

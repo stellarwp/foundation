@@ -61,12 +61,12 @@ final class DatabaseCommandTest extends TestCase
 
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Database\\Tables;', $contents);
 		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Contracts\\Database;', $contents);
-		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Contracts\\Table;', $contents);
+		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Table\\Table;', $contents);
 		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Table\\TableDefinition;', $contents);
-		$this->assertStringContainsString('final readonly class Reports_Table implements Table {', $contents);
+		$this->assertStringContainsString('final readonly class Reports_Table extends Table {', $contents);
 		$this->assertStringContainsString("public const string ID    = 'reports_table';", $contents);
 		$this->assertStringContainsString("public const string TABLE = 'reports';", $contents);
-		$this->assertStringContainsString('return $this->database->tableName( self::TABLE );', $contents);
+		$this->assertStringContainsString('parent::__construct( self::TABLE, $database );', $contents);
 		$this->assertStringContainsString("->longText( 'payload' )", $contents);
 	}
 
@@ -1162,8 +1162,12 @@ PHP);
 		$migrationContents = (string) file_get_contents($root . '/src/Database/Migrations/Create_Reports_Table.php');
 
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Database;', $tableContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Table\\Table;', $tableContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Table\\TableDefinition;', $tableContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Migration;', $migrationContents);
 		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\Contracts\\Database;', $tableContents);
+		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\Table\\Table;', $tableContents);
+		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\Table\\TableDefinition;', $tableContents);
 		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\Contracts\\Migration;', $migrationContents);
 	}
 

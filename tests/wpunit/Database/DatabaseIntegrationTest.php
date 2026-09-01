@@ -426,7 +426,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$table          = $this->database->tableName($tableName);
 		$schema         = $this->schema;
 		$migrationTable = new MigrationTable($tableName, $this->database);
-		$repository     = new Repository($this->database, $migrationTable);
+		$repository     = new Repository($migrationTable);
 
 		$this->assertFalse($schema->hasTable($migrationTable));
 

@@ -157,10 +157,30 @@ final class QueryBuilderTest extends TestCase
 	}
 
 	public function test_it_builds_query_objects(): void {
-		$query = (new FakeDatabase())->table('reports')->where('id', '=', 10)->query();
+		$query = (new FakeDatabase())->table('reports')->where('id', '=', 10)->toQuery();
 
 		$this->assertInstanceOf(Query::class, $query);
 		$this->assertSame('SELECT * FROM `wp_reports` WHERE `id` = %s', $query->toSql());
 		$this->assertSame([10], $query->bindings());
+	}
+
+	public function test_it_returns_the_maximum_value_without_mutating_the_builder(): void {
+		$database               = new FakeDatabase();
+		$database->rowResults[] = ['maximum' => '4'];
+		$query                  = $database->table('reports')
+			->where('status', '=', 'complete')
+			->orderBy('batch')
+			->limit(10, 5);
+
+		$this->assertSame('4', $query->max('batch'));
+		$this->assertSame(
+			"SELECT MAX(`batch`) FROM `wp_reports` WHERE `status` = 'complete'",
+			$database->rowQueries[0]
+		);
+		$this->assertSame(
+			'SELECT * FROM `wp_reports` WHERE `status` = %s ORDER BY `batch` ASC LIMIT %d OFFSET %d',
+			$query->toSql()
+		);
+		$this->assertSame(['complete', 10, 5], $query->bindings());
 	}
 }

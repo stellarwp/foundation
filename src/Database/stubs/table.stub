@@ -6,22 +6,19 @@ use {{ foundation_database_contract }};
 use {{ foundation_database_table }};
 use {{ foundation_database_table_definition }};
 
-final readonly class {{ class }} implements Table {
+final readonly class {{ class }} extends Table {
 
 	public const string ID    = {{ id_php }};
 	public const string TABLE = {{ table_php }};
 
 	public function __construct(
-		private Database $database
+		Database $database
 	) {
+		parent::__construct( self::TABLE, $database );
 	}
 
 	public function id(): string {
 		return self::ID;
-	}
-
-	public function name(): string {
-		return $this->database->tableName( self::TABLE );
 	}
 
 	public function definition(): TableDefinition {

@@ -2,7 +2,6 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Database\Migration;
 
-use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Migration\Exceptions\InvalidMigrationId;
 use StellarWP\Foundation\Database\Migration\Exceptions\LedgerFailure;
 use StellarWP\Foundation\Database\Migration\Repository;
@@ -21,7 +20,6 @@ final class RepositoryTest extends TestCase
 
 		$this->database   = new FakeDatabase();
 		$this->repository = new Repository(
-			$this->database,
 			new MigrationTable('network_foundation_migrations', $this->database)
 		);
 	}
@@ -53,28 +51,8 @@ final class RepositoryTest extends TestCase
 		$record = $this->repository->recordRun('2026_01_01_000001_create_users', 2);
 
 		$this->assertSame(2, $record->batch);
-		$this->assertStringContainsString('INSERT INTO `wp_network_foundation_migrations`', $this->database->executed[0]);
-	}
-
-	public function test_it_uses_one_physical_table_for_insert_and_readback(): void {
-		$database = $this->mock(Database::class);
-		$database->shouldReceive('tableName')
-			->once()
-			->with('foundation_migrations')
-			->andReturn('wp_foundation_migrations');
-		$database->shouldReceive('execute')->once()->andReturn(1);
-		$database->shouldReceive('row')->once()->andReturn([
-			'id'        => 1,
-			'migration' => '2026_01_01_000001_create_users',
-			'batch'     => 1,
-			'ran_at'    => '2026-01-01 00:00:00',
-		]);
-		$repository = new Repository(
-			$database,
-			new MigrationTable('foundation_migrations', $database)
-		);
-
-		$repository->recordRun('2026_01_01_000001_create_users', 1);
+		$this->assertSame('INSERT wp_network_foundation_migrations', $this->database->executed[0]);
+		$this->assertStringContainsString('FROM `wp_network_foundation_migrations`', $this->database->rowQueries[0]);
 	}
 
 	public function test_it_fails_when_an_inserted_migration_cannot_be_read_back(): void {
@@ -84,7 +62,7 @@ final class RepositoryTest extends TestCase
 		try {
 			$this->repository->recordRun('2026_01_01_000001_create_users', 2);
 		} finally {
-			$this->assertStringContainsString('INSERT INTO `wp_network_foundation_migrations`', $this->database->executed[0]);
+			$this->assertSame('INSERT wp_network_foundation_migrations', $this->database->executed[0]);
 		}
 	}
 
@@ -111,7 +89,7 @@ final class RepositoryTest extends TestCase
 		$this->database->executeResults[] = 1;
 
 		$this->assertTrue($this->repository->deleteRun('2026_01_01_000001_create_users'));
-		$this->assertStringContainsString('DELETE FROM `wp_network_foundation_migrations`', $this->database->executed[0]);
+		$this->assertSame('DELETE wp_network_foundation_migrations', $this->database->executed[0]);
 	}
 
 	public function test_it_reports_when_no_migration_run_was_deleted(): void {
