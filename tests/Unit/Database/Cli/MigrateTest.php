@@ -6,6 +6,8 @@ use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use StellarWP\Foundation\Database\Cli\Migrate;
 use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
+use StellarWP\Foundation\Database\Migration\Factories\LeaseFactory;
+use StellarWP\Foundation\Database\Migration\Factories\SessionFactory;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
@@ -38,7 +40,7 @@ final class MigrateTest extends TestCase
 		$repository     = new InMemoryRepository();
 		$schema         = new RecordingSchema();
 		$lock           = new InMemoryLock(new SystemClock());
-		$store          = new Store($schema, $scope, $lock, $migrationTable, new LockTable('nx_foundation_locks', $database));
+		$store          = new Store($schema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, new LockTable('nx_foundation_locks', $database));
 		$command        = new Migrate(
 			$this->container,
 			new CommandPrefix('foundation'),
@@ -214,7 +216,7 @@ final class MigrateTest extends TestCase
 		$repository     = new InMemoryRepository();
 		$migrationTable = new MigrationTable('nx_foundation_migrations', $database);
 		$lock           = new InMemoryLock(new SystemClock());
-		$store          = new Store($wpSchema, $scope, $lock, $migrationTable, new LockTable('nx_foundation_locks', $database));
+		$store          = new Store($wpSchema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, new LockTable('nx_foundation_locks', $database));
 		$command        = new Migrate(
 			$this->container,
 			new CommandPrefix('foundation'),

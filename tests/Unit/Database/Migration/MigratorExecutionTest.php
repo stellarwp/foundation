@@ -16,6 +16,8 @@ use StellarWP\Foundation\Database\Migration\Collection;
 use StellarWP\Foundation\Database\Migration\Exceptions\InvalidRollbackBatch;
 use StellarWP\Foundation\Database\Migration\Exceptions\LedgerFailure;
 use StellarWP\Foundation\Database\Migration\Exceptions\UnavailableMigration;
+use StellarWP\Foundation\Database\Migration\Factories\LeaseFactory;
+use StellarWP\Foundation\Database\Migration\Factories\SessionFactory;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Record;
@@ -61,6 +63,8 @@ final class MigratorExecutionTest extends TestCase
 
 		(new Store(
 			$this->schema,
+			new LeaseFactory(),
+			new SessionFactory(),
 			$this->scope,
 			$this->lock,
 			new MigrationTable('nx_foundation_migrations', $this->database),
@@ -76,6 +80,8 @@ final class MigratorExecutionTest extends TestCase
 
 		new Store(
 			$this->schema,
+			new LeaseFactory(),
+			new SessionFactory(),
 			$this->scope,
 			$this->lock,
 			new MigrationTable('nx_foundation_migrations', $this->database),
@@ -90,6 +96,8 @@ final class MigratorExecutionTest extends TestCase
 
 		new Store(
 			$this->schema,
+			new LeaseFactory(),
+			new SessionFactory(),
 			$this->scope,
 			$this->lock,
 			new MigrationTable('nx_foundation_migrations', $this->database),
@@ -161,6 +169,66 @@ final class MigratorExecutionTest extends TestCase
 		} finally {
 			$this->assertSame(['up:2026_01_01_000001_create_users'], $this->schema->statements);
 			$this->assertFalse($this->repository->hasRun('2026_01_01_000001_create_users'));
+		}
+	}
+
+	public function test_it_releases_the_latest_token_when_post_migration_renewal_loses_ownership(): void {
+		$migration = new TestMigration('2026_01_01_000001_create_users');
+		$acquired  = new LockToken('custom-migrations', 'owner', new DateTimeImmutable('2026-01-01 00:02:00'));
+		$beforeRun = $acquired->withExpiration(new DateTimeImmutable('2026-01-01 00:04:00'));
+		$lock      = $this->createMock(Lock::class);
+		$lock->expects($this->once())
+			->method('acquire')
+			->with('custom-migrations', 120)
+			->willReturn($acquired);
+		$lock->expects($this->exactly(2))
+			->method('refresh')
+			->willReturnOnConsecutiveCalls($beforeRun, null);
+		$lock->expects($this->once())
+			->method('release')
+			->with($beforeRun)
+			->willReturn(true);
+
+		$this->expectException(MigrationLockFailed::class);
+		$this->expectExceptionMessage('ownership was lost');
+
+		try {
+			$this->migrator(
+				$this->collection($migration),
+				lock: $lock,
+				lockName: 'custom-migrations',
+				lockTtl: 120
+			)->run();
+		} finally {
+			$this->assertSame(['up:' . $migration->id()], $this->schema->statements);
+			$this->assertFalse($this->repository->hasRun($migration->id()));
+		}
+	}
+
+	public function test_it_does_not_release_in_a_database_scope_changed_during_renewal(): void {
+		$migration = new TestMigration('2026_01_01_000001_create_users');
+		$token     = $this->lockToken();
+		$lock      = $this->createMock(Lock::class);
+		$lock->expects($this->once())
+			->method('acquire')
+			->willReturn($token);
+		$lock->expects($this->once())
+			->method('refresh')
+			->with($token, 300)
+			->willReturnCallback(function () use ($token): LockToken {
+				$this->scope->currentId = 2;
+
+				return $token;
+			});
+		$lock->expects($this->never())->method('release');
+
+		$this->expectException(DatabaseContextChanged::class);
+
+		try {
+			$this->migrator($this->collection($migration), lock: $lock)->run();
+		} finally {
+			$this->assertSame([], $this->schema->statements);
+			$this->assertFalse($this->repository->hasRun($migration->id()));
 		}
 	}
 
@@ -647,6 +715,8 @@ final class MigratorExecutionTest extends TestCase
 
 		$store = new Store(
 			$storeSchema,
+			new LeaseFactory(),
+			new SessionFactory(),
 			$this->scope,
 			$this->lock,
 			new MigrationTable('nx_foundation_migrations', $this->database),
@@ -890,6 +960,8 @@ final class MigratorExecutionTest extends TestCase
 		$repository ??= $this->repository;
 		$store = new Store(
 			$schema,
+			new LeaseFactory(),
+			new SessionFactory(),
 			$this->scope,
 			$lock,
 			new MigrationTable('nx_foundation_migrations', $this->database),

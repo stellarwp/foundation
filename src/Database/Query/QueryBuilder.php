@@ -127,7 +127,7 @@ final class QueryBuilder
 		$query->limit     = null;
 		$query->offset    = null;
 
-		return $query->queryWithLimitBindings()->value();
+		return $query->toQuery()->value();
 	}
 
 	/**
@@ -201,7 +201,7 @@ final class QueryBuilder
 	 * @return list<array<string, mixed>>
 	 */
 	public function get(): array {
-		return $this->queryWithLimitBindings()->get();
+		return $this->toQuery()->get();
 	}
 
 	/**
@@ -214,14 +214,7 @@ final class QueryBuilder
 		$query        = clone $this;
 		$query->limit = 1;
 
-		return $query->queryWithLimitBindings()->first();
-	}
-
-	/**
-	 * @throws DatabaseException When table-name resolution or validation fails.
-	 */
-	private function queryWithLimitBindings(): Query {
-		return new Query($this->database, $this->toSql(), $this->bindings());
+		return $query->toQuery()->first();
 	}
 
 	private function selectSql(): string {

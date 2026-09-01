@@ -101,7 +101,7 @@ final readonly class Database implements DatabaseContract
 			return null;
 		}
 
-		return $this->stringKeyedRow($result, $sql, $bindings);
+		return $this->stringKeyedRow($result);
 	}
 
 	/**
@@ -120,7 +120,7 @@ final readonly class Database implements DatabaseContract
 		$rows = [];
 
 		foreach ($results as $result) {
-			$rows[] = $this->stringKeyedRow($result, $sql, $bindings);
+			$rows[] = $this->stringKeyedRow($result);
 		}
 
 		return $rows;
@@ -252,11 +252,10 @@ final readonly class Database implements DatabaseContract
 
 	/**
 	 * @param array<mixed> $result
-	 * @param list<mixed>  $bindings
 	 *
 	 * @return array<string, mixed>
 	 */
-	private function stringKeyedRow(array $result, string $sql, array $bindings): array {
+	private function stringKeyedRow(array $result): array {
 		$row = [];
 
 		foreach ($result as $key => $value) {

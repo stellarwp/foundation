@@ -2,10 +2,8 @@
 
 namespace StellarWP\Foundation\Database\Migration;
 
-use Closure;
 use StellarWP\Foundation\Database\Contracts\Migration;
 use StellarWP\Foundation\Database\Contracts\Repository;
-use StellarWP\Foundation\Database\Contracts\Schema;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\MigrationFailed;
 use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
@@ -17,7 +15,6 @@ use StellarWP\Foundation\Database\Migration\ValueObjects\Record;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Result;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Status;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
-use Throwable;
 
 /**
  * Applies and rolls back configured database migrations through an initialized store.
@@ -76,7 +73,7 @@ final readonly class Migrator
 		$configured = $this->migrations->all();
 
 		return $this->store->withMigrationLock(
-			fn (Schema $schema, Closure $renewLock): Result => $this->runPending($configured, $schema, $renewLock)
+			fn (Session $session): Result => $this->runPending($configured, $session)
 		);
 	}
 
@@ -97,7 +94,7 @@ final readonly class Migrator
 	public function rollback(?int $batch = null): Result {
 		$configured = $this->migrations->all();
 
-		return $this->store->withMigrationLock(function (Schema $schema, Closure $renewLock) use ($configured, $batch): Result {
+		return $this->store->withMigrationLock(function (Session $session) use ($configured, $batch): Result {
 			$latestBatch = $this->repository->latestBatch();
 
 			if ($batch !== null && $batch !== $latestBatch) {
@@ -113,8 +110,7 @@ final readonly class Migrator
 			return $this->rollbackRecords(
 				$configured,
 				$this->repository->recordsForBatch($batch),
-				$schema,
-				$renewLock
+				$session
 			);
 		});
 	}
@@ -132,9 +128,9 @@ final readonly class Migrator
 	public function refresh(): Result {
 		$configured = $this->migrations->all();
 
-		return $this->store->withMigrationLock(function (Schema $schema, Closure $renewLock) use ($configured): Result {
-			$rollback = $this->rollbackRecords($configured, array_values($this->repository->all()), $schema, $renewLock);
-			$run      = $this->runPending($configured, $schema, $renewLock);
+		return $this->store->withMigrationLock(function (Session $session) use ($configured): Result {
+			$rollback = $this->rollbackRecords($configured, array_values($this->repository->all()), $session);
+			$run      = $this->runPending($configured, $session);
 
 			return new Result(
 				ran: $run->ran,
@@ -184,8 +180,7 @@ final readonly class Migrator
 	 *
 	 * @param array<string, Migration> $migrations
 	 * @param list<Record>             $records
-	 * @param Schema                   $schema     The initialized schema supplied by the migration store.
-	 * @param Closure(): void          $renewLock  The callback that renews migration lock ownership.
+	 * @param Session                  $session    The active migration session that maintains lock ownership.
 	 *
 	 * @throws LedgerFailure            When a rolled-back migration ledger record cannot be deleted.
 	 * @throws MigrationFailed          When a migration fails while rolling back.
@@ -193,7 +188,7 @@ final readonly class Migrator
 	 * @throws LockUnavailableException When the lock backend cannot determine the refresh result.
 	 * @throws UnavailableMigration     When a recorded migration implementation is unavailable.
 	 */
-	private function rollbackRecords(array $migrations, array $records, Schema $schema, Closure $renewLock): Result {
+	private function rollbackRecords(array $migrations, array $records, Session $session): Result {
 		usort($records, static fn (Record $a, Record $b): int => $b->id <=> $a->id);
 		$unavailable = array_values(array_map(
 			static fn (Record $record): string => $record->migration,
@@ -208,15 +203,7 @@ final readonly class Migrator
 
 		foreach ($records as $record) {
 			$migration = $migrations[$record->migration];
-			$renewLock();
-
-			try {
-				$migration->down($schema);
-			} catch (Throwable $throwable) {
-				throw MigrationFailed::whileRollingBack($migration->id(), $throwable);
-			}
-
-			$renewLock();
+			$session->revert($migration);
 
 			if (! $this->repository->deleteRun($migration->id())) {
 				throw LedgerFailure::notDeletedAfterRollback($migration->id());
@@ -232,15 +219,14 @@ final readonly class Migrator
 	 * Run migrations that are absent from the ledger and record them in the next batch.
 	 *
 	 * @param array<string, Migration> $migrations
-	 * @param Schema                   $schema     The initialized schema supplied by the migration store.
-	 * @param Closure(): void          $renewLock  The callback that renews migration lock ownership.
+	 * @param Session                  $session    The active migration session that maintains lock ownership.
 	 *
 	 * @throws DatabaseException        When migration ledger access fails.
 	 * @throws MigrationFailed          When a migration fails while running.
 	 * @throws MigrationLockFailed      When the migration lock cannot be renewed.
 	 * @throws LockUnavailableException When the lock backend cannot determine the refresh result.
 	 */
-	private function runPending(array $migrations, Schema $schema, Closure $renewLock): Result {
+	private function runPending(array $migrations, Session $session): Result {
 		$ran     = [];
 		$skipped = [];
 		$batch   = $this->repository->nextBatch();
@@ -251,15 +237,7 @@ final readonly class Migrator
 				continue;
 			}
 
-			$renewLock();
-
-			try {
-				$migration->up($schema);
-			} catch (Throwable $throwable) {
-				throw MigrationFailed::whileRunning($migration->id(), $throwable);
-			}
-
-			$renewLock();
+			$session->apply($migration);
 
 			$this->repository->recordRun($migration->id(), $batch);
 			$ran[] = $migration->id();

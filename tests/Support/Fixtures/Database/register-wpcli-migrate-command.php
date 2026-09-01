@@ -11,6 +11,8 @@ use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
 use StellarWP\Foundation\Database\Database;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
+use StellarWP\Foundation\Database\Migration\Factories\LeaseFactory;
+use StellarWP\Foundation\Database\Migration\Factories\SessionFactory;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository;
 use StellarWP\Foundation\Database\Migration\Store;
@@ -55,7 +57,7 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 	$lockTable          = new LockTable($lockTableName, $database);
 	$repository         = new Repository($migrationTable);
 	$lock               = new DatabaseLock($database, $lockTable);
-	$store              = new Store($schema, $scope, $lock, $migrationTable, $lockTable);
+	$store              = new Store($schema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, $lockTable);
 
 	$migration = new class(new TestTable('foundation_cli_example', $exampleTable)) implements Migration {
 		public function __construct(

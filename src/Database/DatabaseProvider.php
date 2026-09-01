@@ -15,6 +15,8 @@ use StellarWP\Foundation\Database\Contracts\SchemaExecutor;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
+use StellarWP\Foundation\Database\Migration\Factories\LeaseFactory;
+use StellarWP\Foundation\Database\Migration\Factories\SessionFactory;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository as MigrationRecordRepository;
 use StellarWP\Foundation\Database\Migration\Store;
@@ -45,6 +47,7 @@ final class DatabaseProvider extends Provider
 	public function register(): void {
 		$this->registerDatabase();
 		$this->registerDatabaseScope();
+		$this->registerSchema();
 		$this->registerConfiguration();
 		$this->registerTables();
 		$this->registerMigrations();
@@ -66,7 +69,6 @@ final class DatabaseProvider extends Provider
 		$lockName = $this->config->get('database.lock_name')
 			?? $foundationPrefix . '-foundation-database-migrations';
 
-		$this->container->mergeArrayVar(self::MIGRATIONS, []);
 		$this->container->singleton(self::MIGRATIONS_TABLE, $migrationsTable);
 		$this->container->singleton(self::LOCKS_TABLE, $locksTable);
 		$this->container->singleton(self::LOCK_NAME, $lockName);
@@ -85,6 +87,9 @@ final class DatabaseProvider extends Provider
 		});
 		$this->container->singleton(Database::class);
 		$this->container->singleton(DatabaseContract::class, static fn (C $c): Database => $c->get(Database::class));
+	}
+
+	private function registerSchema(): void {
 		$this->container->singleton(DbDelta::class);
 		$this->container->singleton(SchemaExecutor::class, static fn (C $c): DbDelta => $c->get(DbDelta::class));
 		$this->container->singleton(Reconciler::class);
@@ -111,6 +116,8 @@ final class DatabaseProvider extends Provider
 	}
 
 	private function registerMigrations(): void {
+		$this->container->mergeArrayVar(self::MIGRATIONS, []);
+
 		$this->container->when(MigrationCollection::class)
 			->needs('$migrations')
 			->give(static fn (C $c): iterable => $c->get(self::MIGRATIONS));
@@ -130,6 +137,8 @@ final class DatabaseProvider extends Provider
 		$this->container->singleton(MigrationCollection::class);
 		$this->container->singleton(MigrationRecordRepository::class);
 		$this->container->singleton(Repository::class, static fn (C $c): MigrationRecordRepository => $c->get(MigrationRecordRepository::class));
+		$this->container->singleton(LeaseFactory::class);
+		$this->container->singleton(SessionFactory::class);
 		$this->container->singleton(Migrator::class);
 	}
 
