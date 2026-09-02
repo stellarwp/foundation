@@ -19,7 +19,7 @@ interface Schema
 	public function createOrUpdate(Table $table): void;
 
 	/**
-	 * Execute explicit schema SQL.
+	 * Execute a complete, trusted schema SQL statement without placeholder binding.
 	 *
 	 * @throws DatabaseException When the statement cannot be executed.
 	 */

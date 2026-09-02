@@ -334,7 +334,7 @@ final readonly class Backfill_Report_Status implements Migration {
 }
 ```
 
-For specialized data changes that require `Schema::execute()` or the low-level `Database` contract, keep request, configuration, and stored values in WordPress placeholders instead of interpolating them into SQL.
+Choose the raw SQL API based on the statement. `Database::execute()` accepts WordPress placeholders followed by their bindings, so use it when a data migration includes request, configuration, or stored values. `Schema::execute()` accepts only a complete SQL string and does not bind placeholders; reserve it for trusted schema SQL whose identifiers and literals are fully controlled by the application.
 
 :::caution[Make rollback behavior deliberate]
 The generic and reconciliation migration stubs throw `IrreversibleMigration` from `down()`. Implement a safe inverse before relying on rollback, or keep the migration explicitly irreversible. Foundation does not pretend a destructive data change can be undone.
