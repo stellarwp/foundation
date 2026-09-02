@@ -11,6 +11,8 @@ use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ComposerProject;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\PhpNamespace;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\Psr4Namespace;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Database\DatabaseStubPath;
@@ -35,7 +37,7 @@ final class TableCommand extends Command
 	 * Create the table generator for a consuming project root.
 	 */
 	public function __construct(
-		private readonly string $rootPath,
+		private readonly ProjectDirectory $projectDirectory,
 		private readonly ComposerAutoloadResolver $autoloadResolver,
 		private readonly WordPressClassNameResolver $classNameResolver,
 		private readonly StubResolver $stubResolver,
@@ -113,7 +115,7 @@ final class TableCommand extends Command
 		}
 
 		if ($providerPath !== null) {
-			$output->writeln(sprintf('<info>Updated:</info> %s', $this->relativePath($providerPath)));
+			$output->writeln(sprintf('<info>Updated:</info> %s', $this->projectDirectory->relativePath($providerPath)));
 		}
 
 		$runtimeDependencyWarning = $this->runtimeDependencyWarning();
@@ -193,7 +195,7 @@ final class TableCommand extends Command
 		$namespace = $this->namespace($input, $project->defaultPsr4Namespace());
 		$path      = $this->path($input, $namespace, $project);
 		$stub      = $this->stubResolver->resolve('database', 'table', DatabaseStubPath::table());
-		$relative  = $this->relativePath($path . '/' . $className . '.php');
+		$relative  = $this->projectDirectory->relativePath($path . '/' . $className . '.php');
 		$table     = $this->tableName($input, $className);
 		$idOption  = $input->getOption('id');
 		$id        = (new Id(is_string($idOption) ? $idOption : $table . '_table'))->value;
@@ -204,8 +206,8 @@ final class TableCommand extends Command
 			contents: $this->stubRenderer->render($stub, [
 				'namespace'                            => $namespace,
 				'class'                                => $className,
-				'id_php'                               => $this->phpString($id),
-				'table_php'                            => $this->phpString($table),
+				'id_php'                               => $this->stubRenderer->phpStringLiteral($id),
+				'table_php'                            => $this->stubRenderer->phpStringLiteral($table),
 				'foundation_database_contract'         => $project->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Database'),
 				'foundation_database_table'            => $project->foundationClass('StellarWP\\Foundation\\Database\\Table\\Table'),
 				'foundation_database_table_definition' => $project->foundationClass('StellarWP\\Foundation\\Database\\Table\\TableDefinition'),
@@ -229,7 +231,7 @@ final class TableCommand extends Command
 		$providerPath = $this->providerPath($input, $project);
 
 		if (! is_file($providerPath)) {
-			throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->relativePath($providerPath)));
+			throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->projectDirectory->relativePath($providerPath)));
 		}
 
 		$status = $migration === null
@@ -245,7 +247,7 @@ final class TableCommand extends Command
 		if ($status !== ProviderRegistrationEditor::UPDATED && $status !== ProviderRegistrationEditor::ALREADY_REGISTERED) {
 			throw new RuntimeException(sprintf(
 				'Could not update database provider "%s": %s.',
-				$this->relativePath($providerPath),
+				$this->projectDirectory->relativePath($providerPath),
 				$this->providerUpdateFailure($status)
 			));
 		}
@@ -265,7 +267,7 @@ final class TableCommand extends Command
 
 		if (! is_file($providerPath)) {
 			if ($explicit) {
-				throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->relativePath($providerPath)));
+				throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->projectDirectory->relativePath($providerPath)));
 			}
 
 			return null;
@@ -284,7 +286,7 @@ final class TableCommand extends Command
 		if ($status !== ProviderRegistrationEditor::UPDATED && $status !== ProviderRegistrationEditor::ALREADY_REGISTERED && $explicit) {
 			throw new RuntimeException(sprintf(
 				'Could not update database provider "%s": %s.',
-				$this->relativePath($providerPath),
+				$this->projectDirectory->relativePath($providerPath),
 				$this->providerUpdateFailure($status)
 			));
 		}
@@ -321,7 +323,7 @@ final class TableCommand extends Command
 	private function writeProviderWarning(OutputInterface $output, string $providerPath, string $status, string $className): void {
 		$output->writeln(sprintf(
 			'<comment>Provider not updated:</comment> %s (%s). Register %s manually.',
-			$this->relativePath($providerPath),
+			$this->projectDirectory->relativePath($providerPath),
 			$this->providerUpdateFailure($status),
 			$className
 		));
@@ -356,13 +358,6 @@ final class TableCommand extends Command
 	}
 
 	/**
-	 * Render a string as a valid PHP literal for a generator placeholder.
-	 */
-	private function phpString(string $value): string {
-		return var_export($value, true);
-	}
-
-	/**
 	 * Resolve an explicit table namespace or derive the conventional namespace.
 	 *
 	 * @throws RuntimeException When the explicit namespace is invalid.
@@ -371,7 +366,7 @@ final class TableCommand extends Command
 		$namespace = $input->getOption('namespace');
 
 		if (is_string($namespace) && trim($namespace) !== '') {
-			return $this->validNamespace(trim($namespace, '\\'));
+			return (new PhpNamespace(trim($namespace, '\\')))->value;
 		}
 
 		return trim($autoload->namespace, '\\') . '\\Database\\Tables';
@@ -386,7 +381,7 @@ final class TableCommand extends Command
 		$path = $input->getOption('path');
 
 		if (is_string($path) && trim($path) !== '') {
-			return $this->absolutePath($path);
+			return $this->projectDirectory->absolutePath($path);
 		}
 
 		$autoload = $project->psr4NamespaceFor($namespace);
@@ -398,7 +393,7 @@ final class TableCommand extends Command
 			));
 		}
 
-		return $this->rootPath . '/' . $autoload->pathFor($namespace);
+		return $this->projectDirectory->absolutePath($autoload->pathFor($namespace));
 	}
 
 	/**
@@ -408,17 +403,17 @@ final class TableCommand extends Command
 		$provider = $input->getOption('provider');
 
 		if (is_string($provider) && trim($provider) !== '') {
-			return $this->absolutePath($provider);
+			return $this->projectDirectory->absolutePath($provider);
 		}
 
 		$namespace = trim($project->defaultPsr4Namespace()->namespace, '\\') . '\\Database';
 		$autoload  = $project->psr4NamespaceFor($namespace);
 
 		if ($autoload === null) {
-			return $this->rootPath . '/src/Database/Provider.php';
+			return $this->projectDirectory->absolutePath('src/Database/Provider.php');
 		}
 
-		return $this->rootPath . '/' . $autoload->pathFor($namespace) . '/Provider.php';
+		return $this->projectDirectory->absolutePath($autoload->pathFor($namespace) . '/Provider.php');
 	}
 
 	/**
@@ -455,49 +450,10 @@ final class TableCommand extends Command
 	}
 
 	/**
-	 * Resolve a project-relative path without changing an absolute path.
-	 */
-	private function absolutePath(string $path): string {
-		$path = trim($path);
-
-		if (str_starts_with($path, '/')) {
-			return rtrim($path, '/');
-		}
-
-		return $this->rootPath . '/' . trim($path, '/');
-	}
-
-	/**
-	 * Return a project-relative path for console output when possible.
-	 */
-	private function relativePath(string $path): string {
-		$root = rtrim($this->rootPath, '/') . '/';
-
-		if (str_starts_with($path, $root)) {
-			return substr($path, strlen($root));
-		}
-
-		return $path;
-	}
-
-	/**
-	 * Validate and return a PHP namespace suitable for generated source.
-	 *
-	 * @throws RuntimeException When the namespace is invalid.
-	 */
-	private function validNamespace(string $namespace): string {
-		if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\\\\[A-Za-z_][A-Za-z0-9_]*)*$/', $namespace)) {
-			throw new RuntimeException(sprintf('Namespace "%s" is not a valid PHP namespace.', $namespace));
-		}
-
-		return $namespace;
-	}
-
-	/**
 	 * Explain when generated runtime code lacks a production Foundation dependency.
 	 */
 	private function runtimeDependencyWarning(): ?string {
-		$composerPath = $this->rootPath . '/composer.json';
+		$composerPath = $this->projectDirectory->absolutePath('composer.json');
 
 		if (! is_readable($composerPath)) {
 			return null;

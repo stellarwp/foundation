@@ -18,6 +18,7 @@ use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
 use StellarWP\Foundation\Cli\Generation\Php\PhpSourceEditor;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Tests\TestCase;
 use Symfony\Component\Console\Command\Command;
@@ -392,6 +393,20 @@ final class DatabaseCommandTest extends TestCase
 			'Namespace "Acme Plugin\\Database\\Tables" is not a valid PHP namespace.',
 			$tester->getDisplay()
 		);
+		$this->assertFileDoesNotExist($root . '/src/Database/Migrations/Add_Status_To_Reports.php');
+	}
+
+	public function test_database_migrations_reject_empty_table_namespace_segments_before_writing_files(): void {
+		$root   = $this->temporaryProject();
+		$tester = new CommandTester($this->migrationCommand($root));
+
+		$statusCode = $tester->execute([
+			'name'    => 'add-status-to-reports',
+			'--table' => 'Acme\\\\Reports_Table',
+		]);
+
+		$this->assertSame(Command::FAILURE, $statusCode);
+		$this->assertStringContainsString('is not a valid PHP namespace', $tester->getDisplay());
 		$this->assertFileDoesNotExist($root . '/src/Database/Migrations/Add_Status_To_Reports.php');
 	}
 
@@ -2094,11 +2109,13 @@ PHP);
 	}
 
 	private function tableCommand(string $root): TableCommand {
+		$projectDirectory = new ProjectDirectory($root);
+
 		return new TableCommand(
-			rootPath: $root,
-			autoloadResolver: new ComposerAutoloadResolver($root),
+			projectDirectory: $projectDirectory,
+			autoloadResolver: new ComposerAutoloadResolver($projectDirectory),
 			classNameResolver: new WordPressClassNameResolver(),
-			stubResolver: new StubResolver($root),
+			stubResolver: new StubResolver($projectDirectory),
 			stubRenderer: new StubRenderer(),
 			fileWriter: $this->fileWriter(),
 			providerUpdater: $this->providerUpdater(),
@@ -2107,9 +2124,11 @@ PHP);
 	}
 
 	private function migrationCommand(string $root): MigrationCommand {
+		$projectDirectory = new ProjectDirectory($root);
+
 		return new MigrationCommand(
-			rootPath: $root,
-			autoloadResolver: new ComposerAutoloadResolver($root),
+			projectDirectory: $projectDirectory,
+			autoloadResolver: new ComposerAutoloadResolver($projectDirectory),
 			migrationFactory: $this->migrationFactory($root),
 			fileWriter: $this->fileWriter(),
 			providerUpdater: $this->providerUpdater()
@@ -2117,21 +2136,25 @@ PHP);
 	}
 
 	private function migrationFactory(string $root): MigrationFileFactory {
+		$projectDirectory = new ProjectDirectory($root);
+
 		return new MigrationFileFactory(
-			rootPath: $root,
-			autoloadResolver: new ComposerAutoloadResolver($root),
+			projectDirectory: $projectDirectory,
+			autoloadResolver: new ComposerAutoloadResolver($projectDirectory),
 			classNameResolver: new WordPressClassNameResolver(),
-			stubResolver: new StubResolver($root),
+			stubResolver: new StubResolver($projectDirectory),
 			stubRenderer: new StubRenderer()
 		);
 	}
 
 	private function providerCommand(string $root): ProviderCommand {
+		$projectDirectory = new ProjectDirectory($root);
+
 		return new ProviderCommand(
-			rootPath: $root,
-			autoloadResolver: new ComposerAutoloadResolver($root),
+			projectDirectory: $projectDirectory,
+			autoloadResolver: new ComposerAutoloadResolver($projectDirectory),
 			classNameResolver: new WordPressClassNameResolver(),
-			stubResolver: new StubResolver($root),
+			stubResolver: new StubResolver($projectDirectory),
 			stubRenderer: new StubRenderer(),
 			fileWriter: $this->fileWriter()
 		);

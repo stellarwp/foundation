@@ -9,6 +9,7 @@ use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ComposerProject;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -29,7 +30,7 @@ final class MigrationCommand extends Command
 	 * Create the migration generator for a consuming project root.
 	 */
 	public function __construct(
-		private readonly string $rootPath,
+		private readonly ProjectDirectory $projectDirectory,
 		private readonly ComposerAutoloadResolver $autoloadResolver,
 		private readonly MigrationFileFactory $migrationFactory,
 		private readonly GeneratedFileWriter $fileWriter,
@@ -82,7 +83,7 @@ final class MigrationCommand extends Command
 		$output->writeln(sprintf('<info>Created:</info> %s', $migration->file->relativePath));
 
 		if ($providerPath !== null) {
-			$output->writeln(sprintf('<info>Updated:</info> %s', $this->relativePath($providerPath)));
+			$output->writeln(sprintf('<info>Updated:</info> %s', $this->projectDirectory->relativePath($providerPath)));
 		} elseif (! $this->providerExists($input)) {
 			$output->writeln('');
 			$output->writeln('<comment>Register this migration with DatabaseProvider::MIGRATIONS using mergeArrayVar().</comment>');
@@ -141,7 +142,7 @@ final class MigrationCommand extends Command
 		$providerPath = $this->providerPath($input, $project);
 
 		if (! is_file($providerPath)) {
-			throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->relativePath($providerPath)));
+			throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->projectDirectory->relativePath($providerPath)));
 		}
 
 		$status = $this->providerUpdater->checkMigration($providerPath, $migration->class, $migration->namespace);
@@ -152,7 +153,7 @@ final class MigrationCommand extends Command
 
 		throw new RuntimeException(sprintf(
 			'Could not update database provider "%s": %s.',
-			$this->relativePath($providerPath),
+			$this->projectDirectory->relativePath($providerPath),
 			$this->providerUpdateFailure($status)
 		));
 	}
@@ -169,7 +170,7 @@ final class MigrationCommand extends Command
 
 		if (! is_file($providerPath)) {
 			if ($explicit) {
-				throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->relativePath($providerPath)));
+				throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->projectDirectory->relativePath($providerPath)));
 			}
 
 			return null;
@@ -188,14 +189,14 @@ final class MigrationCommand extends Command
 		if ($explicit) {
 			throw new RuntimeException(sprintf(
 				'Could not update database provider "%s": %s.',
-				$this->relativePath($providerPath),
+				$this->projectDirectory->relativePath($providerPath),
 				$this->providerUpdateFailure($status)
 			));
 		}
 
 		$output->writeln(sprintf(
 			'<comment>Provider not updated:</comment> %s (%s). Register %s manually.',
-			$this->relativePath($providerPath),
+			$this->projectDirectory->relativePath($providerPath),
 			$this->providerUpdateFailure($status),
 			$migration->class
 		));
@@ -253,17 +254,17 @@ final class MigrationCommand extends Command
 		$provider = $input->getOption('provider');
 
 		if (is_string($provider) && trim($provider) !== '') {
-			return $this->absolutePath($provider);
+			return $this->projectDirectory->absolutePath($provider);
 		}
 
 		$namespace = trim($project->defaultPsr4Namespace()->namespace, '\\') . '\\Database';
 		$autoload  = $project->psr4NamespaceFor($namespace);
 
 		if ($autoload === null) {
-			return $this->rootPath . '/src/Database/Provider.php';
+			return $this->projectDirectory->absolutePath('src/Database/Provider.php');
 		}
 
-		return $this->rootPath . '/' . $autoload->pathFor($namespace) . '/Provider.php';
+		return $this->projectDirectory->absolutePath($autoload->pathFor($namespace) . '/Provider.php');
 	}
 
 	/**
@@ -300,36 +301,10 @@ final class MigrationCommand extends Command
 	}
 
 	/**
-	 * Resolve a project-relative path without changing an absolute path.
-	 */
-	private function absolutePath(string $path): string {
-		$path = trim($path);
-
-		if (str_starts_with($path, '/')) {
-			return rtrim($path, '/');
-		}
-
-		return $this->rootPath . '/' . trim($path, '/');
-	}
-
-	/**
-	 * Return a project-relative path for console output when possible.
-	 */
-	private function relativePath(string $path): string {
-		$root = rtrim($this->rootPath, '/') . '/';
-
-		if (str_starts_with($path, $root)) {
-			return substr($path, strlen($root));
-		}
-
-		return $path;
-	}
-
-	/**
 	 * Explain when generated runtime code lacks a production Foundation dependency.
 	 */
 	private function runtimeDependencyWarning(): ?string {
-		$composerPath = $this->rootPath . '/composer.json';
+		$composerPath = $this->projectDirectory->absolutePath('composer.json');
 
 		if (! is_readable($composerPath)) {
 			return null;

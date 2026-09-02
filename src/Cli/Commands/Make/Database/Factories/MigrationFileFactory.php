@@ -9,6 +9,8 @@ use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ComposerProject;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\PhpNamespace;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\Psr4Namespace;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Database\DatabaseStubPath;
@@ -23,7 +25,7 @@ final readonly class MigrationFileFactory
 	 * Create a migration factory rooted in the consuming Composer project.
 	 */
 	public function __construct(
-		private string $rootPath,
+		private ProjectDirectory $projectDirectory,
 		private ComposerAutoloadResolver $autoloadResolver,
 		private WordPressClassNameResolver $classNameResolver,
 		private StubResolver $stubResolver,
@@ -43,7 +45,7 @@ final readonly class MigrationFileFactory
 		return $this->migration($context, $this->stubRenderer->render($stub, [
 			'namespace'                                  => $context['namespace'],
 			'class'                                      => $context['class'],
-			'id_php'                                     => $this->phpString($context['id']),
+			'id_php'                                     => $this->stubRenderer->phpStringLiteral($context['id']),
 			'foundation_database_migration'              => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Migration'),
 			'foundation_database_schema'                 => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Schema'),
 			'foundation_database_irreversible_migration' => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Exceptions\\IrreversibleMigration'),
@@ -63,7 +65,7 @@ final readonly class MigrationFileFactory
 		return $this->migration($context, $this->stubRenderer->render($stub, [
 			'namespace'                     => $context['namespace'],
 			'class'                         => $context['class'],
-			'id_php'                        => $this->phpString($context['id']),
+			'id_php'                        => $this->stubRenderer->phpStringLiteral($context['id']),
 			'table_class'                   => $table['class'],
 			'table_namespace'               => $table['namespace'],
 			'foundation_database_migration' => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Migration'),
@@ -84,7 +86,7 @@ final readonly class MigrationFileFactory
 		return $this->migration($context, $this->stubRenderer->render($stub, [
 			'namespace'                                  => $context['namespace'],
 			'class'                                      => $context['class'],
-			'id_php'                                     => $this->phpString($context['id']),
+			'id_php'                                     => $this->stubRenderer->phpStringLiteral($context['id']),
 			'table_class'                                => $table['class'],
 			'table_namespace'                            => $table['namespace'],
 			'foundation_database_irreversible_migration' => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Exceptions\\IrreversibleMigration'),
@@ -125,7 +127,7 @@ final readonly class MigrationFileFactory
 	private function migration(array $context, string $contents): GeneratedMigration {
 		$file = new GeneratedFile(
 			path: $context['path'] . '/' . $context['class'] . '.php',
-			relativePath: $this->relativePath($context['path'] . '/' . $context['class'] . '.php'),
+			relativePath: $this->projectDirectory->relativePath($context['path'] . '/' . $context['class'] . '.php'),
 			contents: $contents
 		);
 
@@ -171,7 +173,7 @@ final readonly class MigrationFileFactory
 
 		return [
 			'class'     => $class,
-			'namespace' => $this->validNamespace($namespace),
+			'namespace' => (new PhpNamespace($namespace))->value,
 		];
 	}
 
@@ -182,7 +184,7 @@ final readonly class MigrationFileFactory
 	 */
 	private function migrationNamespace(?string $namespace, Psr4Namespace $autoload): string {
 		if ($namespace !== null && trim($namespace) !== '') {
-			return $this->validNamespace(trim($namespace, '\\'));
+			return (new PhpNamespace(trim($namespace, '\\')))->value;
 		}
 
 		return trim($autoload->namespace, '\\') . '\\Database\\Migrations';
@@ -195,7 +197,7 @@ final readonly class MigrationFileFactory
 	 */
 	private function migrationPath(?string $path, string $namespace, ComposerProject $project): string {
 		if ($path !== null && trim($path) !== '') {
-			return $this->absolutePath($path);
+			return $this->projectDirectory->absolutePath($path);
 		}
 
 		$autoload = $project->psr4NamespaceFor($namespace);
@@ -207,52 +209,6 @@ final readonly class MigrationFileFactory
 			));
 		}
 
-		return $this->rootPath . '/' . $autoload->pathFor($namespace);
-	}
-
-	/**
-	 * Validate and return a PHP namespace suitable for generated source.
-	 *
-	 * @throws RuntimeException When the namespace is invalid.
-	 */
-	private function validNamespace(string $namespace): string {
-		if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\\\\[A-Za-z_][A-Za-z0-9_]*)*$/', $namespace)) {
-			throw new RuntimeException(sprintf('Namespace "%s" is not a valid PHP namespace.', $namespace));
-		}
-
-		return $namespace;
-	}
-
-	/**
-	 * Resolve a project-relative path without changing an absolute path.
-	 */
-	private function absolutePath(string $path): string {
-		$path = trim($path);
-
-		if (str_starts_with($path, '/')) {
-			return rtrim($path, '/');
-		}
-
-		return $this->rootPath . '/' . trim($path, '/');
-	}
-
-	/**
-	 * Return a project-relative display path when the file is under the project root.
-	 */
-	private function relativePath(string $path): string {
-		$root = rtrim($this->rootPath, '/') . '/';
-
-		if (str_starts_with($path, $root)) {
-			return substr($path, strlen($root));
-		}
-
-		return $path;
-	}
-
-	/**
-	 * Render a string as a valid PHP literal for a generator placeholder.
-	 */
-	private function phpString(string $value): string {
-		return var_export($value, true);
+		return $this->projectDirectory->absolutePath($autoload->pathFor($namespace));
 	}
 }

@@ -23,6 +23,7 @@ use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
 use StellarWP\Foundation\Cli\Generation\Php\PhpSourceEditor;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Cli\Process\Contracts\ProcessRunner;
 use StellarWP\Foundation\Cli\Process\ShellProcessRunner;
@@ -70,12 +71,8 @@ final class CliProvider extends Provider
 	 * Register shared source generation and Composer discovery services.
 	 */
 	private function registerGeneration(): void {
-		$this->container->when(ComposerAutoloadResolver::class)
-			->needs('$rootPath')
-			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
-
-		$this->container->when(StubResolver::class)
-			->needs('$rootPath')
+		$this->container->when(ProjectDirectory::class)
+			->needs('$path')
 			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
 
 		$this->container->singleton(WordPressClassNameResolver::class);
@@ -84,6 +81,7 @@ final class CliProvider extends Provider
 		$this->container->singleton(Lexer::class);
 		$this->container->singleton(ParserFactory::class);
 		$this->container->singleton(PhpSourceEditor::class);
+		$this->container->singleton(ProjectDirectory::class);
 		$this->container->singleton(StubRenderer::class);
 		$this->container->singleton(StubResolver::class);
 	}
@@ -112,22 +110,6 @@ final class CliProvider extends Provider
 	 * Register database provider, table, and migration generator commands.
 	 */
 	private function registerDatabaseCommands(): void {
-		$this->container->when(MigrationFileFactory::class)
-			->needs('$rootPath')
-			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
-
-		$this->container->when(MigrationCommand::class)
-			->needs('$rootPath')
-			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
-
-		$this->container->when(ProviderCommand::class)
-			->needs('$rootPath')
-			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
-
-		$this->container->when(TableCommand::class)
-			->needs('$rootPath')
-			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
-
 		$this->container->singleton(MigrationCommand::class);
 		$this->container->singleton(MigrationFileFactory::class);
 		$this->container->singleton(ProviderCommand::class);
@@ -139,10 +121,6 @@ final class CliProvider extends Provider
 	 * Register the WP-CLI command generator.
 	 */
 	private function registerWpCliCommand(): void {
-		$this->container->when(WPCliCommand::class)
-			->needs('$rootPath')
-			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
-
 		$this->container->singleton(WPCliCommand::class);
 	}
 

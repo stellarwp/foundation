@@ -9,6 +9,8 @@ use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ComposerProject;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\PhpNamespace;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\Psr4Namespace;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Database\DatabaseStubPath;
@@ -29,7 +31,7 @@ final class ProviderCommand extends Command
 	private const string NAME = 'make:database-provider';
 
 	public function __construct(
-		private readonly string $rootPath,
+		private readonly ProjectDirectory $projectDirectory,
 		private readonly ComposerAutoloadResolver $autoloadResolver,
 		private readonly WordPressClassNameResolver $classNameResolver,
 		private readonly StubResolver $stubResolver,
@@ -77,7 +79,7 @@ final class ProviderCommand extends Command
 		$namespace = $this->namespace($input, $project->defaultPsr4Namespace());
 		$path      = $this->path($input, $namespace, $project);
 		$stub      = $this->stubResolver->resolve('database', 'provider', DatabaseStubPath::provider());
-		$relative  = $this->relativePath($path . '/' . $className . '.php');
+		$relative  = $this->projectDirectory->relativePath($path . '/' . $className . '.php');
 
 		return new GeneratedFile(
 			path: $path . '/' . $className . '.php',
@@ -95,7 +97,7 @@ final class ProviderCommand extends Command
 		$namespace = $input->getOption('namespace');
 
 		if (is_string($namespace) && trim($namespace) !== '') {
-			return $this->validNamespace(trim($namespace, '\\'));
+			return (new PhpNamespace(trim($namespace, '\\')))->value;
 		}
 
 		return trim($autoload->namespace, '\\') . '\\Database';
@@ -105,7 +107,7 @@ final class ProviderCommand extends Command
 		$path = $input->getOption('path');
 
 		if (is_string($path) && trim($path) !== '') {
-			return $this->absolutePath($path);
+			return $this->projectDirectory->absolutePath($path);
 		}
 
 		$autoload = $project->psr4NamespaceFor($namespace);
@@ -117,39 +119,11 @@ final class ProviderCommand extends Command
 			));
 		}
 
-		return $this->rootPath . '/' . $autoload->pathFor($namespace);
-	}
-
-	private function absolutePath(string $path): string {
-		$path = trim($path);
-
-		if (str_starts_with($path, '/')) {
-			return rtrim($path, '/');
-		}
-
-		return $this->rootPath . '/' . trim($path, '/');
-	}
-
-	private function relativePath(string $path): string {
-		$root = rtrim($this->rootPath, '/') . '/';
-
-		if (str_starts_with($path, $root)) {
-			return substr($path, strlen($root));
-		}
-
-		return $path;
-	}
-
-	private function validNamespace(string $namespace): string {
-		if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\\\\[A-Za-z_][A-Za-z0-9_]*)*$/', $namespace)) {
-			throw new RuntimeException(sprintf('Namespace "%s" is not a valid PHP namespace.', $namespace));
-		}
-
-		return $namespace;
+		return $this->projectDirectory->absolutePath($autoload->pathFor($namespace));
 	}
 
 	private function runtimeDependencyWarning(): ?string {
-		$composerPath = $this->rootPath . '/composer.json';
+		$composerPath = $this->projectDirectory->absolutePath('composer.json');
 
 		if (! is_readable($composerPath)) {
 			return null;
