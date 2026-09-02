@@ -20,6 +20,7 @@ final class ProviderRegistrationEditor
 	public const string UPDATED            = 'updated';
 	public const string ALREADY_REGISTERED = 'already_registered';
 	public const string NOT_FOUND          = 'not_found';
+	public const string READ_FAILED        = 'read_failed';
 	public const string NOT_WRITABLE       = 'not_writable';
 	public const string MISSING_ANCHOR     = 'missing_anchor';
 	public const string MISSING_MARKER     = 'missing_marker';
@@ -52,6 +53,73 @@ final class ProviderRegistrationEditor
 		);
 	}
 
+	/**
+	 * Add a table and its initial migration to one provider replacement.
+	 */
+	public function addTableAndMigration(
+		string $providerPath,
+		string $tableClass,
+		string $tableNamespace,
+		string $migrationClass,
+		string $migrationNamespace
+	): string {
+		if (! is_file($providerPath) || ! is_readable($providerPath)) {
+			return self::NOT_FOUND;
+		}
+
+		if (! $this->isWritableTarget($providerPath)) {
+			return self::NOT_WRITABLE;
+		}
+
+		$contents = file_get_contents($providerPath);
+
+		if ($contents === false) {
+			return self::READ_FAILED;
+		}
+
+		$temporaryPath = tempnam(dirname($providerPath), '.foundation-provider-');
+
+		if ($temporaryPath === false) {
+			return self::WRITE_FAILED;
+		}
+
+		try {
+			$written = file_put_contents($temporaryPath, $contents);
+
+			if ($written !== strlen($contents)) {
+				return self::WRITE_FAILED;
+			}
+
+			$tableStatus = $this->addTable($temporaryPath, $tableClass, $tableNamespace);
+
+			if (! $this->registrationSucceeded($tableStatus)) {
+				return $tableStatus;
+			}
+
+			$migrationStatus = $this->addMigration($temporaryPath, $migrationClass, $migrationNamespace);
+
+			if (! $this->registrationSucceeded($migrationStatus)) {
+				return $migrationStatus;
+			}
+
+			if ($tableStatus === self::ALREADY_REGISTERED && $migrationStatus === self::ALREADY_REGISTERED) {
+				return self::ALREADY_REGISTERED;
+			}
+
+			$updatedContents = file_get_contents($temporaryPath);
+
+			if ($updatedContents === false) {
+				return self::WRITE_FAILED;
+			}
+
+			return $this->writeContents($providerPath, $updatedContents)
+				? self::UPDATED
+				: self::WRITE_FAILED;
+		} finally {
+			@unlink($temporaryPath);
+		}
+	}
+
 	public function checkTable(string $providerPath, string $class, string $classNamespace): string {
 		return $this->addRegistration(
 			providerPath: $providerPath,
@@ -72,12 +140,43 @@ final class ProviderRegistrationEditor
 		);
 	}
 
+	/**
+	 * Verify that both registrations can be added without changing the provider.
+	 */
+	public function checkTableAndMigration(
+		string $providerPath,
+		string $tableClass,
+		string $tableNamespace,
+		string $migrationClass,
+		string $migrationNamespace
+	): string {
+		$tableStatus = $this->checkTable($providerPath, $tableClass, $tableNamespace);
+
+		if (! $this->registrationSucceeded($tableStatus)) {
+			return $tableStatus;
+		}
+
+		$migrationStatus = $this->checkMigration($providerPath, $migrationClass, $migrationNamespace);
+
+		if (! $this->registrationSucceeded($migrationStatus)) {
+			return $migrationStatus;
+		}
+
+		return $tableStatus === self::ALREADY_REGISTERED && $migrationStatus === self::ALREADY_REGISTERED
+			? self::ALREADY_REGISTERED
+			: self::UPDATED;
+	}
+
 	private function addRegistration(string $providerPath, string $class, string $classNamespace, string $marker, string $registration, bool $write): string {
 		if (! is_file($providerPath) || ! is_readable($providerPath)) {
 			return self::NOT_FOUND;
 		}
 
-		$contents = (string) file_get_contents($providerPath);
+		$contents = file_get_contents($providerPath);
+
+		if ($contents === false) {
+			return self::READ_FAILED;
+		}
 
 		if (! $this->sourceEditor->canParse($contents)) {
 			return self::PARSE_FAILED;
@@ -97,7 +196,7 @@ final class ProviderRegistrationEditor
 			return self::IMPORT_COLLISION;
 		}
 
-		if (! is_writable($providerPath)) {
+		if (! $this->isWritableTarget($providerPath)) {
 			return self::NOT_WRITABLE;
 		}
 
@@ -117,7 +216,7 @@ final class ProviderRegistrationEditor
 			return self::MISSING_MARKER;
 		}
 
-		if (file_put_contents($providerPath, $contents) === false) {
+		if (! $this->writeContents($providerPath, $contents)) {
 			return self::WRITE_FAILED;
 		}
 
@@ -129,7 +228,11 @@ final class ProviderRegistrationEditor
 			return self::NOT_FOUND;
 		}
 
-		$contents = (string) file_get_contents($providerPath);
+		$contents = file_get_contents($providerPath);
+
+		if ($contents === false) {
+			return self::READ_FAILED;
+		}
 
 		if (! $this->sourceEditor->canParse($contents)) {
 			return self::PARSE_FAILED;
@@ -152,7 +255,7 @@ final class ProviderRegistrationEditor
 			return self::IMPORT_COLLISION;
 		}
 
-		if (! is_writable($providerPath)) {
+		if (! $this->isWritableTarget($providerPath)) {
 			return self::NOT_WRITABLE;
 		}
 
@@ -178,10 +281,66 @@ final class ProviderRegistrationEditor
 			return self::MISSING_ANCHOR;
 		}
 
-		if (file_put_contents($providerPath, $contents) === false) {
+		if (! $this->writeContents($providerPath, $contents)) {
 			return self::WRITE_FAILED;
 		}
 
 		return self::UPDATED;
+	}
+
+	private function registrationSucceeded(string $status): bool {
+		return $status === self::UPDATED || $status === self::ALREADY_REGISTERED;
+	}
+
+	private function writeContents(string $path, string $contents): bool {
+		$path = $this->targetPath($path);
+
+		if ($path === null) {
+			return false;
+		}
+
+		$temporaryPath = tempnam(dirname($path), '.foundation-write-');
+
+		if ($temporaryPath === false) {
+			return false;
+		}
+
+		try {
+			$written = file_put_contents($temporaryPath, $contents);
+
+			if ($written !== strlen($contents)) {
+				return false;
+			}
+
+			$permissions = fileperms($path);
+
+			if ($permissions !== false && ! chmod($temporaryPath, $permissions & 0777)) {
+				return false;
+			}
+
+			return @rename($temporaryPath, $path);
+		} finally {
+			if (file_exists($temporaryPath)) {
+				@unlink($temporaryPath);
+			}
+		}
+	}
+
+	private function isWritableTarget(string $path): bool {
+		$target = $this->targetPath($path);
+
+		return $target !== null
+			&& is_writable($target)
+			&& is_writable(dirname($target));
+	}
+
+	private function targetPath(string $path): ?string {
+		if (! is_link($path)) {
+			return $path;
+		}
+
+		$target = realpath($path);
+
+		return $target === false ? null : $target;
 	}
 }

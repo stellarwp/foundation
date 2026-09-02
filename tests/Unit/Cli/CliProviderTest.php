@@ -7,6 +7,7 @@ use lucatume\DI52\Container as DI52Container;
 use StellarWP\ContainerContract\ContainerInterface;
 use StellarWP\Foundation\Cli\Application;
 use StellarWP\Foundation\Cli\CliProvider;
+use StellarWP\Foundation\Cli\Commands\Make\Database\Factories\MigrationFileFactory;
 use StellarWP\Foundation\Cli\Commands\Make\Database\MigrationCommand;
 use StellarWP\Foundation\Cli\Commands\Make\Database\ProviderCommand;
 use StellarWP\Foundation\Cli\Commands\Make\Database\TableCommand;
@@ -37,6 +38,7 @@ final class CliProviderTest extends TestCase
 		$this->assertInstanceOf(Application::class, $container->get(Application::class));
 		$this->assertInstanceOf(CreateCommand::class, $container->get(CreateCommand::class));
 		$this->assertInstanceOf(MigrationCommand::class, $container->get(MigrationCommand::class));
+		$this->assertInstanceOf(MigrationFileFactory::class, $container->get(MigrationFileFactory::class));
 		$this->assertInstanceOf(ProviderCommand::class, $container->get(ProviderCommand::class));
 		$this->assertInstanceOf(TableCommand::class, $container->get(TableCommand::class));
 		$this->assertInstanceOf(WPCliCommand::class, $container->get(WPCliCommand::class));

@@ -78,6 +78,8 @@ Generator stubs should use context-aware placeholders for PHP literals, such as 
 
 Migration generators must not offer a force-overwrite option. Existing migrations are identity-bearing history: edit a migration only before it has been applied anywhere, or create a new migration for a new schema change.
 
+Database migration generators must distinguish table ownership from a table dependency through explicit options. Only `make:database-migration <name> --create=<table-class>` may use the create-table stub whose rollback drops the complete table. `make:database-migration <name> --table=<table-class>` selects a schema reconciliation migration: inject the existing table, reconcile its current definition in `up()`, and default `down()` to `IrreversibleMigration` until the developer supplies a safe inverse. The options are mutually exclusive and accept either a short class from the default table namespace or a fully qualified class. Never infer destructive behavior from a migration name. `make:database-table <name> --migration` must reuse the same create-migration factory so combined and standalone generation remain consistent.
+
 ## CLI Tooling Boundary
 
 `stellarwp/foundation-cli` is developer tooling and should normally be installed by split-package consumers with `composer require --dev stellarwp/foundation-cli`. It should not be packaged into production WordPress plugin zips when installed as a split package.

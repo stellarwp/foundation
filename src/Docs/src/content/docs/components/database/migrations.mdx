@@ -29,9 +29,12 @@ Generate the application provider before its tables and migrations:
 
 ```shell
 vendor/bin/foundation make:database-provider
-vendor/bin/foundation make:database-table Reports_Table
-vendor/bin/foundation make:database-migration Create_Reports_Table
+vendor/bin/foundation make:database-table Reports_Table --migration
 ```
+
+The `--migration` flag creates the table class and its initial create-table migration together. Both classes are also added to the generated database provider when it exists. Table `--namespace` and `--path` options apply to the table class; the migration remains in the conventional `Database\\Migrations` namespace and path. Pass `--migration-id=<id>` only when the generated timestamp identifier must be replaced.
+
+The table generator derives the unprefixed WordPress table name from the class name. Pass `--table-name=report_entries` when the physical table name should differ from that default. The migration generator's `--table` option has a separate, class-oriented meaning: it selects the existing table class whose schema should be reconciled.
 
 The generators use the project's Composer namespace and create this feature structure by default:
 
@@ -51,7 +54,8 @@ Project-specific stubs can override the defaults at:
 ```text
 foundation/stubs/database/provider.stub
 foundation/stubs/database/table.stub
-foundation/stubs/database/table-migration.stub
+foundation/stubs/database/create-table-migration.stub
+foundation/stubs/database/reconcile-table-migration.stub
 foundation/stubs/database/migration.stub
 ```
 
@@ -136,9 +140,53 @@ final readonly class Create_Reports_Table implements Migration {
 }
 ```
 
+The `--migration` flag explicitly selects a create-table migration. Its generated `down()` method therefore drops the table and all of its data when the migration is rolled back.
+
+You can generate the initial migration separately when the table class already exists:
+
+```shell
+vendor/bin/foundation make:database-migration Create_Reports_Table \
+	--create=Reports_Table
+```
+
+Pass a fully qualified class when the table is outside the default `Database\\Tables` namespace:
+
+```shell
+vendor/bin/foundation make:database-migration Create_Reports_Table \
+	--create=YourPlugin\\Reporting\\Tables\\Reports_Table
+```
+
+Foundation never infers table ownership from the migration name. Only `--create` selects the destructive create-table rollback, so a migration named `Create_Reports_Table` without that option remains a generic, irreversible migration.
+
 Migration IDs are permanent, byte-exact identifiers. The generator prefixes them with a sortable timestamp so migration history is easy to inspect, but execution follows provider contribution order rather than sorting by ID. Register providers and migrations in dependency order, and do not change an ID after the migration has been deployed.
 
-For later schema changes, update the table's desired definition and create a new migration that applies it. Use `Schema::execute()` only for trusted schema SQL that `dbDelta()` cannot express reliably.
+### Reconcile a later table change
+
+For later schema changes, update the table's desired definition and generate a reconciliation migration with the table it changes:
+
+```shell
+vendor/bin/foundation make:database-migration Add_Status_To_Reports \
+	--table=Reports_Table
+```
+
+The generated migration receives `Reports_Table` and calls `Schema::createOrUpdate()` from `up()`. Its `down()` method throws `IrreversibleMigration` until the developer supplies a safe inverse. Merely depending on a table never grants a later migration permission to drop the complete table.
+
+```php title="Add_Status_To_Reports.php"
+public function up( Schema $schema ): void {
+	$schema->createOrUpdate( $this->table );
+}
+
+/**
+ * @throws IrreversibleMigration Until a safe inverse is implemented.
+ */
+public function down( Schema $schema ): void {
+	throw IrreversibleMigration::forMigration( self::ID );
+}
+```
+
+The table class represents the application's current desired schema, not a historical snapshot stored with each migration. On a fresh installation, the original create-table migration may therefore create the latest table shape before later reconciliation migrations run. Keep reconciliation migrations idempotent, and do not make data migrations depend on observing an exact historical table definition.
+
+Use `Schema::execute()` for trusted schema SQL when an upgrade requires a specific intermediate state or when `dbDelta()` cannot express the change reliably. Implement `down()` explicitly only when the inverse preserves the intended data and schema.
 
 :::caution[Remove or change indexes explicitly]
 WordPress `dbDelta()` can leave removed or changed indexes in place. Foundation verifies index names, uniqueness, ordered columns, and column prefix lengths after reconciliation, and it will not record the migration when the physical indexes differ from the table definition.
@@ -147,6 +195,8 @@ Use `Schema::dropIndex()` for removed or changed named secondary indexes, then c
 :::
 
 For equality-based data changes, use the table's write methods so the migration needs only the table it changes. For example, `src/Database/Migrations/Backfill_Report_Status.php` can update existing rows without coordinating a separate database service:
+
+Generate a generic migration without `--create` or `--table`, then add the table constructor dependency manually. The `--table` option means “reconcile this table's current schema,” so using it would also generate a `Schema::createOrUpdate()` call.
 
 ```php title="Backfill_Report_Status.php"
 <?php declare(strict_types=1);
@@ -178,6 +228,9 @@ final readonly class Backfill_Report_Status implements Migration {
 		);
 	}
 
+	/**
+	 * @throws IrreversibleMigration Until a safe inverse is implemented.
+	 */
 	public function down( Schema $schema ): void {
 		throw IrreversibleMigration::forMigration( self::ID );
 	}
@@ -187,7 +240,9 @@ final readonly class Backfill_Report_Status implements Migration {
 For specialized data changes that require `Schema::execute()` or the low-level `Database` contract, keep request, configuration, and stored values in WordPress placeholders instead of interpolating them into SQL.
 
 :::caution[Make rollback behavior deliberate]
-The generic migration stub throws `IrreversibleMigration` from `down()`. Implement a safe inverse before relying on rollback, or keep the migration explicitly irreversible. Foundation does not pretend a destructive data change can be undone.
+The generic and reconciliation migration stubs throw `IrreversibleMigration` from `down()`. Implement a safe inverse before relying on rollback, or keep the migration explicitly irreversible. Foundation does not pretend a destructive data change can be undone.
+
+Rollback processes a batch in reverse order and is not transactional. If a later `down()` fails or reaches an irreversible migration, migrations already reversed in that command remain reversed and their ledger records remain removed. Inspect migration status, repair the failure, and rerun rollback deliberately.
 :::
 
 ## Run migrations
@@ -237,6 +292,10 @@ Roll back every configured migration and run them again:
 ```shell
 wp your-plugin migrate --refresh --yes
 ```
+
+:::caution[`--refresh` requires reversible migrations]
+Refresh first runs rollback and only reapplies migrations after rollback completes. Every applied migration must provide a safe `down()` implementation. If rollback reaches an irreversible or failing migration, migrations already reversed remain reversed and the run phase does not begin.
+:::
 
 Drop only Foundation's migration ledger when intentionally resetting migration history:
 

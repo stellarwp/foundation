@@ -15,8 +15,12 @@ final class DatabaseStubPath
 		return __DIR__ . '/stubs/migration.stub';
 	}
 
-	public static function tableMigration(): string {
-		return __DIR__ . '/stubs/table-migration.stub';
+	public static function createTableMigration(): string {
+		return __DIR__ . '/stubs/create-table-migration.stub';
+	}
+
+	public static function reconcileTableMigration(): string {
+		return __DIR__ . '/stubs/reconcile-table-migration.stub';
 	}
 
 	public static function table(): string {

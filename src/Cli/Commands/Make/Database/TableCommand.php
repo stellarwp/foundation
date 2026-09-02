@@ -3,6 +3,8 @@
 namespace StellarWP\Foundation\Cli\Commands\Make\Database;
 
 use RuntimeException;
+use StellarWP\Foundation\Cli\Commands\Make\Database\Factories\MigrationFileFactory;
+use StellarWP\Foundation\Cli\Commands\Make\Database\ValueObjects\GeneratedMigration;
 use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
@@ -36,7 +38,8 @@ final class TableCommand extends Command
 		private readonly StubResolver $stubResolver,
 		private readonly StubRenderer $stubRenderer,
 		private readonly GeneratedFileWriter $fileWriter,
-		private readonly ProviderRegistrationEditor $providerUpdater
+		private readonly ProviderRegistrationEditor $providerUpdater,
+		private readonly MigrationFileFactory $migrationFactory
 	) {
 		parent::__construct(self::NAME);
 	}
@@ -47,25 +50,58 @@ final class TableCommand extends Command
 			->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the generated table class.')
 			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Directory where the table class should be written.')
 			->addOption('provider', null, InputOption::VALUE_REQUIRED, 'Database provider file to update when it exists.')
-			->addOption('id', null, InputOption::VALUE_REQUIRED, 'Stable migration identifier: nonblank, unpadded, non-integer-like, and at most 191 bytes.')
-			->addOption('table', null, InputOption::VALUE_REQUIRED, 'Unprefixed WordPress table name.');
+			->addOption('id', null, InputOption::VALUE_REQUIRED, 'Stable table identifier: nonblank, unpadded, non-integer-like, and at most 191 bytes.')
+			->addOption('table-name', null, InputOption::VALUE_REQUIRED, 'Unprefixed WordPress table name.')
+			->addOption('migration', 'm', InputOption::VALUE_NONE, 'Also create the table\'s initial migration.')
+			->addOption('migration-id', null, InputOption::VALUE_REQUIRED, 'Stable identifier for the initial migration. Requires --migration.');
 	}
 
 	protected function execute(InputInterface $input, OutputInterface $output): int {
+		$writtenFiles = [];
+
 		try {
-			$this->validateExplicitProviderUpdate($input);
-			$file = $this->generatedFile($input);
-			$this->fileWriter->write($file);
-			$providerPath = $this->updateProvider($input, $output);
+			$this->validateMigrationOptions($input);
+			$table     = $this->generatedFile($input);
+			$migration = $input->getOption('migration') === true
+				? $this->initialMigration($input)
+				: null;
+
+			$this->validateGeneratedFiles($table, $migration);
+			$this->validateExplicitProviderUpdate($input, $migration);
+
+			if ($migration === null) {
+				$this->fileWriter->write($table);
+				$writtenFiles[] = $table;
+			} else {
+				$this->fileWriter->writeAll($table, $migration->file);
+				$writtenFiles[] = $table;
+				$writtenFiles[] = $migration->file;
+			}
+
+			$providerPath = $this->updateProvider($input, $output, $migration);
 		} catch (RuntimeException $exception) {
-			$output->writeln('<error>' . $exception->getMessage() . '</error>');
+			$output->writeln('<error>' . $this->failureMessage($exception, $writtenFiles) . '</error>');
 
 			return Command::FAILURE;
 		}
 
-		$output->writeln(sprintf('<info>Created:</info> %s', $file->relativePath));
+		$output->writeln(sprintf('<info>Created:</info> %s', $table->relativePath));
+
+		if ($migration !== null) {
+			$output->writeln(sprintf('<info>Created:</info> %s', $migration->file->relativePath));
+		}
+
 		$output->writeln('');
-		$output->writeln('<comment>Add this table to a migration with Schema::createOrUpdate() and Schema::drop().</comment>');
+
+		if ($migration === null) {
+			$output->writeln('<comment>Add this table to a migration with Schema::createOrUpdate() and Schema::drop().</comment>');
+		} elseif ($providerPath === null && ! $this->providerExists($input)) {
+			$output->writeln(sprintf(
+				'<comment>Register %s and %s with your database provider.</comment>',
+				$this->classNameResolver->tableClass((string) $input->getArgument('name')),
+				$migration->class
+			));
+		}
 
 		if ($providerPath !== null) {
 			$output->writeln(sprintf('<info>Updated:</info> %s', $this->relativePath($providerPath)));
@@ -81,6 +117,47 @@ final class TableCommand extends Command
 		return Command::SUCCESS;
 	}
 
+	private function initialMigration(InputInterface $input): GeneratedMigration {
+		$project        = $this->autoloadResolver->project();
+		$tableClass     = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
+		$tableNamespace = $this->namespace($input, $project->defaultPsr4Namespace());
+
+		return $this->migrationFactory->createTable(
+			name: 'Create_' . $tableClass,
+			tableClass: $tableNamespace . '\\' . $tableClass,
+			id: $this->nullableOption($input, 'migration-id')
+		);
+	}
+
+	private function validateMigrationOptions(InputInterface $input): void {
+		if ($input->getOption('migration') === true || $input->getOption('migration-id') === null) {
+			return;
+		}
+
+		throw new RuntimeException('The --migration-id option requires --migration.');
+	}
+
+	private function validateGeneratedFiles(GeneratedFile $table, ?GeneratedMigration $migration): void {
+		$this->fileWriter->validate($table);
+
+		if (file_exists($table->path)) {
+			throw new RuntimeException(sprintf('File already exists: %s.', $table->relativePath));
+		}
+
+		if ($migration === null) {
+			return;
+		}
+
+		$this->fileWriter->validate($migration->file);
+
+		if (file_exists($migration->file->path)) {
+			throw new RuntimeException(sprintf(
+				'Migration already exists: %s. Edit it directly or create a new migration.',
+				$migration->file->relativePath
+			));
+		}
+	}
+
 	private function generatedFile(InputInterface $input): GeneratedFile {
 		$className = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
 		$project   = $this->autoloadResolver->project();
@@ -88,7 +165,7 @@ final class TableCommand extends Command
 		$path      = $this->path($input, $namespace, $project);
 		$stub      = $this->stubResolver->resolve('database', 'table', DatabaseStubPath::table());
 		$relative  = $this->relativePath($path . '/' . $className . '.php');
-		$table     = $this->optionOrDefault($input, 'table', $this->classNameResolver->tableName($className));
+		$table     = $this->tableName($input, $className);
 		$idOption  = $input->getOption('id');
 		$id        = (new Id(is_string($idOption) ? $idOption : $table . '_table'))->value;
 
@@ -107,7 +184,7 @@ final class TableCommand extends Command
 		);
 	}
 
-	private function validateExplicitProviderUpdate(InputInterface $input): void {
+	private function validateExplicitProviderUpdate(InputInterface $input, ?GeneratedMigration $migration): void {
 		if (! $this->hasExplicitProvider($input)) {
 			return;
 		}
@@ -121,20 +198,29 @@ final class TableCommand extends Command
 			throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->relativePath($providerPath)));
 		}
 
-		$status = $this->providerUpdater->checkTable($providerPath, $className, $namespace);
+		$status = $migration === null
+			? $this->providerUpdater->checkTable($providerPath, $className, $namespace)
+			: $this->providerUpdater->checkTableAndMigration(
+				$providerPath,
+				$className,
+				$namespace,
+				$migration->class,
+				$migration->namespace
+			);
 
-		if ($status === ProviderRegistrationEditor::UPDATED || $status === ProviderRegistrationEditor::ALREADY_REGISTERED) {
-			return;
+		if ($status !== ProviderRegistrationEditor::UPDATED && $status !== ProviderRegistrationEditor::ALREADY_REGISTERED) {
+			throw new RuntimeException(sprintf(
+				'Could not update database provider "%s": %s.',
+				$this->relativePath($providerPath),
+				$this->providerUpdateFailure($status)
+			));
 		}
-
-		throw new RuntimeException(sprintf(
-			'Could not update database provider "%s": %s.',
-			$this->relativePath($providerPath),
-			$this->providerUpdateFailure($status)
-		));
 	}
 
-	private function updateProvider(InputInterface $input, OutputInterface $output): ?string {
+	/**
+	 * @throws RuntimeException When an explicitly selected provider cannot be updated.
+	 */
+	private function updateProvider(InputInterface $input, OutputInterface $output, ?GeneratedMigration $migration): ?string {
 		$project      = $this->autoloadResolver->project();
 		$className    = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
 		$namespace    = $this->namespace($input, $project->defaultPsr4Namespace());
@@ -149,17 +235,17 @@ final class TableCommand extends Command
 			return null;
 		}
 
-		$status = $this->providerUpdater->addTable($providerPath, $className, $namespace);
+		$status = $migration === null
+			? $this->providerUpdater->addTable($providerPath, $className, $namespace)
+			: $this->providerUpdater->addTableAndMigration(
+				$providerPath,
+				$className,
+				$namespace,
+				$migration->class,
+				$migration->namespace
+			);
 
-		if ($status === ProviderRegistrationEditor::UPDATED) {
-			return $providerPath;
-		}
-
-		if ($status === ProviderRegistrationEditor::ALREADY_REGISTERED) {
-			return null;
-		}
-
-		if ($explicit) {
+		if ($status !== ProviderRegistrationEditor::UPDATED && $status !== ProviderRegistrationEditor::ALREADY_REGISTERED && $explicit) {
 			throw new RuntimeException(sprintf(
 				'Could not update database provider "%s": %s.',
 				$this->relativePath($providerPath),
@@ -167,24 +253,57 @@ final class TableCommand extends Command
 			));
 		}
 
+		if ($status !== ProviderRegistrationEditor::UPDATED && $status !== ProviderRegistrationEditor::ALREADY_REGISTERED) {
+			$classes = $migration === null
+				? $className
+				: $className . ' and ' . $migration->class;
+
+			$this->writeProviderWarning($output, $providerPath, $status, $classes);
+		}
+
+		return $status === ProviderRegistrationEditor::UPDATED ? $providerPath : null;
+	}
+
+	/**
+	 * @param list<GeneratedFile> $writtenFiles
+	 */
+	private function failureMessage(RuntimeException $exception, array $writtenFiles): string {
+		try {
+			$this->fileWriter->remove(...$writtenFiles);
+		} catch (RuntimeException $cleanupException) {
+			return $exception->getMessage() . ' ' . $cleanupException->getMessage();
+		}
+
+		return $exception->getMessage();
+	}
+
+	private function writeProviderWarning(OutputInterface $output, string $providerPath, string $status, string $className): void {
 		$output->writeln(sprintf(
 			'<comment>Provider not updated:</comment> %s (%s). Register %s manually.',
 			$this->relativePath($providerPath),
 			$this->providerUpdateFailure($status),
 			$className
 		));
-
-		return null;
 	}
 
-	private function optionOrDefault(InputInterface $input, string $option, string $default): string {
-		$value = $input->getOption($option);
+	private function tableName(InputInterface $input, string $className): string {
+		$value = $input->getOption('table-name');
 
-		if (is_string($value) && trim($value) !== '') {
-			return trim($value);
+		if ($value === null) {
+			return $this->classNameResolver->tableName($className);
 		}
 
-		return $default;
+		if (! is_string($value) || trim($value) === '') {
+			throw new RuntimeException('The --table-name option cannot be blank.');
+		}
+
+		return trim($value);
+	}
+
+	private function nullableOption(InputInterface $input, string $option): ?string {
+		$value = $input->getOption($option);
+
+		return is_string($value) ? $value : null;
 	}
 
 	private function phpString(string $value): string {
@@ -243,9 +362,14 @@ final class TableCommand extends Command
 		return is_string($provider) && trim($provider) !== '';
 	}
 
+	private function providerExists(InputInterface $input): bool {
+		return is_file($this->providerPath($input, $this->autoloadResolver->project()));
+	}
+
 	private function providerUpdateFailure(string $status): string {
 		return match ($status) {
 			ProviderRegistrationEditor::NOT_FOUND        => 'file does not exist or is not readable',
+			ProviderRegistrationEditor::READ_FAILED      => 'file could not be read',
 			ProviderRegistrationEditor::NOT_WRITABLE     => 'file is not writable',
 			ProviderRegistrationEditor::MISSING_ANCHOR   => 'file does not contain a generated database provider registration point',
 			ProviderRegistrationEditor::MISSING_MARKER   => 'file does not contain the generated database provider markers',

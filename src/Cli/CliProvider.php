@@ -5,6 +5,7 @@ namespace StellarWP\Foundation\Cli;
 use lucatume\DI52\Container;
 use PhpParser\Lexer;
 use PhpParser\ParserFactory;
+use StellarWP\Foundation\Cli\Commands\Make\Database\Factories\MigrationFileFactory;
 use StellarWP\Foundation\Cli\Commands\Make\Database\MigrationCommand;
 use StellarWP\Foundation\Cli\Commands\Make\Database\ProviderCommand;
 use StellarWP\Foundation\Cli\Commands\Make\Database\ProviderRegistrationEditor;
@@ -93,6 +94,10 @@ final class CliProvider extends Provider
 	}
 
 	private function registerDatabaseCommands(): void {
+		$this->container->when(MigrationFileFactory::class)
+			->needs('$rootPath')
+			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+
 		$this->container->when(MigrationCommand::class)
 			->needs('$rootPath')
 			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
@@ -106,6 +111,7 @@ final class CliProvider extends Provider
 			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
 
 		$this->container->singleton(MigrationCommand::class);
+		$this->container->singleton(MigrationFileFactory::class);
 		$this->container->singleton(ProviderCommand::class);
 		$this->container->singleton(ProviderRegistrationEditor::class);
 		$this->container->singleton(TableCommand::class);
