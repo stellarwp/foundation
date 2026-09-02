@@ -31,6 +31,9 @@ final class TableCommand extends Command
 {
 	private const string NAME = 'make:database-table';
 
+	/**
+	 * Create the table generator for a consuming project root.
+	 */
 	public function __construct(
 		private readonly string $rootPath,
 		private readonly ComposerAutoloadResolver $autoloadResolver,
@@ -44,6 +47,9 @@ final class TableCommand extends Command
 		parent::__construct(self::NAME);
 	}
 
+	/**
+	 * Define table generation options and optional initial-migration behavior.
+	 */
 	protected function configure(): void {
 		$this->setDescription('Generate a Foundation database table class.')
 			->addArgument('name', InputArgument::REQUIRED, 'Table class name, e.g. Reports_Table, Reports, or reports.')
@@ -56,6 +62,9 @@ final class TableCommand extends Command
 			->addOption('migration-id', null, InputOption::VALUE_REQUIRED, 'Stable identifier for the initial migration. Requires --migration.');
 	}
 
+	/**
+	 * Generate the table, its optional initial migration, and provider registrations.
+	 */
 	protected function execute(InputInterface $input, OutputInterface $output): int {
 		$writtenFiles = [];
 
@@ -117,6 +126,11 @@ final class TableCommand extends Command
 		return Command::SUCCESS;
 	}
 
+	/**
+	 * Build the create-table migration paired with a generated table.
+	 *
+	 * @throws RuntimeException When migration input or project metadata is invalid.
+	 */
 	private function initialMigration(InputInterface $input): GeneratedMigration {
 		$project        = $this->autoloadResolver->project();
 		$tableClass     = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
@@ -129,6 +143,11 @@ final class TableCommand extends Command
 		);
 	}
 
+	/**
+	 * Reject migration-only options unless initial migration generation is enabled.
+	 *
+	 * @throws RuntimeException When --migration-id is used without --migration.
+	 */
 	private function validateMigrationOptions(InputInterface $input): void {
 		if ($input->getOption('migration') === true || $input->getOption('migration-id') === null) {
 			return;
@@ -137,6 +156,11 @@ final class TableCommand extends Command
 		throw new RuntimeException('The --migration-id option requires --migration.');
 	}
 
+	/**
+	 * Validate every artifact and reject existing destinations before writing either file.
+	 *
+	 * @throws RuntimeException When source is invalid or a destination already exists.
+	 */
 	private function validateGeneratedFiles(GeneratedFile $table, ?GeneratedMigration $migration): void {
 		$this->fileWriter->validate($table);
 
@@ -158,6 +182,11 @@ final class TableCommand extends Command
 		}
 	}
 
+	/**
+	 * Render the table artifact from normalized project and command input.
+	 *
+	 * @throws RuntimeException When project metadata or generator input is invalid.
+	 */
 	private function generatedFile(InputInterface $input): GeneratedFile {
 		$className = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
 		$project   = $this->autoloadResolver->project();
@@ -184,6 +213,11 @@ final class TableCommand extends Command
 		);
 	}
 
+	/**
+	 * Fail before writing files when an explicitly selected provider cannot be updated.
+	 *
+	 * @throws RuntimeException When the provider cannot accept the generated registrations.
+	 */
 	private function validateExplicitProviderUpdate(InputInterface $input, ?GeneratedMigration $migration): void {
 		if (! $this->hasExplicitProvider($input)) {
 			return;
@@ -218,6 +252,8 @@ final class TableCommand extends Command
 	}
 
 	/**
+	 * Update the selected or conventional provider and report non-fatal automatic failures.
+	 *
 	 * @throws RuntimeException When an explicitly selected provider cannot be updated.
 	 */
 	private function updateProvider(InputInterface $input, OutputInterface $output, ?GeneratedMigration $migration): ?string {
@@ -265,6 +301,8 @@ final class TableCommand extends Command
 	}
 
 	/**
+	 * Remove files written by a failed command and combine any cleanup failure message.
+	 *
 	 * @param list<GeneratedFile> $writtenFiles
 	 */
 	private function failureMessage(RuntimeException $exception, array $writtenFiles): string {
@@ -277,6 +315,9 @@ final class TableCommand extends Command
 		return $exception->getMessage();
 	}
 
+	/**
+	 * Report a non-fatal conventional-provider update failure.
+	 */
 	private function writeProviderWarning(OutputInterface $output, string $providerPath, string $status, string $className): void {
 		$output->writeln(sprintf(
 			'<comment>Provider not updated:</comment> %s (%s). Register %s manually.',
@@ -286,6 +327,11 @@ final class TableCommand extends Command
 		));
 	}
 
+	/**
+	 * Resolve the stable unprefixed table name stored in generated source.
+	 *
+	 * @throws RuntimeException When --table-name is explicitly blank.
+	 */
 	private function tableName(InputInterface $input, string $className): string {
 		$value = $input->getOption('table-name');
 
@@ -300,16 +346,27 @@ final class TableCommand extends Command
 		return trim($value);
 	}
 
+	/**
+	 * Return a string option or null when the option was omitted.
+	 */
 	private function nullableOption(InputInterface $input, string $option): ?string {
 		$value = $input->getOption($option);
 
 		return is_string($value) ? $value : null;
 	}
 
+	/**
+	 * Render a string as a valid PHP literal for a generator placeholder.
+	 */
 	private function phpString(string $value): string {
 		return var_export($value, true);
 	}
 
+	/**
+	 * Resolve an explicit table namespace or derive the conventional namespace.
+	 *
+	 * @throws RuntimeException When the explicit namespace is invalid.
+	 */
 	private function namespace(InputInterface $input, Psr4Namespace $autoload): string {
 		$namespace = $input->getOption('namespace');
 
@@ -320,6 +377,11 @@ final class TableCommand extends Command
 		return trim($autoload->namespace, '\\') . '\\Database\\Tables';
 	}
 
+	/**
+	 * Resolve an explicit output path or map the namespace through Composer PSR-4 metadata.
+	 *
+	 * @throws RuntimeException When the namespace has no PSR-4 mapping and no path was supplied.
+	 */
 	private function path(InputInterface $input, string $namespace, ComposerProject $project): string {
 		$path = $input->getOption('path');
 
@@ -339,6 +401,9 @@ final class TableCommand extends Command
 		return $this->rootPath . '/' . $autoload->pathFor($namespace);
 	}
 
+	/**
+	 * Resolve the explicit provider path or the project's conventional database provider.
+	 */
 	private function providerPath(InputInterface $input, ComposerProject $project): string {
 		$provider = $input->getOption('provider');
 
@@ -356,16 +421,25 @@ final class TableCommand extends Command
 		return $this->rootPath . '/' . $autoload->pathFor($namespace) . '/Provider.php';
 	}
 
+	/**
+	 * Determine whether the developer explicitly selected a provider file.
+	 */
 	private function hasExplicitProvider(InputInterface $input): bool {
 		$provider = $input->getOption('provider');
 
 		return is_string($provider) && trim($provider) !== '';
 	}
 
+	/**
+	 * Determine whether the selected or conventional provider file exists.
+	 */
 	private function providerExists(InputInterface $input): bool {
 		return is_file($this->providerPath($input, $this->autoloadResolver->project()));
 	}
 
+	/**
+	 * Translate an editor status into an actionable console message.
+	 */
 	private function providerUpdateFailure(string $status): string {
 		return match ($status) {
 			ProviderRegistrationEditor::NOT_FOUND        => 'file does not exist or is not readable',
@@ -380,6 +454,9 @@ final class TableCommand extends Command
 		};
 	}
 
+	/**
+	 * Resolve a project-relative path without changing an absolute path.
+	 */
 	private function absolutePath(string $path): string {
 		$path = trim($path);
 
@@ -390,6 +467,9 @@ final class TableCommand extends Command
 		return $this->rootPath . '/' . trim($path, '/');
 	}
 
+	/**
+	 * Return a project-relative path for console output when possible.
+	 */
 	private function relativePath(string $path): string {
 		$root = rtrim($this->rootPath, '/') . '/';
 
@@ -400,6 +480,11 @@ final class TableCommand extends Command
 		return $path;
 	}
 
+	/**
+	 * Validate and return a PHP namespace suitable for generated source.
+	 *
+	 * @throws RuntimeException When the namespace is invalid.
+	 */
 	private function validNamespace(string $namespace): string {
 		if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\\\\[A-Za-z_][A-Za-z0-9_]*)*$/', $namespace)) {
 			throw new RuntimeException(sprintf('Namespace "%s" is not a valid PHP namespace.', $namespace));
@@ -408,6 +493,9 @@ final class TableCommand extends Command
 		return $namespace;
 	}
 
+	/**
+	 * Explain when generated runtime code lacks a production Foundation dependency.
+	 */
 	private function runtimeDependencyWarning(): ?string {
 		$composerPath = $this->rootPath . '/composer.json';
 
@@ -436,6 +524,8 @@ final class TableCommand extends Command
 	}
 
 	/**
+	 * Determine whether production dependencies include the Foundation database runtime.
+	 *
 	 * @param array<string,mixed> $dependencies
 	 */
 	private function hasFoundationRuntimeDependency(array $dependencies): bool {

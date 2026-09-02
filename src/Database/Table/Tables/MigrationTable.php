@@ -14,6 +14,9 @@ final readonly class MigrationTable extends Table
 {
 	public const string ID = 'foundation_database_migrations_table';
 
+	/**
+	 * Create the ledger table with its configured unprefixed WordPress name.
+	 */
 	public function __construct(
 		string $unprefixedTableName,
 		Database $database
@@ -21,10 +24,16 @@ final readonly class MigrationTable extends Table
 		parent::__construct($unprefixedTableName, $database);
 	}
 
+	/**
+	 * Return the stable registration identifier for migration ledger storage.
+	 */
 	public function id(): string {
 		return self::ID;
 	}
 
+	/**
+	 * Return the schema required to record migration identifiers and batches.
+	 */
 	public function definition(): TableDefinition {
 		$table = TableDefinition::for($this);
 

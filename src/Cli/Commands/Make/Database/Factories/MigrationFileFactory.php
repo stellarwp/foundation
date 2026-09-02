@@ -19,6 +19,9 @@ use StellarWP\Foundation\Database\Migration\ValueObjects\Id;
  */
 final readonly class MigrationFileFactory
 {
+	/**
+	 * Create a migration factory rooted in the consuming Composer project.
+	 */
 	public function __construct(
 		private string $rootPath,
 		private ComposerAutoloadResolver $autoloadResolver,
@@ -91,6 +94,10 @@ final readonly class MigrationFileFactory
 	}
 
 	/**
+	 * Resolve and validate the metadata shared by every generated migration type.
+	 *
+	 * @throws RuntimeException When project metadata or generator input is invalid.
+	 *
 	 * @return array{project: ComposerProject, class: string, namespace: string, path: string, id: string}
 	 */
 	private function context(string $name, ?string $namespace, ?string $path, ?string $id): array {
@@ -111,6 +118,8 @@ final readonly class MigrationFileFactory
 	}
 
 	/**
+	 * Wrap rendered source and its declared class details as a generated migration.
+	 *
 	 * @param array{project: ComposerProject, class: string, namespace: string, path: string, id: string} $context
 	 */
 	private function migration(array $context, string $contents): GeneratedMigration {
@@ -166,6 +175,11 @@ final readonly class MigrationFileFactory
 		];
 	}
 
+	/**
+	 * Resolve an explicit migration namespace or derive the conventional namespace.
+	 *
+	 * @throws RuntimeException When the explicit namespace is invalid.
+	 */
 	private function migrationNamespace(?string $namespace, Psr4Namespace $autoload): string {
 		if ($namespace !== null && trim($namespace) !== '') {
 			return $this->validNamespace(trim($namespace, '\\'));
@@ -174,6 +188,11 @@ final readonly class MigrationFileFactory
 		return trim($autoload->namespace, '\\') . '\\Database\\Migrations';
 	}
 
+	/**
+	 * Resolve an explicit output path or map the namespace through Composer PSR-4 metadata.
+	 *
+	 * @throws RuntimeException When the namespace has no PSR-4 mapping and no path was supplied.
+	 */
 	private function migrationPath(?string $path, string $namespace, ComposerProject $project): string {
 		if ($path !== null && trim($path) !== '') {
 			return $this->absolutePath($path);
@@ -191,6 +210,11 @@ final readonly class MigrationFileFactory
 		return $this->rootPath . '/' . $autoload->pathFor($namespace);
 	}
 
+	/**
+	 * Validate and return a PHP namespace suitable for generated source.
+	 *
+	 * @throws RuntimeException When the namespace is invalid.
+	 */
 	private function validNamespace(string $namespace): string {
 		if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\\\\[A-Za-z_][A-Za-z0-9_]*)*$/', $namespace)) {
 			throw new RuntimeException(sprintf('Namespace "%s" is not a valid PHP namespace.', $namespace));
@@ -199,6 +223,9 @@ final readonly class MigrationFileFactory
 		return $namespace;
 	}
 
+	/**
+	 * Resolve a project-relative path without changing an absolute path.
+	 */
 	private function absolutePath(string $path): string {
 		$path = trim($path);
 
@@ -209,6 +236,9 @@ final readonly class MigrationFileFactory
 		return $this->rootPath . '/' . trim($path, '/');
 	}
 
+	/**
+	 * Return a project-relative display path when the file is under the project root.
+	 */
 	private function relativePath(string $path): string {
 		$root = rtrim($this->rootPath, '/') . '/';
 
@@ -219,6 +249,9 @@ final readonly class MigrationFileFactory
 		return $path;
 	}
 
+	/**
+	 * Render a string as a valid PHP literal for a generator placeholder.
+	 */
 	private function phpString(string $value): string {
 		return var_export($value, true);
 	}

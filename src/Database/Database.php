@@ -15,6 +15,9 @@ final readonly class Database implements DatabaseContract
 {
 	private const string ARRAY_A = 'ARRAY_A';
 
+	/**
+	 * Create the database API for a WordPress connection and naming scope.
+	 */
 	public function __construct(
 		private \wpdb $wpdb,
 		private DatabaseScope $scope
@@ -46,6 +49,11 @@ final readonly class Database implements DatabaseContract
 		return $tableName;
 	}
 
+	/**
+	 * Determine whether the table exists in the active WordPress database scope.
+	 *
+	 * @throws DatabaseException When table-name resolution or inspection fails.
+	 */
 	public function tableExists(Table $table): bool {
 		return $this->row(
 			'SHOW TABLES LIKE %s',
@@ -53,6 +61,11 @@ final readonly class Database implements DatabaseContract
 		) !== null;
 	}
 
+	/**
+	 * Determine whether a named column exists on the table.
+	 *
+	 * @throws DatabaseException When table-name resolution or inspection fails.
+	 */
 	public function columnExists(Table $table, string $column): bool {
 		return $this->row(
 			'SHOW COLUMNS FROM %i LIKE %s',
@@ -61,6 +74,11 @@ final readonly class Database implements DatabaseContract
 		) !== null;
 	}
 
+	/**
+	 * Determine whether a named index exists on the table.
+	 *
+	 * @throws DatabaseException When table-name resolution or inspection fails.
+	 */
 	public function indexExists(Table $table, string $index): bool {
 		return $this->row(
 			'SHOW INDEX FROM %i WHERE Key_name = %s',
@@ -69,6 +87,11 @@ final readonly class Database implements DatabaseContract
 		) !== null;
 	}
 
+	/**
+	 * Prepare a non-empty SQL template with WordPress placeholder bindings.
+	 *
+	 * @throws QueryException When the template is empty or WordPress cannot prepare it.
+	 */
 	public function prepare(string $sql, mixed ...$bindings): string {
 		if (trim($sql) === '') {
 			throw new QueryException('SQL statement cannot be empty.', $sql, array_values($bindings));
@@ -89,6 +112,10 @@ final readonly class Database implements DatabaseContract
 	}
 
 	/**
+	 * Execute a query and return its first row when present.
+	 *
+	 * @throws QueryException When preparation or execution fails.
+	 *
 	 * @return array<string, mixed>|null
 	 */
 	public function row(string $sql, mixed ...$bindings): ?array {
@@ -105,6 +132,10 @@ final readonly class Database implements DatabaseContract
 	}
 
 	/**
+	 * Execute a query and return all rows with string keys.
+	 *
+	 * @throws QueryException When preparation or execution fails.
+	 *
 	 * @return list<array<string, mixed>>
 	 */
 	public function rows(string $sql, mixed ...$bindings): array {
@@ -126,6 +157,11 @@ final readonly class Database implements DatabaseContract
 		return $rows;
 	}
 
+	/**
+	 * Execute a query and return the first column from its first row.
+	 *
+	 * @throws QueryException When preparation or execution fails.
+	 */
 	public function value(string $sql, mixed ...$bindings): mixed {
 		$bindings = array_values($bindings);
 		$query    = $this->prepare($sql, ...$bindings);
@@ -135,6 +171,11 @@ final readonly class Database implements DatabaseContract
 		return $result;
 	}
 
+	/**
+	 * Execute a write or schema statement and return its affected-row count.
+	 *
+	 * @throws QueryException When preparation or execution fails.
+	 */
 	public function execute(string $sql, mixed ...$bindings): int {
 		$bindings = array_values($bindings);
 		$query    = $this->prepare($sql, ...$bindings);
@@ -148,6 +189,8 @@ final readonly class Database implements DatabaseContract
 	}
 
 	/**
+	 * Insert one row into the supplied table.
+	 *
 	 * @param array<string, mixed> $data
 	 *
 	 * @throws DatabaseException When table-name resolution or validation fails.
@@ -164,6 +207,8 @@ final readonly class Database implements DatabaseContract
 	}
 
 	/**
+	 * Insert one row and return the connection's auto-increment identifier.
+	 *
 	 * @param array<string, mixed> $data
 	 *
 	 * @throws DatabaseException When table-name resolution or validation fails.
@@ -176,6 +221,8 @@ final readonly class Database implements DatabaseContract
 	}
 
 	/**
+	 * Update rows matching equality-based column values.
+	 *
 	 * @param array<string, mixed> $data
 	 * @param array<string, mixed> $where
 	 *
@@ -193,6 +240,8 @@ final readonly class Database implements DatabaseContract
 	}
 
 	/**
+	 * Delete rows matching equality-based column values.
+	 *
 	 * @param array<string, mixed> $where
 	 *
 	 * @throws DatabaseException When table-name resolution or validation fails.
@@ -208,20 +257,33 @@ final readonly class Database implements DatabaseContract
 		return (int) $result;
 	}
 
+	/**
+	 * Quote one trusted SQL identifier while escaping embedded backticks.
+	 */
 	public function quoteIdentifier(string $identifier): string {
 		return '`' . str_replace('`', '``', $identifier) . '`';
 	}
 
+	/**
+	 * Escape SQL LIKE wildcard characters without adding a surrounding pattern.
+	 */
 	public function escLike(string $value): string {
 		return $this->wpdb->esc_like($value);
 	}
 
+	/**
+	 * Return the charset and collation clause configured by WordPress.
+	 */
 	public function charsetCollate(): string {
 		return $this->wpdb->get_charset_collate();
 	}
 
 	/**
+	 * Throw the current WordPress database error with its original query context.
+	 *
 	 * @param list<mixed> $bindings
+	 *
+	 * @throws QueryException When WordPress reports a query error.
 	 */
 	private function throwIfLastError(string $sql, array $bindings): void {
 		$error = $this->lastError();
@@ -231,10 +293,16 @@ final readonly class Database implements DatabaseContract
 		}
 	}
 
+	/**
+	 * Prefer the current WordPress database error over a generic fallback.
+	 */
 	private function message(string $fallback): string {
 		return $this->lastError() ?? $fallback;
 	}
 
+	/**
+	 * Return the current WordPress database error when one is present.
+	 */
 	private function lastError(): ?string {
 		$error = $this->wpdb->last_error;
 
@@ -242,6 +310,8 @@ final readonly class Database implements DatabaseContract
 	}
 
 	/**
+	 * Invoke wpdb::prepare() without relying on its variadic signature in static analysis.
+	 *
 	 * @param list<mixed> $bindings
 	 */
 	private function prepareWithWpdb(string $sql, array $bindings): mixed {
@@ -251,7 +321,11 @@ final readonly class Database implements DatabaseContract
 	}
 
 	/**
+	 * Validate that a WordPress row result contains only string keys.
+	 *
 	 * @param array<mixed> $result
+	 *
+	 * @throws DatabaseException When WordPress returns a non-string row key.
 	 *
 	 * @return array<string, mixed>
 	 */

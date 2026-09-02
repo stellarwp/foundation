@@ -14,6 +14,9 @@ use StellarWP\Foundation\Database\Schema\Reconciler;
  */
 final readonly class Schema implements SchemaContract
 {
+	/**
+	 * Create the schema API from its database and reconciliation services.
+	 */
 	public function __construct(
 		private Database $database,
 		private Reconciler $reconciler
@@ -21,6 +24,8 @@ final readonly class Schema implements SchemaContract
 	}
 
 	/**
+	 * Reconcile a table's physical schema with its current definition.
+	 *
 	 * @throws DatabaseException        When WordPress cannot reconcile the table definition.
 	 * @throws InvalidArgumentException When the table definition is invalid.
 	 */
@@ -28,11 +33,18 @@ final readonly class Schema implements SchemaContract
 		$this->reconciler->reconcile($table);
 	}
 
+	/**
+	 * Execute a complete, trusted schema statement without placeholder binding.
+	 *
+	 * @throws DatabaseException When the statement cannot be executed.
+	 */
 	public function execute(string $sql): void {
 		$this->database->execute($sql);
 	}
 
 	/**
+	 * Determine whether a table exists in the active database scope.
+	 *
 	 * @throws DatabaseException When table inspection fails.
 	 */
 	public function hasTable(Table $table): bool {
@@ -40,6 +52,8 @@ final readonly class Schema implements SchemaContract
 	}
 
 	/**
+	 * Determine whether a named index exists on a table.
+	 *
 	 * @throws DatabaseException When index inspection fails.
 	 */
 	public function hasIndex(Table $table, string $index): bool {
@@ -47,6 +61,8 @@ final readonly class Schema implements SchemaContract
 	}
 
 	/**
+	 * Remove a named secondary index from a table.
+	 *
 	 * @throws DatabaseException When the table name is invalid or the statement cannot be executed.
 	 */
 	public function dropIndex(Table $table, string $index): void {
@@ -58,6 +74,8 @@ final readonly class Schema implements SchemaContract
 	}
 
 	/**
+	 * Drop a table when it exists.
+	 *
 	 * @throws DatabaseException When the table name is invalid or the statement cannot be executed.
 	 */
 	public function drop(Table $table): void {
@@ -67,6 +85,9 @@ final readonly class Schema implements SchemaContract
 		));
 	}
 
+	/**
+	 * Quote a trusted schema identifier while escaping embedded backticks.
+	 */
 	public function quoteIdentifier(string $identifier): string {
 		return $this->database->quoteIdentifier($identifier);
 	}

@@ -16,6 +16,9 @@ use StellarWP\Foundation\Database\Query\QueryBuilder;
  */
 abstract readonly class Table implements TableContract
 {
+	/**
+	 * Bind this table gateway to its stable unprefixed name and database service.
+	 */
 	public function __construct(
 		private string $unprefixedTableName,
 		private Database $database
@@ -56,6 +59,8 @@ abstract readonly class Table implements TableContract
 	}
 
 	/**
+	 * Insert one row into this table.
+	 *
 	 * @param array<string, mixed> $data
 	 *
 	 * @throws DatabaseException When the resolved physical table name is invalid.
@@ -66,6 +71,8 @@ abstract readonly class Table implements TableContract
 	}
 
 	/**
+	 * Insert one row and return the connection's auto-increment identifier.
+	 *
 	 * @param array<string, mixed> $data
 	 *
 	 * @throws DatabaseException When the resolved physical table name is invalid.
@@ -76,6 +83,8 @@ abstract readonly class Table implements TableContract
 	}
 
 	/**
+	 * Update rows in this table matching equality-based column values.
+	 *
 	 * @param array<string, mixed> $data
 	 * @param array<string, mixed> $where
 	 *
@@ -87,6 +96,8 @@ abstract readonly class Table implements TableContract
 	}
 
 	/**
+	 * Delete rows from this table matching equality-based column values.
+	 *
 	 * @param array<string, mixed> $where
 	 *
 	 * @throws DatabaseException When the resolved physical table name is invalid.

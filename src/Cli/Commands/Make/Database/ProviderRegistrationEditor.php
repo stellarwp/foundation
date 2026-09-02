@@ -28,11 +28,17 @@ final class ProviderRegistrationEditor
 	public const string PARSE_FAILED       = 'parse_failed';
 	public const string WRITE_FAILED       = 'write_failed';
 
+	/**
+	 * Create an editor backed by structured PHP source inspection.
+	 */
 	public function __construct(
 		private readonly PhpSourceEditor $sourceEditor
 	) {
 	}
 
+	/**
+	 * Add a table singleton registration to a generated database provider.
+	 */
 	public function addTable(string $providerPath, string $class, string $classNamespace): string {
 		return $this->addRegistration(
 			providerPath: $providerPath,
@@ -44,6 +50,9 @@ final class ProviderRegistrationEditor
 		);
 	}
 
+	/**
+	 * Add a migration contribution to a generated database provider.
+	 */
 	public function addMigration(string $providerPath, string $class, string $classNamespace): string {
 		return $this->addMergeArrayVarRegistration(
 			providerPath: $providerPath,
@@ -120,6 +129,9 @@ final class ProviderRegistrationEditor
 		}
 	}
 
+	/**
+	 * Verify that a table registration can be added without changing the provider.
+	 */
 	public function checkTable(string $providerPath, string $class, string $classNamespace): string {
 		return $this->addRegistration(
 			providerPath: $providerPath,
@@ -131,6 +143,9 @@ final class ProviderRegistrationEditor
 		);
 	}
 
+	/**
+	 * Verify that a migration contribution can be added without changing the provider.
+	 */
 	public function checkMigration(string $providerPath, string $class, string $classNamespace): string {
 		return $this->addMergeArrayVarRegistration(
 			providerPath: $providerPath,
@@ -167,6 +182,9 @@ final class ProviderRegistrationEditor
 			: self::UPDATED;
 	}
 
+	/**
+	 * Validate and optionally insert one marker-based provider registration.
+	 */
 	private function addRegistration(string $providerPath, string $class, string $classNamespace, string $marker, string $registration, bool $write): string {
 		if (! is_file($providerPath) || ! is_readable($providerPath)) {
 			return self::NOT_FOUND;
@@ -223,6 +241,9 @@ final class ProviderRegistrationEditor
 		return self::UPDATED;
 	}
 
+	/**
+	 * Validate and optionally add a class to the provider's migration contribution.
+	 */
 	private function addMergeArrayVarRegistration(string $providerPath, string $class, string $classNamespace, bool $write): string {
 		if (! is_file($providerPath) || ! is_readable($providerPath)) {
 			return self::NOT_FOUND;
@@ -288,10 +309,16 @@ final class ProviderRegistrationEditor
 		return self::UPDATED;
 	}
 
+	/**
+	 * Determine whether a registration is valid with or without a source change.
+	 */
 	private function registrationSucceeded(string $status): bool {
 		return $status === self::UPDATED || $status === self::ALREADY_REGISTERED;
 	}
 
+	/**
+	 * Atomically replace provider source while preserving file permissions.
+	 */
 	private function writeContents(string $path, string $contents): bool {
 		$path = $this->targetPath($path);
 
@@ -326,6 +353,9 @@ final class ProviderRegistrationEditor
 		}
 	}
 
+	/**
+	 * Determine whether a provider or its symlink target can be replaced atomically.
+	 */
 	private function isWritableTarget(string $path): bool {
 		$target = $this->targetPath($path);
 
@@ -334,6 +364,9 @@ final class ProviderRegistrationEditor
 			&& is_writable(dirname($target));
 	}
 
+	/**
+	 * Resolve a provider symlink to its physical target when possible.
+	 */
 	private function targetPath(string $path): ?string {
 		if (! is_link($path)) {
 			return $path;

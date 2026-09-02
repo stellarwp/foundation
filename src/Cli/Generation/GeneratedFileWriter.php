@@ -11,6 +11,9 @@ use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
  */
 final readonly class GeneratedFileWriter
 {
+	/**
+	 * Create a writer that validates generated PHP before touching the filesystem.
+	 */
 	public function __construct(
 		private PhpSourceEditor $sourceEditor
 	) {
@@ -143,6 +146,9 @@ final readonly class GeneratedFileWriter
 		}
 	}
 
+	/**
+	 * Atomically replace a file while preserving its permissions and symlink target.
+	 */
 	private function replace(string $path, string $contents): bool {
 		$path = $this->targetPath($path);
 
@@ -179,6 +185,9 @@ final readonly class GeneratedFileWriter
 		}
 	}
 
+	/**
+	 * Follow a symlink chain to the writable target, rejecting loops and broken links.
+	 */
 	private function targetPath(string $path): ?string {
 		$seen = [];
 

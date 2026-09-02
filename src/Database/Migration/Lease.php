@@ -16,6 +16,9 @@ use StellarWP\Foundation\Lock\LockToken;
  */
 final class Lease
 {
+	/**
+	 * Track an acquired token and the database scope in which it is valid.
+	 */
 	public function __construct(
 		private readonly Lock $lock,
 		private readonly DatabaseScope $scope,

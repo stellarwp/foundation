@@ -9,6 +9,9 @@ use StellarWP\Foundation\Database\Table\TableDefinition;
  */
 interface Table
 {
+	/**
+	 * Return the stable application identifier used to register this table.
+	 */
 	public function id(): string;
 
 	/**

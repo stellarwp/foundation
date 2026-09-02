@@ -10,6 +10,8 @@ use InvalidArgumentException;
 final readonly class ColumnComment
 {
 	/**
+	 * Validate a comment before it can be rendered into schema SQL.
+	 *
 	 * @throws InvalidArgumentException When the comment requires SQL-mode-dependent escaping.
 	 */
 	public function __construct(

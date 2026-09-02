@@ -9,6 +9,9 @@ use InvalidArgumentException;
  */
 final class ColumnDefinition
 {
+	/**
+	 * Begin configuring one immutable column declaration.
+	 */
 	public function __construct(
 		private Column $column
 	) {

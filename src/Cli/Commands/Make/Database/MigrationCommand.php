@@ -25,6 +25,9 @@ final class MigrationCommand extends Command
 {
 	private const string NAME = 'make:database-migration';
 
+	/**
+	 * Create the migration generator for a consuming project root.
+	 */
 	public function __construct(
 		private readonly string $rootPath,
 		private readonly ComposerAutoloadResolver $autoloadResolver,
@@ -35,6 +38,9 @@ final class MigrationCommand extends Command
 		parent::__construct(self::NAME);
 	}
 
+	/**
+	 * Define the migration generation modes and project customization options.
+	 */
 	protected function configure(): void {
 		$this->setDescription('Create a new Foundation database migration.')
 			->setHelp('Use --create for a table owned by this migration, --table to reconcile an existing table, or neither for a generic migration. The table options are mutually exclusive and accept short or fully qualified class names.')
@@ -47,6 +53,9 @@ final class MigrationCommand extends Command
 			->addOption('table', null, InputOption::VALUE_REQUIRED, 'Short or fully qualified existing table class reconciled by this migration.');
 	}
 
+	/**
+	 * Generate the selected migration and update its database provider when available.
+	 */
 	protected function execute(InputInterface $input, OutputInterface $output): int {
 		$writtenFiles = [];
 
@@ -89,6 +98,11 @@ final class MigrationCommand extends Command
 		return Command::SUCCESS;
 	}
 
+	/**
+	 * Build the migration artifact selected by the generic, create, or reconcile mode.
+	 *
+	 * @throws RuntimeException When options or project metadata are invalid.
+	 */
 	private function migration(InputInterface $input): GeneratedMigration {
 		$create = $this->tableOption($input, 'create');
 		$table  = $this->tableOption($input, 'table');
@@ -113,6 +127,11 @@ final class MigrationCommand extends Command
 		return $this->migrationFactory->generic($name, $namespace, $path, $id);
 	}
 
+	/**
+	 * Fail before writing the migration when an explicitly selected provider cannot be updated.
+	 *
+	 * @throws RuntimeException When the provider cannot accept the migration registration.
+	 */
 	private function validateExplicitProviderUpdate(InputInterface $input, GeneratedMigration $migration): void {
 		if (! $this->hasExplicitProvider($input)) {
 			return;
@@ -139,6 +158,8 @@ final class MigrationCommand extends Command
 	}
 
 	/**
+	 * Update the selected or conventional provider and report non-fatal automatic failures.
+	 *
 	 * @throws RuntimeException When an explicitly selected provider cannot be updated.
 	 */
 	private function updateProvider(InputInterface $input, OutputInterface $output, GeneratedMigration $migration): ?string {
@@ -183,6 +204,8 @@ final class MigrationCommand extends Command
 	}
 
 	/**
+	 * Remove files written by a failed command and combine any cleanup failure message.
+	 *
 	 * @param list<GeneratedFile> $writtenFiles
 	 */
 	private function failureMessage(RuntimeException $exception, array $writtenFiles): string {
@@ -195,6 +218,11 @@ final class MigrationCommand extends Command
 		return $exception->getMessage();
 	}
 
+	/**
+	 * Return a normalized table-class option while rejecting an explicit blank value.
+	 *
+	 * @throws RuntimeException When the option was supplied without a class name.
+	 */
 	private function tableOption(InputInterface $input, string $option): ?string {
 		$value = $input->getOption($option);
 
@@ -209,12 +237,18 @@ final class MigrationCommand extends Command
 		return trim($value);
 	}
 
+	/**
+	 * Return a string option or null when the option was omitted.
+	 */
 	private function nullableOption(InputInterface $input, string $option): ?string {
 		$value = $input->getOption($option);
 
 		return is_string($value) ? $value : null;
 	}
 
+	/**
+	 * Resolve the explicit provider path or the project's conventional database provider.
+	 */
 	private function providerPath(InputInterface $input, ComposerProject $project): string {
 		$provider = $input->getOption('provider');
 
@@ -232,16 +266,25 @@ final class MigrationCommand extends Command
 		return $this->rootPath . '/' . $autoload->pathFor($namespace) . '/Provider.php';
 	}
 
+	/**
+	 * Determine whether the developer explicitly selected a provider file.
+	 */
 	private function hasExplicitProvider(InputInterface $input): bool {
 		$provider = $input->getOption('provider');
 
 		return is_string($provider) && trim($provider) !== '';
 	}
 
+	/**
+	 * Determine whether the selected or conventional provider file exists.
+	 */
 	private function providerExists(InputInterface $input): bool {
 		return is_file($this->providerPath($input, $this->autoloadResolver->project()));
 	}
 
+	/**
+	 * Translate an editor status into an actionable console message.
+	 */
 	private function providerUpdateFailure(string $status): string {
 		return match ($status) {
 			ProviderRegistrationEditor::NOT_FOUND        => 'file does not exist or is not readable',
@@ -256,6 +299,9 @@ final class MigrationCommand extends Command
 		};
 	}
 
+	/**
+	 * Resolve a project-relative path without changing an absolute path.
+	 */
 	private function absolutePath(string $path): string {
 		$path = trim($path);
 
@@ -266,6 +312,9 @@ final class MigrationCommand extends Command
 		return $this->rootPath . '/' . trim($path, '/');
 	}
 
+	/**
+	 * Return a project-relative path for console output when possible.
+	 */
 	private function relativePath(string $path): string {
 		$root = rtrim($this->rootPath, '/') . '/';
 
@@ -276,6 +325,9 @@ final class MigrationCommand extends Command
 		return $path;
 	}
 
+	/**
+	 * Explain when generated runtime code lacks a production Foundation dependency.
+	 */
 	private function runtimeDependencyWarning(): ?string {
 		$composerPath = $this->rootPath . '/composer.json';
 
@@ -304,6 +356,8 @@ final class MigrationCommand extends Command
 	}
 
 	/**
+	 * Determine whether production dependencies include the Foundation database runtime.
+	 *
 	 * @param array<string,mixed> $dependencies
 	 */
 	private function hasFoundationRuntimeDependency(array $dependencies): bool {

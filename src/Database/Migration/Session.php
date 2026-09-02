@@ -17,6 +17,9 @@ use Throwable;
  */
 final readonly class Session
 {
+	/**
+	 * Create a schema execution session protected by an active migration lease.
+	 */
 	public function __construct(
 		private Schema $schema,
 		private Lease $lease

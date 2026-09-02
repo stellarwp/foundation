@@ -9,6 +9,9 @@ use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
  */
 final readonly class GeneratedMigration
 {
+	/**
+	 * Describe a generated file together with its declared migration class.
+	 */
 	public function __construct(
 		public GeneratedFile $file,
 		public string $class,

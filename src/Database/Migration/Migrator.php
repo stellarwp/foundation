@@ -21,6 +21,9 @@ use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
  */
 final readonly class Migrator
 {
+	/**
+	 * Create the migration entry point from configured migrations, ledger, and store services.
+	 */
 	public function __construct(
 		private Collection $migrations,
 		private Repository $repository,

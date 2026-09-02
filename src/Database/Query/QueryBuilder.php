@@ -38,6 +38,9 @@ final class QueryBuilder
 
 	private ?string $aggregate = null;
 
+	/**
+	 * Begin a query for one table and an optional SQL alias.
+	 */
 	public function __construct(
 		private readonly Database $database,
 		private readonly Table $table,
@@ -45,6 +48,9 @@ final class QueryBuilder
 	) {
 	}
 
+	/**
+	 * Replace the selected columns, or restore the wildcard when none are supplied.
+	 */
 	public function select(string ...$columns): self {
 		$this->columns = $columns === [] ? ['*'] : array_values($columns);
 
@@ -80,6 +86,8 @@ final class QueryBuilder
 	}
 
 	/**
+	 * Add an ordered result column and direction.
+	 *
 	 * @throws InvalidArgumentException When the column or direction is invalid.
 	 */
 	public function orderBy(string $column, string $direction = 'ASC'): self {
@@ -95,6 +103,8 @@ final class QueryBuilder
 	}
 
 	/**
+	 * Limit the result count and optionally skip an offset.
+	 *
 	 * @throws InvalidArgumentException When the limit or offset is invalid.
 	 */
 	public function limit(int $limit, ?int $offset = null): self {
@@ -131,6 +141,8 @@ final class QueryBuilder
 	}
 
 	/**
+	 * Create an inspectable query from the current builder state.
+	 *
 	 * @throws DatabaseException        When table-name resolution or validation fails.
 	 * @throws InvalidArgumentException When a selected column is invalid.
 	 */
@@ -139,6 +151,8 @@ final class QueryBuilder
 	}
 
 	/**
+	 * Render the current query as a SQL template with placeholders.
+	 *
 	 * @throws DatabaseException        When table-name resolution or validation fails.
 	 * @throws InvalidArgumentException When a selected column is invalid.
 	 */
@@ -170,6 +184,8 @@ final class QueryBuilder
 	}
 
 	/**
+	 * Return query bindings in the same order as rendered placeholders.
+	 *
 	 * @return list<mixed>
 	 */
 	public function bindings(): array {
@@ -187,6 +203,8 @@ final class QueryBuilder
 	}
 
 	/**
+	 * Render and prepare the current query with all bindings.
+	 *
 	 * @throws DatabaseException        When table-name resolution or query preparation fails.
 	 * @throws InvalidArgumentException When a selected column is invalid.
 	 */
@@ -195,6 +213,8 @@ final class QueryBuilder
 	}
 
 	/**
+	 * Execute the query and return every matching row.
+	 *
 	 * @throws DatabaseException        When table-name resolution or query execution fails.
 	 * @throws InvalidArgumentException When a selected column is invalid.
 	 *
@@ -205,6 +225,8 @@ final class QueryBuilder
 	}
 
 	/**
+	 * Execute the query with a one-row limit and return the first match.
+	 *
 	 * @throws DatabaseException        When table-name resolution or query execution fails.
 	 * @throws InvalidArgumentException When a selected column is invalid.
 	 *
@@ -217,6 +239,9 @@ final class QueryBuilder
 		return $query->toQuery()->first();
 	}
 
+	/**
+	 * Render an aggregate expression or the configured selected columns.
+	 */
 	private function selectSql(): string {
 		if ($this->aggregate !== null) {
 			return $this->aggregate;
@@ -225,6 +250,9 @@ final class QueryBuilder
 		return implode(', ', array_map(fn (string $column): string => $this->quoteColumn($column, true), $this->columns));
 	}
 
+	/**
+	 * Render the validated table alias clause when one is configured.
+	 */
 	private function aliasSql(): string {
 		if ($this->alias === null || $this->alias === '') {
 			return '';
@@ -233,6 +261,11 @@ final class QueryBuilder
 		return ' AS ' . $this->database->quoteIdentifier($this->alias);
 	}
 
+	/**
+	 * Normalize and validate a supported comparison operator.
+	 *
+	 * @throws InvalidArgumentException When the operator is unsupported.
+	 */
 	private function operator(string $operator): string {
 		$operator = strtoupper(trim($operator));
 

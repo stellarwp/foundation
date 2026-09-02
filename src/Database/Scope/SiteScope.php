@@ -10,20 +10,31 @@ use StellarWP\Foundation\Database\Exceptions\DatabaseContextChanged;
  */
 final readonly class SiteScope implements DatabaseScope
 {
+	/**
+	 * Create a scope resolver for the active WordPress database connection.
+	 */
 	public function __construct(
 		private \wpdb $wpdb
 	) {
 	}
 
+	/**
+	 * Apply the active WordPress site's table prefix to an unprefixed name.
+	 */
 	public function resolveTableName(string $unprefixedTableName): string {
 		return $this->wpdb->prefix . $unprefixedTableName;
 	}
 
+	/**
+	 * Capture the active WordPress site identifier for a migration operation.
+	 */
 	public function capture(): int {
 		return get_current_blog_id();
 	}
 
 	/**
+	 * Confirm that a migration operation remains on its captured WordPress site.
+	 *
 	 * @throws DatabaseContextChanged When the active WordPress site has changed.
 	 */
 	public function assertCurrent(int $scopeId): void {

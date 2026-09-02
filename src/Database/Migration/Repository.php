@@ -16,12 +16,17 @@ use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
  */
 final readonly class Repository implements RepositoryContract
 {
+	/**
+	 * Create a migration ledger repository backed by its configured table.
+	 */
 	public function __construct(
 		private MigrationTable $table
 	) {
 	}
 
 	/**
+	 * Return every ledger record keyed by its byte-exact migration identifier.
+	 *
 	 * @throws InvalidMigrationId When a stored migration identifier is invalid.
 	 *
 	 * @return array<string, Record>
@@ -42,6 +47,8 @@ final readonly class Repository implements RepositoryContract
 	}
 
 	/**
+	 * Determine whether a migration identifier has been recorded.
+	 *
 	 * @throws InvalidMigrationId When the migration identifier is invalid.
 	 */
 	public function hasRun(string $migration): bool {
@@ -54,6 +61,8 @@ final readonly class Repository implements RepositoryContract
 	}
 
 	/**
+	 * Insert and return a ledger record for a successful migration.
+	 *
 	 * @throws InvalidMigrationId When the migration identifier is invalid.
 	 * @throws LedgerFailure      When the inserted ledger record cannot be read back.
 	 */
@@ -80,6 +89,8 @@ final readonly class Repository implements RepositoryContract
 	}
 
 	/**
+	 * Delete a ledger record and report whether a row was removed.
+	 *
 	 * @throws InvalidMigrationId When the migration identifier is invalid.
 	 */
 	public function deleteRun(string $migration): bool {
@@ -88,12 +99,18 @@ final readonly class Repository implements RepositoryContract
 		return $this->table->delete(['migration' => $migration]) > 0;
 	}
 
+	/**
+	 * Return the next batch number after the latest recorded run.
+	 */
 	public function nextBatch(): int {
 		$latest = $this->latestBatch();
 
 		return $latest === null ? 1 : $latest + 1;
 	}
 
+	/**
+	 * Return the latest recorded batch, or null when the ledger is empty.
+	 */
 	public function latestBatch(): ?int {
 		$batch = $this->table->query()->max('batch');
 
@@ -105,6 +122,8 @@ final readonly class Repository implements RepositoryContract
 	}
 
 	/**
+	 * Return ledger records belonging to one batch in stored order.
+	 *
 	 * @throws InvalidMigrationId When a stored migration identifier is invalid.
 	 *
 	 * @return list<Record>
@@ -121,6 +140,8 @@ final readonly class Repository implements RepositoryContract
 	}
 
 	/**
+	 * Convert one database row into a validated migration ledger record.
+	 *
 	 * @param array<string, mixed> $row
 	 *
 	 * @throws InvalidMigrationId When the stored migration identifier is invalid.

@@ -38,6 +38,9 @@ final class CliProvider extends Provider
 {
 	public const string ROOT_PATH = self::class . '.root_path';
 
+	/**
+	 * Register the CLI application and every built-in command feature.
+	 */
 	public function register(): void {
 		$this->registerRootPath();
 		$this->registerProcess();
@@ -48,15 +51,24 @@ final class CliProvider extends Provider
 		$this->registerApplication();
 	}
 
+	/**
+	 * Register the consuming project directory used by generator commands.
+	 */
 	private function registerRootPath(): void {
 		$this->container->singleton(self::ROOT_PATH, getcwd() ?: dirname(__DIR__, 2));
 	}
 
+	/**
+	 * Register process execution used by repository maintenance commands.
+	 */
 	private function registerProcess(): void {
 		$this->container->singleton(ShellProcessRunner::class);
 		$this->container->bind(ProcessRunner::class, ShellProcessRunner::class);
 	}
 
+	/**
+	 * Register shared source generation and Composer discovery services.
+	 */
 	private function registerGeneration(): void {
 		$this->container->when(ComposerAutoloadResolver::class)
 			->needs('$rootPath')
@@ -76,6 +88,9 @@ final class CliProvider extends Provider
 		$this->container->singleton(StubResolver::class);
 	}
 
+	/**
+	 * Register the split-package creation command and its collaborators.
+	 */
 	private function registerPackageCommand(): void {
 		$this->container->when(PackageResolver::class)
 			->needs('$rootPath')
@@ -93,6 +108,9 @@ final class CliProvider extends Provider
 		$this->container->singleton(CreateCommand::class);
 	}
 
+	/**
+	 * Register database provider, table, and migration generator commands.
+	 */
 	private function registerDatabaseCommands(): void {
 		$this->container->when(MigrationFileFactory::class)
 			->needs('$rootPath')
@@ -117,6 +135,9 @@ final class CliProvider extends Provider
 		$this->container->singleton(TableCommand::class);
 	}
 
+	/**
+	 * Register the WP-CLI command generator.
+	 */
 	private function registerWpCliCommand(): void {
 		$this->container->when(WPCliCommand::class)
 			->needs('$rootPath')
@@ -125,6 +146,9 @@ final class CliProvider extends Provider
 		$this->container->singleton(WPCliCommand::class);
 	}
 
+	/**
+	 * Register the console application with its ordered command list.
+	 */
 	private function registerApplication(): void {
 		$this->container->when(Application::class)
 			->needs('$commands')

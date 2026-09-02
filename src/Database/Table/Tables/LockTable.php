@@ -14,6 +14,9 @@ final readonly class LockTable extends Table
 {
 	public const string ID = 'foundation_database_locks_table';
 
+	/**
+	 * Create the lock table with its configured unprefixed WordPress name.
+	 */
 	public function __construct(
 		string $unprefixedTableName,
 		Database $database
@@ -21,10 +24,16 @@ final readonly class LockTable extends Table
 		parent::__construct($unprefixedTableName, $database);
 	}
 
+	/**
+	 * Return the stable registration identifier for migration lock storage.
+	 */
 	public function id(): string {
 		return self::ID;
 	}
 
+	/**
+	 * Return the schema required for database-backed lock ownership and expiration.
+	 */
 	public function definition(): TableDefinition {
 		$table = TableDefinition::for($this);
 

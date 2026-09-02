@@ -23,6 +23,9 @@ final readonly class DatabaseLock implements Lock
 	use GeneratesLockOwner;
 	use ValidatesLockTtl;
 
+	/**
+	 * Create a lock backend using the configured WordPress lock table.
+	 */
 	public function __construct(
 		private Database $database,
 		private LockTable $table
@@ -30,6 +33,8 @@ final readonly class DatabaseLock implements Lock
 	}
 
 	/**
+	 * Acquire an unexpired lock or return null when another owner holds it.
+	 *
 	 * @throws InvalidArgumentException When the lock name is empty or exceeds 191 bytes, or the TTL is invalid.
 	 * @throws LockUnavailableException When ownership cannot be generated or the database cannot determine the result.
 	 */
@@ -85,6 +90,8 @@ final readonly class DatabaseLock implements Lock
 	}
 
 	/**
+	 * Release a lock only when its owner and unexpired token still match.
+	 *
 	 * @throws LockUnavailableException When the database cannot determine the release result.
 	 */
 	public function release(LockToken $token): bool {
@@ -101,6 +108,8 @@ final readonly class DatabaseLock implements Lock
 	}
 
 	/**
+	 * Extend an owned lock and return its updated expiration token.
+	 *
 	 * @throws InvalidArgumentException When the TTL is invalid.
 	 * @throws LockUnavailableException When the database cannot determine the refresh result.
 	 */
@@ -137,6 +146,8 @@ final readonly class DatabaseLock implements Lock
 	}
 
 	/**
+	 * Determine whether an unexpired lock exists for the supplied name.
+	 *
 	 * @throws InvalidArgumentException When the lock name is empty or exceeds 191 bytes.
 	 * @throws LockUnavailableException When the database cannot determine whether the lock exists.
 	 */
@@ -155,6 +166,8 @@ final readonly class DatabaseLock implements Lock
 	}
 
 	/**
+	 * Reject lock names that cannot be stored safely in the lock table.
+	 *
 	 * @throws InvalidArgumentException When the lock name is empty or exceeds 191 bytes.
 	 */
 	private function assertValidName(string $name): void {
@@ -168,6 +181,8 @@ final readonly class DatabaseLock implements Lock
 	}
 
 	/**
+	 * Convert a database expiration value into an immutable UTC timestamp.
+	 *
 	 * @param array{expires_at?: mixed} $row
 	 *
 	 * @throws LockUnavailableException When the database returns an invalid expiration.

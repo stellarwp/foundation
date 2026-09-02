@@ -12,6 +12,8 @@ use StellarWP\Foundation\Database\Exceptions\QueryException;
 final class DbDelta implements SchemaExecutor
 {
 	/**
+	 * Execute dbDelta and fail when WordPress reports unapplied schema work.
+	 *
 	 * @throws DatabaseException When dbDelta or the global WordPress database is unavailable.
 	 * @throws QueryException    When dbDelta reports a database error while executing SQL.
 	 */
