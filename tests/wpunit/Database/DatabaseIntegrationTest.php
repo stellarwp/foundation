@@ -29,6 +29,7 @@ use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\LockToken;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\CommentedTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\DateTimePrecisionTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\IndexReconciliationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\SchemaReconciliationTable;
@@ -322,20 +323,23 @@ final class DatabaseIntegrationTest extends WPTestCase
 			}
 
 			public function definition(): TableDefinition {
-				return TableDefinition::for($this)
-					->bigIncrements('id')
-					->string('queue', 255)
-					->string('task_handler', 255)
-					->longText('args')
-					->integer('priority', 3)->nullable()
-					->dateTime('run_after')->default('0000-00-00 00:00:00')
-					->integer('taken')->default(0)
-					->integer('done')->nullable()->default(0)
-					->tinyInteger('tries')->unsigned()->default(0)
-					->tinyInteger('failed', 1)->unsigned()->default(false)
-					->index('done', 'done')
-					->index('taken_failed', 'taken', 'failed')
-					->index('taken_failed_done', 'taken', 'failed', 'done');
+				$table = TableDefinition::for($this);
+
+				$table->bigIncrements('id');
+				$table->string('queue', 255);
+				$table->string('task_handler', 255);
+				$table->longText('args');
+				$table->integer('priority', 3)->nullable();
+				$table->dateTime('run_after')->default('0000-00-00 00:00:00');
+				$table->integer('taken')->default(0);
+				$table->integer('done')->nullable()->default(0);
+				$table->tinyInteger('tries')->unsigned()->default(0);
+				$table->tinyInteger('failed', 1)->unsigned()->default(false);
+				$table->index('done', 'done');
+				$table->index('taken_failed', 'taken', 'failed');
+				$table->index('taken_failed_done', 'taken', 'failed', 'done');
+
+				return $table;
 			}
 		};
 
@@ -364,6 +368,22 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertSame('datetime', strtolower((string) ($column['Type'] ?? '')));
 	}
 
+	public function test_schema_creates_and_verifies_column_comments(): void {
+		$comment = "Customer's \\ description";
+		$table   = new CommentedTable($this->unprefixedTable('column_comment'), $comment);
+
+		$this->schema->createOrUpdate($table);
+		$this->schema->createOrUpdate($table);
+
+		$column = $this->database->row(
+			'SHOW FULL COLUMNS FROM %i WHERE Field = %s',
+			$this->database->tableName($table),
+			'description'
+		);
+
+		$this->assertSame($comment, $column['Comment'] ?? null);
+	}
+
 	public function test_schema_preserves_quote_and_backslash_string_defaults(): void {
 		$unprefixedTableName = $this->unprefixedTable('string_default');
 		$tableName           = $this->database->tableName(new TestTable('string_default_table', $unprefixedTableName));
@@ -385,9 +405,12 @@ final class DatabaseIntegrationTest extends WPTestCase
 				}
 
 				public function definition(): TableDefinition {
-					return TableDefinition::for($this)
-						->bigIncrements('id')
-						->string('label', 100)->default($this->default);
+					$table = TableDefinition::for($this);
+
+					$table->bigIncrements('id');
+					$table->string('label', 100)->default($this->default);
+
+					return $table;
 				}
 			};
 		};

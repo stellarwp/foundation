@@ -26,13 +26,16 @@ final readonly class LockTable extends Table
 	}
 
 	public function definition(): TableDefinition {
-		return TableDefinition::for($this)
-			->column(new Column('name', 'varbinary', 191))
-			->column(new Column('owner', 'varbinary', 64))
-			->dateTime('expires_at', 6)
-			->dateTime('created_at', 6)
-			->dateTime('updated_at', 6)
-			->primary('name')
-			->index('expires_at', 'expires_at');
+		$table = TableDefinition::for($this);
+
+		$table->column(new Column('name', 'varbinary', 191));
+		$table->column(new Column('owner', 'varbinary', 64));
+		$table->dateTime('expires_at', 6);
+		$table->dateTime('created_at', 6);
+		$table->dateTime('updated_at', 6);
+		$table->primary('name');
+		$table->index('expires_at', 'expires_at');
+
+		return $table;
 	}
 }

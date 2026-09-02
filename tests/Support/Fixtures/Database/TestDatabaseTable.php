@@ -17,8 +17,10 @@ final readonly class TestDatabaseTable extends Table
 	}
 
 	public function definition(): TableDefinition {
-		return TableDefinition::for($this)
-			->bigIncrements('id');
+		$table = TableDefinition::for($this);
+		$table->bigIncrements('id');
+
+		return $table;
 	}
 
 	/**

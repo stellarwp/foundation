@@ -116,7 +116,7 @@ final readonly class Reconciler
 				);
 			}
 
-			$expectedExtra = $this->normalizeExtra($column->extra);
+			$expectedExtra = $column->autoIncrement ? 'auto_increment' : '';
 			$actualExtra   = $this->normalizeExtra($properties['extra']);
 
 			if ($expectedExtra !== $actualExtra) {
@@ -125,6 +125,17 @@ final readonly class Reconciler
 					$column->name,
 					$expectedExtra === '' ? 'none' : $expectedExtra,
 					$actualExtra   === '' ? 'none' : $actualExtra
+				);
+			}
+
+			$expectedComment = $column->comment ?? '';
+
+			if ($expectedComment !== $properties['comment']) {
+				$differences[] = sprintf(
+					'column %s expected comment %s, found %s',
+					$column->name,
+					$expectedComment       === '' ? 'none' : $expectedComment,
+					$properties['comment'] === '' ? 'none' : $properties['comment']
 				);
 			}
 		}
@@ -143,7 +154,7 @@ final readonly class Reconciler
 	 *
 	 * @throws DatabaseException When column metadata is missing or invalid.
 	 *
-	 * @return array{nullable: bool, default: mixed, extra: string}
+	 * @return array{nullable: bool, default: mixed, extra: string, comment: string}
 	 */
 	private function columnProperties(Table $table, Column $column): array {
 		$row = $this->database->row(
@@ -162,12 +173,14 @@ final readonly class Reconciler
 
 		$nullable = $row['Null'] ?? null;
 		$extra    = $row['Extra'] ?? null;
+		$comment  = $row['Comment'] ?? '';
 
 		if (
 			! is_string($nullable)
 			|| ! in_array(strtoupper($nullable), ['YES', 'NO'], true)
 			|| ! array_key_exists('Default', $row)
 			|| ! is_string($extra)
+			|| ! is_string($comment)
 		) {
 			throw new DatabaseException(sprintf(
 				'Database returned invalid column metadata for %s.%s.',
@@ -180,6 +193,7 @@ final readonly class Reconciler
 			'nullable' => strtoupper($nullable) === 'YES',
 			'default'  => $row['Default'],
 			'extra'    => $extra,
+			'comment'  => $comment,
 		];
 	}
 

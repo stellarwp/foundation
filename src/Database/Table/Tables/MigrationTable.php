@@ -26,12 +26,15 @@ final readonly class MigrationTable extends Table
 	}
 
 	public function definition(): TableDefinition {
-		return TableDefinition::for($this)
-			->bigIncrements('id')
-			->column(new Column('migration', 'varbinary', 191))
-			->unsignedInteger('batch')
-			->dateTime('ran_at')
-			->unique('migration', 'migration')
-			->index('batch', 'batch');
+		$table = TableDefinition::for($this);
+
+		$table->bigIncrements('id');
+		$table->column(new Column('migration', 'varbinary', 191));
+		$table->unsignedInteger('batch');
+		$table->dateTime('ran_at');
+		$table->unique('migration', 'migration');
+		$table->index('batch', 'batch');
+
+		return $table;
 	}
 }

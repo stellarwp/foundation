@@ -5,15 +5,19 @@ namespace StellarWP\Foundation\Tests\Support\Fixtures\Database;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 
-final readonly class DateTimePrecisionTable implements Table
+/**
+ * Defines a table with a configurable column comment for schema reconciliation tests.
+ */
+final readonly class CommentedTable implements Table
 {
 	public function __construct(
-		private string $unprefixedName
+		private string $unprefixedName,
+		private string $comment
 	) {
 	}
 
 	public function id(): string {
-		return 'datetime_precision_table';
+		return 'commented_table';
 	}
 
 	public function unprefixedName(): string {
@@ -24,7 +28,7 @@ final readonly class DateTimePrecisionTable implements Table
 		$table = TableDefinition::for($this);
 
 		$table->bigIncrements('id');
-		$table->dateTime('occurred_at', 0);
+		$table->text('description')->comment($this->comment);
 
 		return $table;
 	}

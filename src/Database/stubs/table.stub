@@ -23,13 +23,16 @@ final readonly class {{ class }} extends Table {
 	}
 
 	public function definition(): TableDefinition {
-		return TableDefinition::for( $this )
-			->bigIncrements( 'id' )
-			->string( 'status', 20 )->default( 'draft' )
-			->longText( 'payload' )
-			->dateTime( 'created_at' )
-			->dateTime( 'updated_at' )->nullable()
-			->index( 'status', 'status' );
+		$table = TableDefinition::for( $this );
+
+		$table->bigIncrements( 'id' );
+		$table->string( 'status', 20 )->default( 'draft' );
+		$table->longText( 'payload' );
+		$table->dateTime( 'created_at' );
+		$table->dateTime( 'updated_at' )->nullable();
+		$table->index( 'status', 'status' );
+
+		return $table;
 	}
 
 }

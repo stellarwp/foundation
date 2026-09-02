@@ -6,6 +6,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Database\Table\IndexType;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\CommentedTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\IndexReconciliationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchemaExecutor;
@@ -277,6 +278,21 @@ final class ReconcilerTest extends TestCase
 		$this->expectExceptionMessage('column id expected extra auto_increment, found none');
 
 		$reconciler->reconcile(new TestTable('example', 'example'));
+	}
+
+	public function test_it_rejects_an_unapplied_column_comment(): void {
+		$database               = new FakeDatabase();
+		$database->rowResults[] = ['Null' => 'NO', 'Default' => null, 'Extra' => 'auto_increment', 'Comment' => ''];
+		$reconciler             = new Reconciler($database, new RecordingSchemaExecutor());
+		$table                  = new CommentedTable('example', 'Public description');
+
+		$database->rowResults[]  = ['Null' => 'NO', 'Default' => null, 'Extra' => '', 'Comment' => ''];
+		$database->rowsResults[] = [self::indexRow('PRIMARY', 0, 1, 'id')];
+
+		$this->expectException(DatabaseException::class);
+		$this->expectExceptionMessage('column description expected comment Public description, found none');
+
+		$reconciler->reconcile($table);
 	}
 
 	public function test_it_rejects_missing_column_metadata(): void {

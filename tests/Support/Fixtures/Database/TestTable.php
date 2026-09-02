@@ -22,7 +22,9 @@ final class TestTable implements Table
 	}
 
 	public function definition(): TableDefinition {
-		return TableDefinition::for($this)
-			->bigIncrements('id');
+		$table = TableDefinition::for($this);
+		$table->bigIncrements('id');
+
+		return $table;
 	}
 }

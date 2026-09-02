@@ -13,7 +13,7 @@ final class ColumnTest extends TestCase
 			type: 'bigint',
 			length: 20,
 			unsigned: true,
-			extra: 'AUTO_INCREMENT'
+			autoIncrement: true
 		);
 
 		$this->assertSame('`queue_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT', $column->sql());
@@ -43,6 +43,13 @@ final class ColumnTest extends TestCase
 		);
 	}
 
+	public function test_default_null_does_not_change_column_nullability(): void {
+		$column = (new Column('completed_at', 'datetime'))->default(null);
+
+		$this->assertFalse($column->nullable);
+		$this->assertSame('NULL', $column->defaultSql());
+	}
+
 	public function test_it_returns_modified_column_copies(): void {
 		$column = new Column('id', 'bigint', 20);
 
@@ -54,6 +61,29 @@ final class ColumnTest extends TestCase
 		$this->assertSame(
 			'`id` bigint(20) NOT NULL AUTO_INCREMENT',
 			(new Column('id', 'bigint', 20))->autoIncrement()->autoIncrement()->sql()
+		);
+	}
+
+	public function test_it_renders_typed_column_comments_without_replacing_other_attributes(): void {
+		$column = (new Column('id', 'bigint', 20))
+			->autoIncrement()
+			->comment("Customer's identifier");
+
+		$this->assertSame(
+			"`id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'Customer\\'s identifier'",
+			$column->sql()
+		);
+	}
+
+	public function test_it_reports_invalid_final_column_states(): void {
+		$this->assertSame(
+			['Column id cannot be nullable because it uses AUTO_INCREMENT.'],
+			(new Column('id', 'bigint', 20))->autoIncrement()->nullable()->validationErrors()
+		);
+
+		$this->assertSame(
+			['Column completed_at cannot use DEFAULT NULL unless it is nullable.'],
+			(new Column('completed_at', 'datetime'))->default(null)->validationErrors()
 		);
 	}
 

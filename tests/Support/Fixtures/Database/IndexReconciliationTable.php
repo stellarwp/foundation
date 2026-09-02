@@ -28,10 +28,11 @@ final readonly class IndexReconciliationTable implements Table
 	}
 
 	public function definition(): TableDefinition {
-		$definition = TableDefinition::for($this)
-			->bigIncrements('id')
-			->string('email')
-			->string('tenant');
+		$definition = TableDefinition::for($this);
+
+		$definition->bigIncrements('id');
+		$definition->string('email');
+		$definition->string('tenant');
 
 		if (! $this->includeIndex) {
 			return $definition;
