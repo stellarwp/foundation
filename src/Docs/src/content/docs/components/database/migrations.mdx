@@ -240,22 +240,26 @@ Migration IDs are permanent, byte-exact identifiers. The generator prefixes them
 
 ### Reconcile a later table change
 
-For later schema changes, update the table's desired definition and generate a reconciliation migration with the table it changes:
+For later schema changes, update the table's desired definition and generate a reconciliation migration with the table it changes. For example, remove the existing `$table->index( 'status', 'status' );` declaration, then add `published_at` and its replacement composite index:
 
 ```php title="Reports_Table.php"
 $table->dateTime( 'published_at' )->nullable();
-$table->index( 'published_at', 'published_at' );
+$table->index( 'status_created_at', 'status', 'created_at' );
 ```
 
 ```shell
-vendor/bin/foundation make:database-migration Add_Published_At_To_Reports \
+vendor/bin/foundation make:database-migration Update_Reports_Schema \
 	--table=Reports_Table
 ```
 
-The generated migration receives `Reports_Table` and calls `Schema::createOrUpdate()` from `up()`. Its `down()` method throws `IrreversibleMigration` until the developer supplies a safe inverse. Merely depending on a table never grants a later migration permission to drop the complete table.
+The generated migration receives `Reports_Table` and calls `Schema::createOrUpdate()` from `up()`. Because `dbDelta()` cannot remove the old index, update the generated method to remove that unsupported physical state before reconciling the complete definition. Its `down()` method remains irreversible until the developer supplies a safe inverse.
 
-```php title="Add_Published_At_To_Reports.php"
+```php title="Update_Reports_Schema.php"
 public function up( Schema $schema ): void {
+	if ( $schema->hasIndex( $this->table, 'status' ) ) {
+		$schema->dropIndex( $this->table, 'status' );
+	}
+
 	$schema->createOrUpdate( $this->table );
 }
 
@@ -276,25 +280,6 @@ WordPress `dbDelta()` can leave removed or changed indexes in place. Foundation 
 
 Use `Schema::dropIndex()` for removed or changed named secondary indexes, then call `Schema::createOrUpdate()` to apply and verify the final table definition. Primary-key changes and other operations without a focused helper require trusted SQL through `Schema::execute()`.
 :::
-
-For example, after replacing a single-column `status` index with the composite `status_created_at` index in `Reports_Table::definition()`, make the removal explicit before reconciling the desired definition:
-
-```php title="Replace_Report_Status_Index.php"
-public function up( Schema $schema ): void {
-	if ( $schema->hasIndex( $this->table, 'status' ) ) {
-		$schema->dropIndex( $this->table, 'status' );
-	}
-
-	$schema->createOrUpdate( $this->table );
-}
-
-/**
- * @throws IrreversibleMigration Until the previous index is restored safely.
- */
-public function down( Schema $schema ): void {
-	throw IrreversibleMigration::forMigration( self::ID );
-}
-```
 
 For equality-based data changes, use the table's write methods so the migration needs only the table it changes. For example, `src/Database/Migrations/Backfill_Report_Status.php` can update existing rows without coordinating a separate database service:
 
@@ -359,10 +344,9 @@ namespace YourPlugin\Database;
 use lucatume\DI52\Container as C;
 use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
 use StellarWP\Foundation\Database\DatabaseProvider;
-use YourPlugin\Database\Migrations\Add_Published_At_To_Reports;
 use YourPlugin\Database\Migrations\Backfill_Report_Status;
 use YourPlugin\Database\Migrations\Create_Reports_Table;
-use YourPlugin\Database\Migrations\Replace_Report_Status_Index;
+use YourPlugin\Database\Migrations\Update_Reports_Schema;
 use YourPlugin\Database\Tables\Reports_Table;
 
 final class Provider extends Service_Provider {
@@ -381,8 +365,7 @@ final class Provider extends Service_Provider {
 			DatabaseProvider::MIGRATIONS,
 			static fn ( C $c ): array => [
 				$c->get( Create_Reports_Table::class ),
-				$c->get( Add_Published_At_To_Reports::class ),
-				$c->get( Replace_Report_Status_Index::class ),
+				$c->get( Update_Reports_Schema::class ),
 				$c->get( Backfill_Report_Status::class ),
 			]
 		);
