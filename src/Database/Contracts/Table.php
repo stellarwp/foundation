@@ -19,5 +19,12 @@ interface Table
 	 */
 	public function unprefixedName(): string;
 
+	/**
+	 * Return the table's current schema definition.
+	 *
+	 * When Foundation replaces a physical column to reconcile its comment, the
+	 * complete declared column is authoritative. Attributes not represented in
+	 * the definition are not preserved by that replacement.
+	 */
 	public function definition(): TableDefinition;
 }

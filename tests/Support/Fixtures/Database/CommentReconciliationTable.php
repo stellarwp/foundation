@@ -3,12 +3,13 @@
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database;
 
 use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Table\ColumnDefinition;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 
 /**
- * Defines a table with a configurable column comment for schema reconciliation tests.
+ * Defines commented columns with representative supported attributes for reconciliation tests.
  */
-final readonly class CommentedTable implements Table
+final readonly class CommentReconciliationTable implements Table
 {
 	public function __construct(
 		private string $unprefixedName,
@@ -17,7 +18,7 @@ final readonly class CommentedTable implements Table
 	}
 
 	public function id(): string {
-		return 'commented_table';
+		return 'comment_reconciliation_table';
 	}
 
 	public function unprefixedName(): string {
@@ -27,13 +28,15 @@ final readonly class CommentedTable implements Table
 	public function definition(): TableDefinition {
 		$table = TableDefinition::for($this);
 
-		$table->bigIncrements('id');
-		$description = $table->text('description');
-
-		if ($this->comment !== null) {
-			$description->comment($this->comment);
-		}
+		$this->comment($table->bigIncrements('id'));
+		$this->comment($table->string('description', 100)->nullable()->default('fallback'));
 
 		return $table;
+	}
+
+	private function comment(ColumnDefinition $column): void {
+		if ($this->comment !== null) {
+			$column->comment($this->comment);
+		}
 	}
 }

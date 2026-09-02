@@ -145,6 +145,10 @@ $table->longText( 'payload' )->comment( 'Serialized report payload' );
 
 Available modifiers are `unsigned()`, `nullable()`, `notNull()`, `default()`, `autoIncrement()`, and `comment()`. An explicit `default( null )` is valid only on a nullable column.
 
+:::note[Comment reconciliation uses the complete column]
+Foundation can add, change, and remove column comments. When a stored comment differs, Foundation replaces that physical column from its complete declaration and preserves attributes represented by the column API. Do not add other attributes to that column through separate SQL because comment reconciliation may replace attributes that are absent from the table definition.
+:::
+
 :::caution
 Column comments may contain apostrophes and semicolons, but they cannot contain backslashes or control characters. Foundation rejects those comments because their SQL meaning can change with the database connection's SQL mode.
 :::

@@ -30,6 +30,7 @@ use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\LockToken;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\CommentedTable;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\CommentReconciliationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\DateTimePrecisionTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\IndexReconciliationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\SchemaReconciliationTable;
@@ -378,9 +379,12 @@ final class DatabaseIntegrationTest extends WPTestCase
 			$activeSqlMode = (string) $this->database->value('SELECT @@SESSION.sql_mode');
 
 			try {
-				$comment = "Customer's description; internal metadata";
-				$table   = new CommentedTable($this->unprefixedTable('column_comment_' . $index), $comment);
+				$unprefixedTableName = $this->unprefixedTable('column_comment_' . $index);
+				$comment             = "Customer's updated description; internal metadata";
+				$table               = new CommentedTable($unprefixedTableName, $comment);
 
+				$this->schema->createOrUpdate(new CommentedTable($unprefixedTableName, null));
+				$this->schema->createOrUpdate(new CommentedTable($unprefixedTableName, "Customer's description"));
 				$this->schema->createOrUpdate($table);
 				$this->schema->createOrUpdate($table);
 
@@ -392,12 +396,38 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 				$this->assertSame($activeSqlMode, $this->database->value('SELECT @@SESSION.sql_mode'));
 				$this->assertSame($comment, $column['Comment'] ?? null);
+
+				$this->schema->createOrUpdate(new CommentedTable($unprefixedTableName, null));
+
+				$column = $this->database->row(
+					'SHOW FULL COLUMNS FROM %i WHERE Field = %s',
+					$this->database->tableName($table),
+					'description'
+				);
+
+				$this->assertSame('', $column['Comment'] ?? null);
 			} finally {
 				$this->database->execute('SET SESSION sql_mode = %s', $originalSqlMode);
 			}
 		}
 
 		$this->assertSame($originalSqlMode, $this->database->value('SELECT @@SESSION.sql_mode'));
+	}
+
+	public function test_schema_changes_and_removes_comments_while_preserving_supported_column_attributes(): void {
+		$unprefixedTableName = $this->unprefixedTable('reconciled_comment');
+
+		$this->schema->createOrUpdate(new CommentReconciliationTable($unprefixedTableName, null));
+		$this->schema->createOrUpdate(new CommentReconciliationTable($unprefixedTableName, 'Initial comment'));
+		$this->schema->createOrUpdate(new CommentReconciliationTable($unprefixedTableName, 'Updated comment'));
+		$this->schema->createOrUpdate(new CommentReconciliationTable($unprefixedTableName, 'Updated comment'));
+
+		$this->assertCommentReconciliationTable($unprefixedTableName, 'Updated comment');
+
+		$this->schema->createOrUpdate(new CommentReconciliationTable($unprefixedTableName, null));
+		$this->schema->createOrUpdate(new CommentReconciliationTable($unprefixedTableName, null));
+
+		$this->assertCommentReconciliationTable($unprefixedTableName, '');
 	}
 
 	public function test_schema_preserves_quote_and_backslash_string_defaults(): void {
@@ -703,6 +733,30 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertInstanceOf(Repository::class, $container->get(MigrationRecordRepositoryContract::class));
 		$this->assertInstanceOf(Migrator::class, $container->get(Migrator::class));
 		$this->assertFalse($container->has(Lock::class));
+	}
+
+	private function assertCommentReconciliationTable(string $unprefixedTableName, string $comment): void {
+		$table = new CommentReconciliationTable($unprefixedTableName, null);
+		$id    = $this->database->row(
+			'SHOW FULL COLUMNS FROM %i WHERE Field = %s',
+			$this->database->tableName($table),
+			'id'
+		);
+		$description = $this->database->row(
+			'SHOW FULL COLUMNS FROM %i WHERE Field = %s',
+			$this->database->tableName($table),
+			'description'
+		);
+
+		$this->assertStringContainsString('bigint', strtolower((string) ($id['Type'] ?? '')));
+		$this->assertStringContainsString('unsigned', strtolower((string) ($id['Type'] ?? '')));
+		$this->assertSame('NO', $id['Null'] ?? null);
+		$this->assertSame('auto_increment', strtolower((string) ($id['Extra'] ?? '')));
+		$this->assertSame($comment, $id['Comment'] ?? null);
+		$this->assertSame('varchar(100)', strtolower((string) ($description['Type'] ?? '')));
+		$this->assertSame('YES', $description['Null'] ?? null);
+		$this->assertSame('fallback', $description['Default'] ?? null);
+		$this->assertSame($comment, $description['Comment'] ?? null);
 	}
 
 	private function table(string $suffix): string {

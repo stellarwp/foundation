@@ -280,19 +280,68 @@ final class ReconcilerTest extends TestCase
 		$reconciler->reconcile(new TestTable('example', 'example'));
 	}
 
-	public function test_it_rejects_an_unapplied_column_comment(): void {
-		$database               = new FakeDatabase();
-		$database->rowResults[] = ['Null' => 'NO', 'Default' => null, 'Extra' => 'auto_increment', 'Comment' => ''];
-		$reconciler             = new Reconciler($database, new RecordingSchemaExecutor());
-		$table                  = new CommentedTable('example', 'Public description');
+	public function test_it_reconciles_an_unapplied_column_comment(): void {
+		$database             = new FakeDatabase();
+		$database->rowResults = [
+			['Null' => 'NO', 'Default' => null, 'Extra' => 'auto_increment', 'Comment' => ''],
+			['Null' => 'NO', 'Default' => null, 'Extra' => '', 'Comment' => ''],
+			['Null' => 'NO', 'Default' => null, 'Extra' => '', 'Comment' => 'Public description'],
+		];
+		$database->rowsResults[] = [self::indexRow('PRIMARY', 0, 1, 'id')];
+		$reconciler              = new Reconciler($database, new RecordingSchemaExecutor());
 
-		$database->rowResults[]  = ['Null' => 'NO', 'Default' => null, 'Extra' => '', 'Comment' => ''];
+		$reconciler->reconcile(new CommentedTable('example', 'Public description'));
+
+		$this->assertSame([
+			'ALTER TABLE `wp_example` MODIFY COLUMN `description` text NOT NULL COMMENT \'Public description\'',
+		], $database->executed);
+	}
+
+	public function test_it_does_not_replace_a_column_when_its_comment_matches(): void {
+		$database             = new FakeDatabase();
+		$database->rowResults = [
+			['Null' => 'NO', 'Default' => null, 'Extra' => 'auto_increment', 'Comment' => ''],
+			['Null' => 'NO', 'Default' => null, 'Extra' => '', 'Comment' => 'Public description'],
+		];
+		$database->rowsResults[] = [self::indexRow('PRIMARY', 0, 1, 'id')];
+
+		(new Reconciler($database, new RecordingSchemaExecutor()))
+			->reconcile(new CommentedTable('example', 'Public description'));
+
+		$this->assertSame([], $database->executed);
+	}
+
+	public function test_it_removes_an_unapplied_column_comment(): void {
+		$database             = new FakeDatabase();
+		$database->rowResults = [
+			['Null' => 'NO', 'Default' => null, 'Extra' => 'auto_increment', 'Comment' => ''],
+			['Null' => 'NO', 'Default' => null, 'Extra' => '', 'Comment' => 'Old description'],
+			['Null' => 'NO', 'Default' => null, 'Extra' => '', 'Comment' => ''],
+		];
+		$database->rowsResults[] = [self::indexRow('PRIMARY', 0, 1, 'id')];
+		$reconciler              = new Reconciler($database, new RecordingSchemaExecutor());
+
+		$reconciler->reconcile(new CommentedTable('example', null));
+
+		$this->assertSame([
+			'ALTER TABLE `wp_example` MODIFY COLUMN `description` text NOT NULL',
+		], $database->executed);
+	}
+
+	public function test_it_rejects_a_column_comment_that_remains_unapplied(): void {
+		$database             = new FakeDatabase();
+		$database->rowResults = [
+			['Null' => 'NO', 'Default' => null, 'Extra' => 'auto_increment', 'Comment' => ''],
+			['Null' => 'NO', 'Default' => null, 'Extra' => '', 'Comment' => ''],
+			['Null' => 'NO', 'Default' => null, 'Extra' => '', 'Comment' => ''],
+		];
 		$database->rowsResults[] = [self::indexRow('PRIMARY', 0, 1, 'id')];
 
 		$this->expectException(DatabaseException::class);
 		$this->expectExceptionMessage('column description expected comment Public description, found none');
 
-		$reconciler->reconcile($table);
+		(new Reconciler($database, new RecordingSchemaExecutor()))
+			->reconcile(new CommentedTable('example', 'Public description'));
 	}
 
 	public function test_it_rejects_missing_column_metadata(): void {

@@ -37,7 +37,7 @@ final readonly class Reconciler
 
 		$this->executor->execute($this->createTableSql($table, $definition));
 		$this->reconcileComplexDefaults($table, $definition);
-		$this->assertColumnPropertiesMatch($table, $definition);
+		$this->reconcileColumnProperties($table, $definition);
 		$this->assertIndexesMatch($table, $definition);
 	}
 
@@ -88,15 +88,29 @@ final readonly class Reconciler
 	}
 
 	/**
-	 * Verify properties that dbDelta does not reliably reconcile.
+	 * Reconcile comments and verify properties that dbDelta does not reliably reconcile.
 	 *
-	 * @throws DatabaseException When column metadata is missing, invalid, or differs from the definition.
+	 * MySQL requires the complete column declaration when changing or removing a
+	 * comment, so every supported attribute is rendered from the declared column.
+	 *
+	 * @throws DatabaseException When column metadata is missing, invalid, cannot be replaced, or differs from the definition.
 	 */
-	private function assertColumnPropertiesMatch(Table $table, TableDefinition $definition): void {
+	private function reconcileColumnProperties(Table $table, TableDefinition $definition): void {
 		$differences = [];
 
 		foreach ($definition->columns() as $column) {
 			$properties = $this->columnProperties($table, $column);
+			$comment    = $column->commentText() ?? '';
+
+			if ($comment !== $properties['comment']) {
+				$this->database->execute(sprintf(
+					'ALTER TABLE %s MODIFY COLUMN %s',
+					$this->database->quoteIdentifier($this->database->tableName($table)),
+					$column->sql()
+				));
+
+				$properties = $this->columnProperties($table, $column);
+			}
 
 			if ($properties['nullable'] !== $column->nullable) {
 				$differences[] = sprintf(
@@ -128,13 +142,11 @@ final readonly class Reconciler
 				);
 			}
 
-			$expectedComment = $column->commentText() ?? '';
-
-			if ($expectedComment !== $properties['comment']) {
+			if ($comment !== $properties['comment']) {
 				$differences[] = sprintf(
 					'column %s expected comment %s, found %s',
 					$column->name,
-					$expectedComment       === '' ? 'none' : $expectedComment,
+					$comment               === '' ? 'none' : $comment,
 					$properties['comment'] === '' ? 'none' : $properties['comment']
 				);
 			}
