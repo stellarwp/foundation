@@ -67,10 +67,10 @@ final class ColumnTest extends TestCase
 	public function test_it_renders_typed_column_comments_without_replacing_other_attributes(): void {
 		$column = (new Column('id', 'bigint', 20))
 			->autoIncrement()
-			->comment("Customer's identifier");
+			->comment("Customer's identifier; internal metadata");
 
 		$this->assertSame(
-			"`id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'Customer\\'s identifier'",
+			"`id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'Customer''s identifier; internal metadata'",
 			$column->sql()
 		);
 	}

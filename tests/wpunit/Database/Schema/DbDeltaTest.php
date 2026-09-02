@@ -32,8 +32,8 @@ final class DbDeltaTest extends WPTestCase
 
 	public function test_it_executes_and_verifies_the_schema_definition(): void {
 		$dbDelta = PHPMockery::mock('StellarWP\Foundation\Database\Schema', 'dbDelta');
-		$dbDelta->with(self::SQL, true)->once()->andReturn([]);
-		$dbDelta->with(self::SQL, false)->once()->andReturn([]);
+		$dbDelta->with([self::SQL], true)->once()->andReturn([]);
+		$dbDelta->with([self::SQL], false)->once()->andReturn([]);
 
 		(new DbDelta())->execute(self::SQL);
 
@@ -42,8 +42,8 @@ final class DbDeltaTest extends WPTestCase
 
 	public function test_it_fails_when_schema_changes_remain_pending(): void {
 		$dbDelta = PHPMockery::mock('StellarWP\Foundation\Database\Schema', 'dbDelta');
-		$dbDelta->with(self::SQL, true)->once()->andReturn([]);
-		$dbDelta->with(self::SQL, false)->once()->andReturn([
+		$dbDelta->with([self::SQL], true)->once()->andReturn([]);
+		$dbDelta->with([self::SQL], false)->once()->andReturn([
 			'wp_example.name' => 'Added column wp_example.name',
 		]);
 
@@ -60,8 +60,8 @@ final class DbDeltaTest extends WPTestCase
 		$GLOBALS['wpdb']->query(sprintf('CREATE TABLE `%s` (id bigint)', $table));
 
 		$dbDelta = PHPMockery::mock('StellarWP\Foundation\Database\Schema', 'dbDelta');
-		$dbDelta->with($sql, true)->once()->andReturn([]);
-		$dbDelta->with($sql, false)->once()->andReturn([
+		$dbDelta->with([$sql], true)->once()->andReturn([]);
+		$dbDelta->with([$sql], false)->once()->andReturn([
 			'`' . $table . '`' => 'Created table `' . $table . '`',
 		]);
 
@@ -75,7 +75,7 @@ final class DbDeltaTest extends WPTestCase
 
 	public function test_it_translates_wordpress_database_errors(): void {
 		$dbDelta = PHPMockery::mock('StellarWP\Foundation\Database\Schema', 'dbDelta');
-		$dbDelta->with(self::SQL, true)->once()->andReturnUsing(static function (): array {
+		$dbDelta->with([self::SQL], true)->once()->andReturnUsing(static function (): array {
 			$GLOBALS['wpdb']->last_error = 'Could not alter the table.';
 
 			return [];

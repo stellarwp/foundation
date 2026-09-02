@@ -145,6 +145,10 @@ $table->longText( 'payload' )->comment( 'Serialized report payload' );
 
 Available modifiers are `unsigned()`, `nullable()`, `notNull()`, `default()`, `autoIncrement()`, and `comment()`. An explicit `default( null )` is valid only on a nullable column.
 
+:::caution
+Column comments may contain apostrophes and semicolons, but they cannot contain backslashes or control characters. Foundation rejects those comments because their SQL meaning can change with the database connection's SQL mode.
+:::
+
 Use `column()` when the named helpers do not cover the required MySQL type:
 
 ```php title="Reports_Table.php"

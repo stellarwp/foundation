@@ -368,20 +368,36 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertSame('datetime', strtolower((string) ($column['Type'] ?? '')));
 	}
 
-	public function test_schema_creates_and_verifies_column_comments(): void {
-		$comment = "Customer's \\ description";
-		$table   = new CommentedTable($this->unprefixedTable('column_comment'), $comment);
+	public function test_schema_creates_and_verifies_column_comments_in_each_backslash_escaping_mode(): void {
+		$originalSqlMode = (string) $this->database->value('SELECT @@SESSION.sql_mode');
+		$sqlModes        = array_values(array_filter(explode(',', $originalSqlMode), static fn (string $mode): bool => $mode !== 'NO_BACKSLASH_ESCAPES'));
+		$testModes       = [implode(',', $sqlModes), implode(',', [...$sqlModes, 'NO_BACKSLASH_ESCAPES'])];
 
-		$this->schema->createOrUpdate($table);
-		$this->schema->createOrUpdate($table);
+		foreach ($testModes as $index => $sqlMode) {
+			$this->database->execute('SET SESSION sql_mode = %s', $sqlMode);
+			$activeSqlMode = (string) $this->database->value('SELECT @@SESSION.sql_mode');
 
-		$column = $this->database->row(
-			'SHOW FULL COLUMNS FROM %i WHERE Field = %s',
-			$this->database->tableName($table),
-			'description'
-		);
+			try {
+				$comment = "Customer's description; internal metadata";
+				$table   = new CommentedTable($this->unprefixedTable('column_comment_' . $index), $comment);
 
-		$this->assertSame($comment, $column['Comment'] ?? null);
+				$this->schema->createOrUpdate($table);
+				$this->schema->createOrUpdate($table);
+
+				$column = $this->database->row(
+					'SHOW FULL COLUMNS FROM %i WHERE Field = %s',
+					$this->database->tableName($table),
+					'description'
+				);
+
+				$this->assertSame($activeSqlMode, $this->database->value('SELECT @@SESSION.sql_mode'));
+				$this->assertSame($comment, $column['Comment'] ?? null);
+			} finally {
+				$this->database->execute('SET SESSION sql_mode = %s', $originalSqlMode);
+			}
+		}
+
+		$this->assertSame($originalSqlMode, $this->database->value('SELECT @@SESSION.sql_mode'));
 	}
 
 	public function test_schema_preserves_quote_and_backslash_string_defaults(): void {

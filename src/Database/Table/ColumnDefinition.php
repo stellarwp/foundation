@@ -2,6 +2,8 @@
 
 namespace StellarWP\Foundation\Database\Table;
 
+use InvalidArgumentException;
+
 /**
  * Applies fluent modifiers to one explicitly selected database column.
  */
@@ -57,6 +59,8 @@ final class ColumnDefinition
 
 	/**
 	 * Configure the descriptive comment stored with this column.
+	 *
+	 * @throws InvalidArgumentException When the comment requires SQL-mode-dependent escaping.
 	 */
 	public function comment(string $comment): self {
 		$this->column = $this->column->comment($comment);

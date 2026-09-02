@@ -30,13 +30,13 @@ final class DbDelta implements SchemaExecutor
 			throw new DatabaseException('The global wpdb instance is not available.');
 		}
 
-		dbDelta($sql, true);
+		dbDelta([$sql], true);
 
 		if ($wpdb->last_error !== '') {
 			throw new QueryException($wpdb->last_error, $sql, [], $wpdb->last_error);
 		}
 
-		$pending = dbDelta($sql, false);
+		$pending = dbDelta([$sql], false);
 		$pending = array_filter(
 			$pending,
 			fn (string $change): bool => ! $this->createdTableExists($change, $wpdb)

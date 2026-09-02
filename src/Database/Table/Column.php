@@ -2,6 +2,9 @@
 
 namespace StellarWP\Foundation\Database\Table;
 
+use InvalidArgumentException;
+use StellarWP\Foundation\Database\Table\ValueObjects\ColumnComment;
+
 /**
  * Immutable value object describing one database table column.
  *
@@ -25,7 +28,7 @@ final readonly class Column
 		public mixed $default = null,
 		public bool $hasDefault = false,
 		public bool $autoIncrement = false,
-		public ?string $comment = null
+		public ?ColumnComment $comment = null
 	) {
 	}
 
@@ -53,7 +56,7 @@ final readonly class Column
 		}
 
 		if ($this->comment !== null) {
-			$sql .= sprintf(" COMMENT '%s'", addslashes($this->comment));
+			$sql .= ' COMMENT ' . $this->comment->sql();
 		}
 
 		return $sql;
@@ -68,6 +71,13 @@ final readonly class Column
 		}
 
 		return $this->formatDefault($this->default);
+	}
+
+	/**
+	 * Return the descriptive comment stored in database metadata.
+	 */
+	public function commentText(): ?string {
+		return $this->comment?->comment;
 	}
 
 	/**
@@ -143,6 +153,8 @@ final readonly class Column
 
 	/**
 	 * Return a copy with the descriptive comment stored in database metadata.
+	 *
+	 * @throws InvalidArgumentException When the comment requires SQL-mode-dependent escaping.
 	 */
 	public function comment(string $comment): self {
 		return new self(
@@ -154,7 +166,7 @@ final readonly class Column
 			default: $this->default,
 			hasDefault: $this->hasDefault,
 			autoIncrement: $this->autoIncrement,
-			comment: $comment
+			comment: new ColumnComment($comment)
 		);
 	}
 

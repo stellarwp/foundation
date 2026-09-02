@@ -128,7 +128,7 @@ final readonly class Reconciler
 				);
 			}
 
-			$expectedComment = $column->comment ?? '';
+			$expectedComment = $column->commentText() ?? '';
 
 			if ($expectedComment !== $properties['comment']) {
 				$differences[] = sprintf(
