@@ -124,6 +124,45 @@ final class MigratorExecutionTest extends TestCase
 		$this->assertSame(1, $this->repository->all()['2026_01_01_000002_create_posts']->batch);
 	}
 
+	public function test_it_uses_one_ledger_snapshot_when_running_pending_migrations(): void {
+		$existing = new Record(
+			id: 1,
+			migration: '2026_01_01_000001_create_users',
+			batch: 1,
+			ranAt: new DateTimeImmutable('2026-01-01 00:00:00')
+		);
+		$recorded = new Record(
+			id: 2,
+			migration: '2026_01_01_000002_create_posts',
+			batch: 2,
+			ranAt: new DateTimeImmutable('2026-01-01 00:00:00')
+		);
+		$repository = $this->createMock(Repository::class);
+		$repository->expects($this->once())
+			->method('all')
+			->willReturn([$existing->migration => $existing]);
+		$repository->expects($this->never())
+			->method('hasRun');
+		$repository->expects($this->once())
+			->method('nextBatch')
+			->willReturn(2);
+		$repository->expects($this->once())
+			->method('recordRun')
+			->with($recorded->migration, $recorded->batch)
+			->willReturn($recorded);
+
+		$result = $this->migrator(
+			$this->collection(
+				new TestMigration($existing->migration),
+				new TestMigration($recorded->migration)
+			),
+			repository: $repository
+		)->run();
+
+		$this->assertSame([$recorded->migration], $result->ran);
+		$this->assertSame([$existing->migration], $result->skipped);
+	}
+
 	public function test_it_renews_the_lock_around_each_migration(): void {
 		$first = $this->createMock(Migration::class);
 		$first->method('id')->willReturn('2026_01_01_000001_create_users');

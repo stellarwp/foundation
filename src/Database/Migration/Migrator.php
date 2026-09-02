@@ -227,12 +227,13 @@ final readonly class Migrator
 	 * @throws LockUnavailableException When the lock backend cannot determine the refresh result.
 	 */
 	private function runPending(array $migrations, Session $session): Result {
+		$records = $this->repository->all();
 		$ran     = [];
 		$skipped = [];
 		$batch   = $this->repository->nextBatch();
 
 		foreach ($migrations as $migration) {
-			if ($this->repository->hasRun($migration->id())) {
+			if (isset($records[$migration->id()])) {
 				$skipped[] = $migration->id();
 				continue;
 			}
