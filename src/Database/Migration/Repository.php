@@ -4,7 +4,7 @@ namespace StellarWP\Foundation\Database\Migration;
 
 use DateTimeImmutable;
 use DateTimeZone;
-use StellarWP\Foundation\Database\Contracts\Repository as RepositoryContract;
+use StellarWP\Foundation\Database\Migration\Contracts\Repository as RepositoryContract;
 use StellarWP\Foundation\Database\Migration\Exceptions\InvalidMigrationId;
 use StellarWP\Foundation\Database\Migration\Exceptions\LedgerFailure;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Id;

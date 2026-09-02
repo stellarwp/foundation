@@ -3,10 +3,10 @@
 namespace StellarWP\Foundation\Database\Migration;
 
 use StellarWP\Foundation\Database\Contracts\Migration;
-use StellarWP\Foundation\Database\Contracts\Repository;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\MigrationFailed;
 use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
+use StellarWP\Foundation\Database\Migration\Contracts\Repository;
 use StellarWP\Foundation\Database\Migration\Exceptions\InvalidRollbackBatch;
 use StellarWP\Foundation\Database\Migration\Exceptions\LedgerFailure;
 use StellarWP\Foundation\Database\Migration\Exceptions\UnavailableMigration;

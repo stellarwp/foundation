@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database;
 
 use DateTimeImmutable;
-use StellarWP\Foundation\Database\Contracts\Repository;
+use StellarWP\Foundation\Database\Migration\Contracts\Repository;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Record;
 
 final class InMemoryRepository implements Repository

@@ -1,6 +1,6 @@
 <?php declare(strict_types=1);
 
-namespace StellarWP\Foundation\Database\Contracts;
+namespace StellarWP\Foundation\Database\Migration\Contracts;
 
 use StellarWP\Foundation\Database\Migration\Exceptions\InvalidMigrationId;
 use StellarWP\Foundation\Database\Migration\Exceptions\LedgerFailure;
