@@ -7,11 +7,14 @@ use StellarWP\Foundation\Database\Contracts\Table;
 
 /**
  * Defines the columns, indexes, and options that make up one database table.
+ *
+ * Column helpers return a {@see ColumnDefinition} whose modifiers apply only
+ * to that column. Indexes and subsequent columns are declared on this object.
  */
 final class TableDefinition
 {
 	/**
-	 * @var array<string, Column>
+	 * @var array<string, ColumnDefinition>
 	 */
 	private array $columns = [];
 
@@ -20,67 +23,88 @@ final class TableDefinition
 	 */
 	private array $indexes = [];
 
-	private ?string $currentColumn = null;
-
+	/**
+	 * Create an empty definition owned by one logical table.
+	 */
 	private function __construct(
 		private readonly Table $table
 	) {
 	}
 
+	/**
+	 * Begin defining the columns and indexes for a table.
+	 */
 	public static function for(Table $table): self {
 		return new self($table);
 	}
 
 	/**
+	 * Add an unsigned BIGINT AUTO_INCREMENT column and make it the primary key.
+	 *
 	 * @throws InvalidArgumentException When the generated column name is already defined.
 	 */
-	public function bigIncrements(string $name): self {
-		return $this
+	public function bigIncrements(string $name): ColumnDefinition {
+		$column = $this
 			->column(new Column($name, 'bigint', 20))
 			->unsigned()
-			->autoIncrement()
-			->primary($name);
+			->autoIncrement();
+
+		$this->primary($name);
+
+		return $column;
 	}
 
 	/**
+	 * Add a VARCHAR column with the requested maximum length.
+	 *
 	 * @throws InvalidArgumentException When the column name is already defined.
 	 */
-	public function string(string $name, int $length = 191, ?string $default = null): self {
-		return $this->column(new Column($name, 'varchar', $length, default: $default));
+	public function string(string $name, int $length = 191): ColumnDefinition {
+		return $this->column(new Column($name, 'varchar', $length));
 	}
 
 	/**
+	 * Add an unsigned INT column with the requested display width.
+	 *
 	 * @throws InvalidArgumentException When the column name is already defined.
 	 */
-	public function unsignedInteger(string $name, int $length = 10, ?int $default = null): self {
-		return $this->column(new Column($name, 'int', $length, unsigned: true, default: $default));
+	public function unsignedInteger(string $name, int $length = 10): ColumnDefinition {
+		return $this->column(new Column($name, 'int', $length, unsigned: true));
 	}
 
 	/**
+	 * Add a signed INT column with the requested display width.
+	 *
 	 * @throws InvalidArgumentException When the column name is already defined.
 	 */
-	public function integer(string $name, int $length = 10): self {
+	public function integer(string $name, int $length = 10): ColumnDefinition {
 		return $this->column(new Column($name, 'int', $length));
 	}
 
 	/**
+	 * Add a signed TINYINT column with the requested display width.
+	 *
 	 * @throws InvalidArgumentException When the column name is already defined.
 	 */
-	public function tinyInteger(string $name, int $length = 3): self {
+	public function tinyInteger(string $name, int $length = 3): ColumnDefinition {
 		return $this->column(new Column($name, 'tinyint', $length));
 	}
 
 	/**
+	 * Add a signed BIGINT column with the requested display width.
+	 *
 	 * @throws InvalidArgumentException When the column name is already defined.
 	 */
-	public function bigInteger(string $name, int $length = 20): self {
+	public function bigInteger(string $name, int $length = 20): ColumnDefinition {
 		return $this->column(new Column($name, 'bigint', $length));
 	}
 
 	/**
+	 * Add a DATETIME column, optionally with fractional-second precision.
+	 *
 	 * @throws InvalidArgumentException When the column name is already defined or precision is outside the database-supported range.
 	 */
-	public function dateTime(string $name, ?int $precision = null): self {
+	public function dateTime(string $name, ?int $precision = null): ColumnDefinition {
 		if ($precision !== null && ($precision < 0 || $precision > 6)) {
 			throw new InvalidArgumentException('Datetime precision must be between 0 and 6.');
 		}
@@ -89,94 +113,92 @@ final class TableDefinition
 	}
 
 	/**
+	 * Add a TEXT column.
+	 *
 	 * @throws InvalidArgumentException When the column name is already defined.
 	 */
-	public function text(string $name): self {
+	public function text(string $name): ColumnDefinition {
 		return $this->column(new Column($name, 'text'));
 	}
 
 	/**
+	 * Add a LONGTEXT column.
+	 *
 	 * @throws InvalidArgumentException When the column name is already defined.
 	 */
-	public function longText(string $name): self {
+	public function longText(string $name): ColumnDefinition {
 		return $this->column(new Column($name, 'longtext'));
 	}
 
 	/**
+	 * Add a custom column type and return its fluent declaration.
+	 *
+	 * Use this method when the named helpers do not represent the required
+	 * database type, for example a DECIMAL or VARBINARY column.
+	 *
 	 * @throws InvalidArgumentException When the column name is already defined.
 	 */
-	public function column(Column $column): self {
+	public function column(Column $column): ColumnDefinition {
 		$key = strtolower($column->name);
 
 		if (isset($this->columns[$key])) {
 			throw new InvalidArgumentException(sprintf('Column %s is already defined.', $column->name));
 		}
 
-		$this->columns[$key] = $column;
-		$this->currentColumn = $key;
+		$definition          = new ColumnDefinition($column);
+		$this->columns[$key] = $definition;
 
-		return $this;
+		return $definition;
 	}
 
-	public function unsigned(bool $unsigned = true): self {
-		return $this->replaceCurrentColumn($this->currentColumn()->unsigned($unsigned));
-	}
-
-	public function nullable(bool $nullable = true): self {
-		return $this->replaceCurrentColumn($this->currentColumn()->nullable($nullable));
-	}
-
-	public function notNull(): self {
-		return $this->nullable(false);
-	}
-
-	public function default(mixed $default): self {
-		return $this->replaceCurrentColumn($this->currentColumn()->default($default));
-	}
-
-	public function autoIncrement(): self {
-		return $this->replaceCurrentColumn($this->currentColumn()->autoIncrement());
-	}
-
-	public function extra(string $extra): self {
-		return $this->replaceCurrentColumn($this->currentColumn()->extra($extra));
-	}
-
-	private function replaceCurrentColumn(Column $column): self {
-		$this->columns[strtolower($column->name)] = $column;
-
-		return $this;
-	}
-
+	/**
+	 * Add a primary key over the columns in their declared order.
+	 *
+	 * @throws InvalidArgumentException When no columns are provided.
+	 */
 	public function primary(string ...$columns): self {
-		$this->indexes[]     = new Index('primary', $this->nonEmptyColumns(array_values($columns)), IndexType::PRIMARY);
-		$this->currentColumn = null;
-
-		return $this;
-	}
-
-	public function unique(string $name, string ...$columns): self {
-		$this->indexes[]     = new Index($name, $this->nonEmptyColumns(array_values($columns)), IndexType::UNIQUE);
-		$this->currentColumn = null;
-
-		return $this;
-	}
-
-	public function index(string $name, string ...$columns): self {
-		$this->indexes[]     = new Index($name, $this->nonEmptyColumns(array_values($columns)), IndexType::KEY);
-		$this->currentColumn = null;
+		$this->indexes[] = new Index('primary', $this->nonEmptyColumns(array_values($columns)), IndexType::PRIMARY);
 
 		return $this;
 	}
 
 	/**
+	 * Add a named unique index over the columns in their declared order.
+	 *
+	 * @throws InvalidArgumentException When no columns are provided.
+	 */
+	public function unique(string $name, string ...$columns): self {
+		$this->indexes[] = new Index($name, $this->nonEmptyColumns(array_values($columns)), IndexType::UNIQUE);
+
+		return $this;
+	}
+
+	/**
+	 * Add a named non-unique index over the columns in their declared order.
+	 *
+	 * @throws InvalidArgumentException When no columns are provided.
+	 */
+	public function index(string $name, string ...$columns): self {
+		$this->indexes[] = new Index($name, $this->nonEmptyColumns(array_values($columns)), IndexType::KEY);
+
+		return $this;
+	}
+
+	/**
+	 * Return immutable snapshots of the configured columns in declaration order.
+	 *
 	 * @return list<Column>
 	 */
 	public function columns(): array {
-		return array_values($this->columns);
+		return array_values(array_map(
+			static fn (ColumnDefinition $definition): Column => $definition->toColumn(),
+			$this->columns
+		));
 	}
 
 	/**
+	 * Return the configured indexes in declaration order.
+	 *
 	 * @return list<Index>
 	 */
 	public function indexes(): array {
@@ -184,13 +206,35 @@ final class TableDefinition
 	}
 
 	/**
+	 * Return every completed-definition error that would make reconciliation unsafe.
+	 *
 	 * @return list<string>
 	 */
 	public function validationErrors(): array {
-		$errors = [];
+		$errors  = [];
+		$columns = $this->columns();
 
-		if ($this->columns === []) {
+		if ($columns === []) {
 			$errors[] = sprintf('Table %s does not define any columns.', $this->table->id());
+		}
+
+		foreach ($columns as $column) {
+			array_push($errors, ...$column->validationErrors());
+		}
+
+		$autoIncrementColumns = array_values(array_filter(
+			$columns,
+			static fn (Column $column): bool => $column->autoIncrement
+		));
+
+		if (count($autoIncrementColumns) > 1) {
+			$errors[] = 'A table can define only one AUTO_INCREMENT column.';
+		}
+
+		foreach ($autoIncrementColumns as $column) {
+			if (! $this->isFirstColumnInAnyIndex($column->name)) {
+				$errors[] = sprintf('AUTO_INCREMENT column %s must be the first column in an index.', $column->name);
+			}
 		}
 
 		foreach ($this->indexes as $index) {
@@ -226,6 +270,11 @@ final class TableDefinition
 		return $errors;
 	}
 
+	/**
+	 * Assert that this completed definition can be passed to schema reconciliation.
+	 *
+	 * @throws InvalidArgumentException When columns or indexes form an invalid definition.
+	 */
 	public function assertValid(): void {
 		$errors = $this->validationErrors();
 
@@ -235,7 +284,11 @@ final class TableDefinition
 	}
 
 	/**
+	 * Assert that an index declaration contains at least one column.
+	 *
 	 * @param list<string> $columns
+	 *
+	 * @throws InvalidArgumentException When the list is empty.
 	 *
 	 * @return non-empty-list<string>
 	 */
@@ -247,15 +300,9 @@ final class TableDefinition
 		return $columns;
 	}
 
-	private function currentColumn(): Column {
-		if ($this->currentColumn === null || ! isset($this->columns[$this->currentColumn])) {
-			throw new InvalidArgumentException('A column modifier must follow a column definition.');
-		}
-
-		return $this->columns[$this->currentColumn];
-	}
-
 	/**
+	 * Return all indexes whose names match case-insensitively.
+	 *
 	 * @return list<Index>
 	 */
 	private function indexesByName(string $name): array {
@@ -263,5 +310,18 @@ final class TableDefinition
 			$this->indexes,
 			static fn (Index $index): bool => strcasecmp($index->name, $name) === 0
 		));
+	}
+
+	/**
+	 * Determine whether a column leads at least one declared table index.
+	 */
+	private function isFirstColumnInAnyIndex(string $column): bool {
+		foreach ($this->indexes as $index) {
+			if (strcasecmp($index->columns[0], $column) === 0) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 }

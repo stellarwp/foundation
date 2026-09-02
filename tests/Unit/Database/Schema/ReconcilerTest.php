@@ -6,6 +6,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Database\Table\IndexType;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\CommentedTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\IndexReconciliationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchemaExecutor;
@@ -22,7 +23,7 @@ final class ReconcilerTest extends TestCase
 		$executor                = new RecordingSchemaExecutor();
 		$reconciler              = new Reconciler($database, $executor);
 
-		$reconciler->reconcile(new TestTable('example', 'wp_example'));
+		$reconciler->reconcile(new TestTable('example', 'example'));
 
 		$this->assertStringContainsString('CREATE TABLE `wp_example`', $executor->statements[0]);
 		$this->assertSame("SHOW FULL COLUMNS FROM `wp_example` WHERE Field = 'id'", $database->rowQueries[0]);
@@ -42,7 +43,7 @@ final class ReconcilerTest extends TestCase
 		$database->rowsResults[] = [self::indexRow('PRIMARY', 0, 1, 'id')];
 		$reconciler              = new Reconciler($database, new RecordingSchemaExecutor());
 
-		$reconciler->reconcile(new SchemaReconciliationTable('wp_example', 5, true));
+		$reconciler->reconcile(new SchemaReconciliationTable('example', 5, true));
 
 		$this->assertSame([], $database->executed);
 	}
@@ -56,7 +57,7 @@ final class ReconcilerTest extends TestCase
 		];
 
 		(new Reconciler($database, new RecordingSchemaExecutor()))
-			->reconcile(new IndexReconciliationTable('wp_example', true));
+			->reconcile(new IndexReconciliationTable('example', true));
 
 		$this->assertSame('SHOW INDEX FROM `wp_example`', $database->rowsQueries[0]);
 	}
@@ -71,7 +72,7 @@ final class ReconcilerTest extends TestCase
 		];
 
 		(new Reconciler($database, new RecordingSchemaExecutor()))
-			->reconcile(new IndexReconciliationTable('wp_example', true, ['email', 'tenant']));
+			->reconcile(new IndexReconciliationTable('example', true, ['email', 'tenant']));
 
 		$this->assertSame('SHOW INDEX FROM `wp_example`', $database->rowsQueries[0]);
 	}
@@ -89,7 +90,7 @@ final class ReconcilerTest extends TestCase
 		$this->expectExceptionMessage('index email_unique expected UNIQUE (email, tenant), found UNIQUE (tenant, email)');
 
 		(new Reconciler($database, new RecordingSchemaExecutor()))
-			->reconcile(new IndexReconciliationTable('wp_example', true, ['email', 'tenant']));
+			->reconcile(new IndexReconciliationTable('example', true, ['email', 'tenant']));
 	}
 
 	public function test_it_rejects_descending_index_columns(): void {
@@ -104,7 +105,7 @@ final class ReconcilerTest extends TestCase
 		$this->expectExceptionMessage('index email_unique expected UNIQUE (email), found UNIQUE (email desc)');
 
 		(new Reconciler($database, new RecordingSchemaExecutor()))
-			->reconcile(new IndexReconciliationTable('wp_example', true));
+			->reconcile(new IndexReconciliationTable('example', true));
 	}
 
 	public function test_it_rejects_a_semantically_different_index_type(): void {
@@ -119,7 +120,7 @@ final class ReconcilerTest extends TestCase
 		$this->expectExceptionMessage('expected KEY (email), found FULLTEXT (email)');
 
 		(new Reconciler($database, new RecordingSchemaExecutor()))
-			->reconcile(new IndexReconciliationTable('wp_example', true, indexType: IndexType::KEY));
+			->reconcile(new IndexReconciliationTable('example', true, indexType: IndexType::KEY));
 	}
 
 	public function test_it_accepts_hash_as_an_index_storage_method(): void {
@@ -131,7 +132,7 @@ final class ReconcilerTest extends TestCase
 		];
 
 		(new Reconciler($database, new RecordingSchemaExecutor()))
-			->reconcile(new IndexReconciliationTable('wp_example', true, indexType: IndexType::KEY));
+			->reconcile(new IndexReconciliationTable('example', true, indexType: IndexType::KEY));
 
 		$this->assertSame('SHOW INDEX FROM `wp_example`', $database->rowsQueries[0]);
 	}
@@ -155,7 +156,7 @@ final class ReconcilerTest extends TestCase
 		$this->expectExceptionMessage($message);
 
 		(new Reconciler($database, new RecordingSchemaExecutor()))
-			->reconcile(new IndexReconciliationTable('wp_example', $includeUniqueIndex));
+			->reconcile(new IndexReconciliationTable('example', $includeUniqueIndex));
 	}
 
 	/**
@@ -214,7 +215,7 @@ final class ReconcilerTest extends TestCase
 		$this->expectExceptionMessage('returned invalid index metadata for wp_example');
 
 		(new Reconciler($database, new RecordingSchemaExecutor()))
-			->reconcile(new IndexReconciliationTable('wp_example', true));
+			->reconcile(new IndexReconciliationTable('example', true));
 	}
 
 	public function test_it_rejects_non_contiguous_index_column_sequences(): void {
@@ -229,7 +230,7 @@ final class ReconcilerTest extends TestCase
 		$this->expectExceptionMessage('returned invalid index metadata for wp_example.email_unique');
 
 		(new Reconciler($database, new RecordingSchemaExecutor()))
-			->reconcile(new IndexReconciliationTable('wp_example', true));
+			->reconcile(new IndexReconciliationTable('example', true));
 	}
 
 	public function test_it_fails_when_column_defaults_and_nullability_remain_unapplied(): void {
@@ -247,7 +248,7 @@ final class ReconcilerTest extends TestCase
 		$this->expectException(DatabaseException::class);
 		$this->expectExceptionMessage('column attempts expected DEFAULT 5, found DEFAULT not-an-integer; column completed_at expected NULL, found NOT NULL');
 
-		$reconciler->reconcile(new SchemaReconciliationTable('wp_example', 5, true));
+		$reconciler->reconcile(new SchemaReconciliationTable('example', 5, true));
 	}
 
 	public function test_it_does_not_treat_a_missing_default_as_an_empty_string(): void {
@@ -265,7 +266,7 @@ final class ReconcilerTest extends TestCase
 		$this->expectException(DatabaseException::class);
 		$this->expectExceptionMessage("column label expected DEFAULT '', found DEFAULT NULL");
 
-		$reconciler->reconcile(new SchemaReconciliationTable('wp_example', 5, false));
+		$reconciler->reconcile(new SchemaReconciliationTable('example', 5, false));
 	}
 
 	public function test_it_rejects_unapplied_column_extra_attributes(): void {
@@ -276,7 +277,71 @@ final class ReconcilerTest extends TestCase
 		$this->expectException(DatabaseException::class);
 		$this->expectExceptionMessage('column id expected extra auto_increment, found none');
 
-		$reconciler->reconcile(new TestTable('example', 'wp_example'));
+		$reconciler->reconcile(new TestTable('example', 'example'));
+	}
+
+	public function test_it_reconciles_an_unapplied_column_comment(): void {
+		$database             = new FakeDatabase();
+		$database->rowResults = [
+			['Null' => 'NO', 'Default' => null, 'Extra' => 'auto_increment', 'Comment' => ''],
+			['Null' => 'NO', 'Default' => null, 'Extra' => '', 'Comment' => ''],
+			['Null' => 'NO', 'Default' => null, 'Extra' => '', 'Comment' => 'Public description'],
+		];
+		$database->rowsResults[] = [self::indexRow('PRIMARY', 0, 1, 'id')];
+		$reconciler              = new Reconciler($database, new RecordingSchemaExecutor());
+
+		$reconciler->reconcile(new CommentedTable('example', 'Public description'));
+
+		$this->assertSame([
+			'ALTER TABLE `wp_example` MODIFY COLUMN `description` text NOT NULL COMMENT \'Public description\'',
+		], $database->executed);
+	}
+
+	public function test_it_does_not_replace_a_column_when_its_comment_matches(): void {
+		$database             = new FakeDatabase();
+		$database->rowResults = [
+			['Null' => 'NO', 'Default' => null, 'Extra' => 'auto_increment', 'Comment' => ''],
+			['Null' => 'NO', 'Default' => null, 'Extra' => '', 'Comment' => 'Public description'],
+		];
+		$database->rowsResults[] = [self::indexRow('PRIMARY', 0, 1, 'id')];
+
+		(new Reconciler($database, new RecordingSchemaExecutor()))
+			->reconcile(new CommentedTable('example', 'Public description'));
+
+		$this->assertSame([], $database->executed);
+	}
+
+	public function test_it_removes_an_unapplied_column_comment(): void {
+		$database             = new FakeDatabase();
+		$database->rowResults = [
+			['Null' => 'NO', 'Default' => null, 'Extra' => 'auto_increment', 'Comment' => ''],
+			['Null' => 'NO', 'Default' => null, 'Extra' => '', 'Comment' => 'Old description'],
+			['Null' => 'NO', 'Default' => null, 'Extra' => '', 'Comment' => ''],
+		];
+		$database->rowsResults[] = [self::indexRow('PRIMARY', 0, 1, 'id')];
+		$reconciler              = new Reconciler($database, new RecordingSchemaExecutor());
+
+		$reconciler->reconcile(new CommentedTable('example', null));
+
+		$this->assertSame([
+			'ALTER TABLE `wp_example` MODIFY COLUMN `description` text NOT NULL',
+		], $database->executed);
+	}
+
+	public function test_it_rejects_a_column_comment_that_remains_unapplied(): void {
+		$database             = new FakeDatabase();
+		$database->rowResults = [
+			['Null' => 'NO', 'Default' => null, 'Extra' => 'auto_increment', 'Comment' => ''],
+			['Null' => 'NO', 'Default' => null, 'Extra' => '', 'Comment' => ''],
+			['Null' => 'NO', 'Default' => null, 'Extra' => '', 'Comment' => ''],
+		];
+		$database->rowsResults[] = [self::indexRow('PRIMARY', 0, 1, 'id')];
+
+		$this->expectException(DatabaseException::class);
+		$this->expectExceptionMessage('column description expected comment Public description, found none');
+
+		(new Reconciler($database, new RecordingSchemaExecutor()))
+			->reconcile(new CommentedTable('example', 'Public description'));
 	}
 
 	public function test_it_rejects_missing_column_metadata(): void {
@@ -284,7 +349,7 @@ final class ReconcilerTest extends TestCase
 		$this->expectExceptionMessage('could not inspect wp_example.id');
 
 		(new Reconciler(new FakeDatabase(), new RecordingSchemaExecutor()))
-			->reconcile(new TestTable('example', 'wp_example'));
+			->reconcile(new TestTable('example', 'example'));
 	}
 
 	public function test_it_rejects_invalid_column_metadata(): void {
@@ -295,7 +360,7 @@ final class ReconcilerTest extends TestCase
 		$this->expectExceptionMessage('returned invalid column metadata for wp_example.id');
 
 		(new Reconciler($database, new RecordingSchemaExecutor()))
-			->reconcile(new TestTable('example', 'wp_example'));
+			->reconcile(new TestTable('example', 'example'));
 	}
 
 	/**

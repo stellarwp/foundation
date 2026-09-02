@@ -9,7 +9,7 @@ final class TestTable implements Table
 {
 	public function __construct(
 		private readonly string $id,
-		private readonly string $name
+		private readonly string $unprefixedName
 	) {
 	}
 
@@ -17,12 +17,14 @@ final class TestTable implements Table
 		return $this->id;
 	}
 
-	public function name(): string {
-		return $this->name;
+	public function unprefixedName(): string {
+		return $this->unprefixedName;
 	}
 
 	public function definition(): TableDefinition {
-		return TableDefinition::for($this)
-			->bigIncrements('id');
+		$table = TableDefinition::for($this);
+		$table->bigIncrements('id');
+
+		return $table;
 	}
 }

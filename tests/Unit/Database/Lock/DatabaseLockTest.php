@@ -4,8 +4,10 @@ namespace StellarWP\Foundation\Tests\Unit\Database\Lock;
 
 use DateTimeImmutable;
 use InvalidArgumentException;
+use Mockery;
 use PHPUnit\Framework\Attributes\DataProvider;
 use StellarWP\Foundation\Database\Contracts\Database;
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\QueryException;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
@@ -52,7 +54,7 @@ final class DatabaseLockTest extends TestCase
 		$database = $this->mock(Database::class);
 		$database->shouldReceive('tableName')
 			->once()
-			->with('foundation_locks')
+			->with(Mockery::type(LockTable::class))
 			->andReturn('wp_foundation_locks');
 		$database->shouldReceive('execute')->once()->andReturn(1);
 		$database->shouldReceive('row')->once()->andReturn([
@@ -70,7 +72,7 @@ final class DatabaseLockTest extends TestCase
 		$database = $this->mock(Database::class);
 		$database->shouldReceive('tableName')
 			->once()
-			->with('foundation_locks')
+			->with(Mockery::type(LockTable::class))
 			->andReturn('wp_foundation_locks');
 		$database->shouldReceive('execute')->once()->andReturn(1);
 		$database->shouldReceive('row')->once()->andReturn([
@@ -221,7 +223,7 @@ final class DatabaseLockTest extends TestCase
 	public function test_it_normalizes_database_failures(callable $operation, string $databaseMethod): void {
 		$database = $this->mock(Database::class);
 
-		$database->shouldReceive('tableName')->with('nx_foundation_locks')->andReturn('wp_nx_foundation_locks');
+		$database->shouldReceive('tableName')->with(Mockery::type(LockTable::class))->andReturn('wp_nx_foundation_locks');
 		$database->shouldReceive($databaseMethod)->andThrow(new QueryException('Query failed.', 'SELECT 1'));
 
 		try {
@@ -233,6 +235,38 @@ final class DatabaseLockTest extends TestCase
 		} catch (LockUnavailableException $exception) {
 			$this->assertInstanceOf(QueryException::class, $exception->getPrevious());
 		}
+	}
+
+	/**
+	 * @dataProvider tableNameResolutionOperationProvider
+	 */
+	#[DataProvider('tableNameResolutionOperationProvider')]
+	public function test_it_normalizes_table_name_resolution_failures(callable $operation): void {
+		$database = $this->mock(Database::class);
+		$database->shouldReceive('tableName')->andThrow(new DatabaseException('Invalid table name.'));
+
+		$this->expectException(LockUnavailableException::class);
+
+		$operation(new DatabaseLock(
+			$database,
+			new LockTable('nx_foundation_locks', $database)
+		));
+	}
+
+	/**
+	 * @return array<string, array{callable(DatabaseLock): mixed}>
+	 */
+	public static function tableNameResolutionOperationProvider(): array {
+		$token = new LockToken(
+			name: 'queue:sync',
+			owner: 'owner',
+			expiresAt: new DateTimeImmutable('2026-01-01 00:01:00')
+		);
+
+		return [
+			'acquire' => [static fn (DatabaseLock $lock): ?LockToken => $lock->acquire('queue:sync', 60)],
+			'refresh' => [static fn (DatabaseLock $lock): ?LockToken => $lock->refresh($token, 60)],
+		];
 	}
 
 	/**

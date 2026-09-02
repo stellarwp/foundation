@@ -11,26 +11,24 @@ Foundation Database wraps common `wpdb` operations with prepared bindings, quote
 
 <LinkCard
   title="Database Overview"
-  description="Install the package and register DatabaseProvider before injecting the Database contract."
+  description="Install the package and register DatabaseProvider before injecting application table classes."
   href="/components/database/"
 />
 
 ## Read rows
 
-Inject the `Database` contract and the table object into the class that owns the query. For example, create `src/Report/Report_Repository.php`:
+Inject the table object into the class that owns its queries. The table keeps physical naming and common database operations together. For example, create `src/Report/Report_Repository.php`:
 
 ```php title="Report_Repository.php"
 <?php declare(strict_types=1);
 
 namespace YourPlugin\Report;
 
-use StellarWP\Foundation\Database\Contracts\Database;
 use YourPlugin\Database\Tables\Reports_Table;
 
 final readonly class Report_Repository {
 
 	public function __construct(
-		private Database $database,
 		private Reports_Table $table
 	) {
 	}
@@ -39,8 +37,8 @@ final readonly class Report_Repository {
 	 * @return list<array<string, mixed>>
 	 */
 	public function published( int $limit = 100 ): array {
-		return $this->database
-			->table( $this->table, 'r' )
+		return $this->table
+			->query( 'r' )
 			->select( 'r.id', 'r.status', 'r.payload', 'r.created_at' )
 			->where( 'r.status', '=', 'published' )
 			->orderBy( 'r.created_at', 'DESC' )
@@ -52,16 +50,18 @@ final readonly class Report_Repository {
 
 `first()` returns one row or `null`. `get()` returns a list of associative rows. Qualified identifiers such as `r.created_at` are quoted as `` `r`.`created_at` `` rather than as one identifier.
 
+`max( 'column' )` returns the maximum value matching the builder's `where()` predicates. Aggregate queries ignore ordering and pagination because those clauses do not constrain the rows being aggregated.
+
 Use `null` with equality operators for SQL null checks:
 
 ```php
-$unpublished = $this->database
-	->table( $this->table )
+$unpublished = $this->table
+	->query()
 	->where( 'published_at', '=', null )
 	->get();
 
-$published = $this->database
-	->table( $this->table )
+$published = $this->table
+	->query()
 	->where( 'published_at', '!=', null )
 	->get();
 ```
@@ -73,14 +73,13 @@ These comparisons compile to `IS NULL` and `IS NOT NULL`. Other operators with `
 Use the table object for inserts, updates, and deletes so physical table naming stays in one place:
 
 ```php
-$reportId = $this->database->insertGetId( $this->table, [
+$reportId = $this->table->insertGetId( [
 	'status'     => 'draft',
 	'payload'    => wp_json_encode( $payload ),
 	'created_at' => current_time( 'mysql', true ),
 ] );
 
-$updated = $this->database->update(
-	$this->table,
+$updated = $this->table->update(
 	[
 		'status'     => 'published',
 		'updated_at' => current_time( 'mysql', true ),
@@ -88,22 +87,49 @@ $updated = $this->database->update(
 	[ 'id' => $reportId ]
 );
 
-$deleted = $this->database->delete( $this->table, [ 'id' => $reportId ] );
+$deleted = $this->table->delete( [ 'id' => $reportId ] );
 ```
 
-`insert()` returns the affected row count, while `insertGetId()` returns the generated integer ID. `update()`, `delete()`, and `execute()` return affected row counts.
+`insert()` returns the affected row count, while `insertGetId()` returns the generated integer ID. `update()` and `delete()` return affected row counts.
+
+### Add table-specific operations
+
+Add an intent-revealing method to the table class when specialized SQL belongs to that table and should be reused by its consumers. The base `Table` exposes its `Database` contract to subclasses through the protected `database()` method.
+
+For example, add `archive_status()` to `src/Database/Tables/Reports_Table.php`:
+
+```php title="Reports_Table.php"
+/**
+ * Archive reports with the supplied status.
+ *
+ * @throws \StellarWP\Foundation\Database\Exceptions\DatabaseException When the physical table name is invalid.
+ * @throws \StellarWP\Foundation\Database\Exceptions\QueryException    When the update fails.
+ */
+public function archive_status( string $status ): int {
+	return $this->database()->execute(
+		'UPDATE %i SET status = %s WHERE status = %s',
+		$this->name(),
+		'archived',
+		$status
+	);
+}
+```
+
+The method uses the same database service as the inherited table operations. Calling `name()` resolves and validates the physical table name for the active WordPress site when the operation runs.
+
+Keep these methods scoped to one table. Cross-table queries, multi-step workflows, and business rules belong in a repository or feature service.
 
 ## Inspect and execute SQL
 
 Build a query before executing it when logging or diagnostics need the SQL shape and separate bindings:
 
 ```php
-$query = $this->database
-	->table( $this->table, 'r' )
+$query = $this->table
+	->query( 'r' )
 	->select( 'r.id', 'r.status' )
 	->where( 'r.status', '=', 'failed' )
 	->limit( 25 )
-	->query();
+	->toQuery();
 
 $sql         = $query->toSql();
 $bindings    = $query->bindings();
@@ -113,7 +139,23 @@ $rows        = $query->get();
 
 Prefer `toSql()` plus `bindings()` for structured diagnostics. A fully prepared SQL string may contain customer or application data and should not be logged without considering its sensitivity.
 
-The `Database` contract also exposes prepared low-level operations for queries that do not fit the builder:
+:::caution[Rebuild materialized queries after changing sites]
+`toQuery()` captures SQL for the active WordPress database scope. If code calls `switch_to_blog()`, build a new query before executing it so the table name uses the new site's prefix. Calling `get()`, `first()`, or `value()` directly on the table query builder resolves the active scope as part of that operation.
+:::
+
+Inject the `Database` contract in addition to the table when specialized SQL belongs to a repository workflow rather than one table, or when a query spans multiple tables. Add it explicitly to that repository's constructor:
+
+```php
+use StellarWP\Foundation\Database\Contracts\Database;
+
+public function __construct(
+	private Reports_Table $table,
+	private Database $database
+) {
+}
+```
+
+The contract exposes prepared low-level operations for specialized SQL:
 
 ```php
 $row = $this->database->row(

@@ -2,11 +2,32 @@
 
 namespace StellarWP\Foundation\Database\Table;
 
+use InvalidArgumentException;
+use StellarWP\Foundation\Database\Table\ValueObjects\ColumnComment;
+
 /**
- * Defines one database table column.
+ * Immutable value object describing one database table column.
+ *
+ * Modifier methods return a new column so a {@see ColumnDefinition} can safely
+ * replace its current snapshot without leaking partially configured state.
  */
 final readonly class Column
 {
+	private const array AUTO_INCREMENT_TYPES = [
+		'tinyint',
+		'smallint',
+		'mediumint',
+		'int',
+		'integer',
+		'bigint',
+	];
+
+	/**
+	 * Create a column description from its normalized schema attributes.
+	 *
+	 * The $hasDefault flag distinguishes an omitted default from an explicit
+	 * DEFAULT NULL because both states store null in $default.
+	 */
 	public function __construct(
 		public string $name,
 		public string $type,
@@ -14,11 +35,15 @@ final readonly class Column
 		public bool $unsigned = false,
 		public bool $nullable = false,
 		public mixed $default = null,
-		public string $extra = '',
-		public bool $hasDefault = false
+		public bool $hasDefault = false,
+		public bool $autoIncrement = false,
+		public ?ColumnComment $comment = null
 	) {
 	}
 
+	/**
+	 * Render this column as the SQL fragment used in a CREATE TABLE statement.
+	 */
 	public function sql(): string {
 		$sql = sprintf(
 			'`%s` %s%s%s%s',
@@ -35,8 +60,12 @@ final readonly class Column
 			$sql .= sprintf(' DEFAULT %s', $default);
 		}
 
-		if ($this->extra !== '') {
-			$sql .= ' ' . $this->extra;
+		if ($this->autoIncrement) {
+			$sql .= ' AUTO_INCREMENT';
+		}
+
+		if ($this->comment !== null) {
+			$sql .= ' COMMENT ' . $this->comment->sql();
 		}
 
 		return $sql;
@@ -53,66 +82,138 @@ final readonly class Column
 		return $this->formatDefault($this->default);
 	}
 
+	/**
+	 * Return the descriptive comment stored in database metadata.
+	 */
+	public function commentText(): ?string {
+		return $this->comment?->comment;
+	}
+
+	/**
+	 * Return a copy configured to use or omit the UNSIGNED attribute.
+	 */
 	public function unsigned(bool $unsigned = true): self {
 		return new self(
-			$this->name,
-			$this->type,
-			$this->length,
-			$unsigned,
-			$this->nullable,
-			$this->default,
-			$this->extra,
-			$this->hasDefault
+			name: $this->name,
+			type: $this->type,
+			length: $this->length,
+			unsigned: $unsigned,
+			nullable: $this->nullable,
+			default: $this->default,
+			hasDefault: $this->hasDefault,
+			autoIncrement: $this->autoIncrement,
+			comment: $this->comment
 		);
 	}
 
+	/**
+	 * Return a copy configured to accept or reject NULL values.
+	 */
 	public function nullable(bool $nullable = true): self {
 		return new self(
-			$this->name,
-			$this->type,
-			$this->length,
-			$this->unsigned,
-			$nullable,
-			$this->default,
-			$this->extra,
-			$this->hasDefault
+			name: $this->name,
+			type: $this->type,
+			length: $this->length,
+			unsigned: $this->unsigned,
+			nullable: $nullable,
+			default: $this->default,
+			hasDefault: $this->hasDefault,
+			autoIncrement: $this->autoIncrement,
+			comment: $this->comment
 		);
 	}
 
+	/**
+	 * Return a copy with an explicit default value.
+	 *
+	 * Passing null records DEFAULT NULL but does not make the column nullable;
+	 * callers must apply nullable() separately for that final state to be valid.
+	 */
 	public function default(mixed $default): self {
 		return new self(
-			$this->name,
-			$this->type,
-			$this->length,
-			$this->unsigned,
-			$default === null ? true : $this->nullable,
-			$default,
-			$this->extra,
-			true
+			name: $this->name,
+			type: $this->type,
+			length: $this->length,
+			unsigned: $this->unsigned,
+			nullable: $this->nullable,
+			default: $default,
+			hasDefault: true,
+			autoIncrement: $this->autoIncrement,
+			comment: $this->comment
 		);
 	}
 
-	public function extra(string $extra): self {
-		return new self(
-			$this->name,
-			$this->type,
-			$this->length,
-			$this->unsigned,
-			$this->nullable,
-			$this->default,
-			$extra,
-			$this->hasDefault
-		);
-	}
-
+	/**
+	 * Return a copy configured to use MySQL's AUTO_INCREMENT attribute.
+	 */
 	public function autoIncrement(): self {
-		if (preg_match('/(?:^|\s)AUTO_INCREMENT(?:\s|$)/i', $this->extra) === 1) {
-			return $this;
+		return new self(
+			name: $this->name,
+			type: $this->type,
+			length: $this->length,
+			unsigned: $this->unsigned,
+			nullable: $this->nullable,
+			default: $this->default,
+			hasDefault: $this->hasDefault,
+			autoIncrement: true,
+			comment: $this->comment
+		);
+	}
+
+	/**
+	 * Return a copy with the descriptive comment stored in database metadata.
+	 *
+	 * @throws InvalidArgumentException When the comment requires SQL-mode-dependent escaping.
+	 */
+	public function comment(string $comment): self {
+		return new self(
+			name: $this->name,
+			type: $this->type,
+			length: $this->length,
+			unsigned: $this->unsigned,
+			nullable: $this->nullable,
+			default: $this->default,
+			hasDefault: $this->hasDefault,
+			autoIncrement: $this->autoIncrement,
+			comment: new ColumnComment($comment)
+		);
+	}
+
+	/**
+	 * Return errors for incompatible attributes on this completed column definition.
+	 *
+	 * @return list<string>
+	 */
+	public function validationErrors(): array {
+		$errors = [];
+
+		if ($this->autoIncrement) {
+			preg_match('/\A([a-z]+)/i', trim($this->type), $matches);
+			$type = strtolower($matches[1] ?? '');
+
+			if (! in_array($type, self::AUTO_INCREMENT_TYPES, true)) {
+				$errors[] = sprintf('Column %s must use an integer type because it uses AUTO_INCREMENT.', $this->name);
+			}
+
+			if ($this->nullable) {
+				$errors[] = sprintf('Column %s cannot be nullable because it uses AUTO_INCREMENT.', $this->name);
+			}
+
+			if ($this->hasDefault) {
+				$errors[] = sprintf('Column %s cannot define a default because it uses AUTO_INCREMENT.', $this->name);
+			}
 		}
 
-		return $this->extra(trim($this->extra . ' AUTO_INCREMENT'));
+		if (! $this->autoIncrement && $this->hasDefault && $this->default === null && ! $this->nullable) {
+			$errors[] = sprintf('Column %s cannot use DEFAULT NULL unless it is nullable.', $this->name);
+		}
+
+		return $errors;
 	}
 
+	/**
+	 * Format a PHP scalar as a SQL literal suitable for a column default.
+	 */
 	private function formatDefault(mixed $default): string {
 		if ($default === null) {
 			return 'NULL';

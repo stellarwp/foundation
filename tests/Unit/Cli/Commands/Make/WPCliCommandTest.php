@@ -10,6 +10,7 @@ use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
 use StellarWP\Foundation\Cli\Generation\Php\PhpSourceEditor;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Tests\TestCase;
 use Symfony\Component\Console\Command\Command;
@@ -398,11 +399,13 @@ final class WPCliCommandTest extends TestCase
 	}
 
 	private function command(string $root): WPCliCommand {
+		$projectDirectory = new ProjectDirectory($root);
+
 		return new WPCliCommand(
-			rootPath: $root,
-			autoloadResolver: new ComposerAutoloadResolver($root),
+			projectDirectory: $projectDirectory,
+			autoloadResolver: new ComposerAutoloadResolver($projectDirectory),
 			classNameResolver: new WordPressClassNameResolver(),
-			stubResolver: new StubResolver($root),
+			stubResolver: new StubResolver($projectDirectory),
 			stubRenderer: new StubRenderer(),
 			fileWriter: new GeneratedFileWriter(new PhpSourceEditor(new ParserFactory(), new Lexer()))
 		);

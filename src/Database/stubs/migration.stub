@@ -18,6 +18,9 @@ final readonly class {{ class }} implements Migration {
 		// Add migration behavior here.
 	}
 
+	/**
+	 * @throws IrreversibleMigration Until a safe inverse is implemented.
+	 */
 	public function down( Schema $schema ): void {
 		throw IrreversibleMigration::forMigration( self::ID );
 	}

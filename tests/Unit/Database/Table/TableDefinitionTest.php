@@ -4,19 +4,35 @@ namespace StellarWP\Foundation\Tests\Unit\Database\Table;
 
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
+use StellarWP\Foundation\Database\Table\ColumnDefinition;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestTable;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class TableDefinitionTest extends TestCase
 {
+	public function test_column_modifiers_are_scoped_to_the_returned_column_definition(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$status     = $definition->string('status', 20);
+
+		$definition->string('category', 40);
+		$status->nullable()->default('draft');
+
+		$this->assertInstanceOf(ColumnDefinition::class, $status);
+		$this->assertSame([
+			"`status` varchar(20) NULL DEFAULT 'draft'",
+			'`category` varchar(40) NOT NULL',
+		], array_map(static fn ($column): string => $column->sql(), $definition->columns()));
+	}
+
 	public function test_it_collects_columns_and_indexes(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
-			->bigIncrements('id')
-			->string('status', 20)
-			->text('payload')
-			->dateTime('created_at')
-			->index('status', 'status');
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->bigIncrements('id');
+		$definition->string('status', 20);
+		$definition->text('payload');
+		$definition->dateTime('created_at');
+		$definition->index('status', 'status');
 
 		$this->assertCount(4, $definition->columns());
 		$this->assertCount(2, $definition->indexes());
@@ -24,20 +40,21 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_defines_queue_style_columns_with_modifiers(): void {
-		$definition = TableDefinition::for(new TestTable('queue_table', 'wp_queue'))
-			->bigIncrements('id')
-			->string('queue', 255)
-			->string('task_handler', 255)
-			->longText('args')
-			->integer('priority', 3)->nullable()
-			->dateTime('run_after')->default('0000-00-00 00:00:00')
-			->integer('taken')->default(0)
-			->integer('done')->nullable()->default(0)
-			->tinyInteger('tries')->unsigned()->default(0)
-			->tinyInteger('failed', 1)->unsigned()->default(false)
-			->index('done', 'done')
-			->index('taken_failed', 'taken', 'failed')
-			->index('taken_failed_done', 'taken', 'failed', 'done');
+		$definition = TableDefinition::for(new TestTable('queue_table', 'queue'));
+
+		$definition->bigIncrements('id');
+		$definition->string('queue', 255);
+		$definition->string('task_handler', 255);
+		$definition->longText('args');
+		$definition->integer('priority', 3)->nullable();
+		$definition->dateTime('run_after')->default('0000-00-00 00:00:00');
+		$definition->integer('taken')->default(0);
+		$definition->integer('done')->nullable()->default(0);
+		$definition->tinyInteger('tries')->unsigned()->default(0);
+		$definition->tinyInteger('failed', 1)->unsigned()->default(false);
+		$definition->index('done', 'done');
+		$definition->index('taken_failed', 'taken', 'failed');
+		$definition->index('taken_failed_done', 'taken', 'failed', 'done');
 
 		$this->assertSame([
 			'`id` bigint(20) unsigned NOT NULL AUTO_INCREMENT',
@@ -57,10 +74,11 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_defines_less_common_column_helpers(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
-			->bigInteger('remote_id')->unsigned()
-			->string('status')->nullable()->notNull()->default('draft')
-			->text('payload')->extra('COMMENT \'json payload\'');
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->bigInteger('remote_id')->unsigned();
+		$definition->string('status')->nullable()->notNull()->default('draft');
+		$definition->text('payload')->comment('json payload');
 
 		$this->assertSame([
 			'`remote_id` bigint(20) unsigned NOT NULL',
@@ -70,9 +88,10 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_defines_datetime_precision_boundaries(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
-			->dateTime('seconds', 0)
-			->dateTime('microseconds', 6);
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->dateTime('seconds', 0);
+		$definition->dateTime('microseconds', 6);
 
 		$this->assertSame([
 			'`seconds` datetime NOT NULL',
@@ -88,7 +107,7 @@ final class TableDefinitionTest extends TestCase
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('Datetime precision must be between 0 and 6.');
 
-		TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
+		TableDefinition::for(new TestTable('reports_table', 'reports'))
 			->dateTime('created_at', $precision);
 	}
 
@@ -103,9 +122,10 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_rejects_indexes_that_reference_missing_columns(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
-			->string('status', 20)
-			->index('missing_index', 'missing');
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->string('status', 20);
+		$definition->index('missing_index', 'missing');
 
 		$this->assertSame(['Index missing_index references missing column missing.'], $definition->validationErrors());
 
@@ -115,87 +135,146 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_rejects_tables_without_columns(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'));
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
 
 		$this->assertSame(['Table reports_table does not define any columns.'], $definition->validationErrors());
+	}
+
+	public function test_it_rejects_invalid_final_column_states(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->bigIncrements('id')->nullable();
+		$definition->dateTime('completed_at')->default(null);
+
+		$this->assertSame([
+			'Column id cannot be nullable because it uses AUTO_INCREMENT.',
+			'Column completed_at cannot use DEFAULT NULL unless it is nullable.',
+		], $definition->validationErrors());
+
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('Column id cannot be nullable because it uses AUTO_INCREMENT.');
+
+		$definition->assertValid();
+	}
+
+	public function test_final_column_validation_is_independent_of_modifier_order(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->bigIncrements('id')->nullable()->notNull();
+		$definition->dateTime('completed_at')->default(null)->nullable();
+
+		$this->assertSame([], $definition->validationErrors());
+	}
+
+	public function test_it_rejects_an_unindexed_auto_increment_column(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->integer('sequence')->autoIncrement();
+
+		$this->assertSame([
+			'AUTO_INCREMENT column sequence must be the first column in an index.',
+		], $definition->validationErrors());
+	}
+
+	public function test_it_rejects_multiple_auto_increment_columns(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->bigIncrements('id');
+		$definition->integer('legacy_id')->autoIncrement();
+		$definition->index('legacy_id', 'legacy_id');
+
+		$this->assertSame([
+			'A table can define only one AUTO_INCREMENT column.',
+		], $definition->validationErrors());
+	}
+
+	public function test_it_requires_an_auto_increment_column_to_lead_its_index(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->string('tenant');
+		$definition->integer('sequence')->autoIncrement();
+		$definition->index('tenant_sequence', 'tenant', 'sequence');
+
+		$this->assertSame([
+			'AUTO_INCREMENT column sequence must be the first column in an index.',
+		], $definition->validationErrors());
+	}
+
+	public function test_it_accepts_an_auto_increment_column_leading_a_secondary_index(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->integer('sequence')->autoIncrement();
+		$definition->string('tenant');
+		$definition->index('sequence_tenant', 'sequence', 'tenant');
+
+		$this->assertSame([], $definition->validationErrors());
 	}
 
 	public function test_it_rejects_indexes_without_columns(): void {
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('An index must define at least one column.');
 
-		TableDefinition::for(new TestTable('reports_table', 'wp_reports'))->index('empty_index');
-	}
-
-	public function test_it_rejects_column_modifiers_without_a_column(): void {
-		$this->expectException(InvalidArgumentException::class);
-		$this->expectExceptionMessage('A column modifier must follow a column definition.');
-
-		TableDefinition::for(new TestTable('reports_table', 'wp_reports'))->nullable();
-	}
-
-	public function test_it_rejects_column_modifiers_after_index_definitions(): void {
-		$this->expectException(InvalidArgumentException::class);
-		$this->expectExceptionMessage('A column modifier must follow a column definition.');
-
-		TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
-			->string('status')
-			->index('status', 'status')
-			->default('draft');
+		TableDefinition::for(new TestTable('reports_table', 'reports'))->index('empty_index');
 	}
 
 	public function test_it_rejects_duplicate_column_names_case_insensitively(): void {
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('Column status is already defined.');
 
-		TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
-			->string('Status')->nullable()
-			->text('status');
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->string('Status')->nullable();
+		$definition->text('status');
 	}
 
 	public function test_it_matches_index_column_references_case_insensitively(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
-			->string('Status')
-			->index('status_lookup', 'status');
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->string('Status');
+		$definition->index('status_lookup', 'status');
 
 		$this->assertSame([], $definition->validationErrors());
 	}
 
 	public function test_it_reports_duplicate_primary_keys(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
-			->bigIncrements('id')
-			->string('status')
-			->primary('status');
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->bigIncrements('id');
+		$definition->string('status');
+		$definition->primary('status');
 
 		$this->assertContains('A table can define only one primary key.', $definition->validationErrors());
 	}
 
 	public function test_it_reports_duplicate_index_names(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
-			->bigIncrements('id')
-			->string('status')
-			->string('type')
-			->index('status_lookup', 'status')
-			->index('status_lookup', 'type');
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->bigIncrements('id');
+		$definition->string('status');
+		$definition->string('type');
+		$definition->index('status_lookup', 'status');
+		$definition->index('status_lookup', 'type');
 
 		$this->assertContains('Index status_lookup is defined more than once.', $definition->validationErrors());
 	}
 
 	public function test_it_reports_duplicate_index_names_case_insensitively(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
-			->string('status')
-			->string('type')
-			->index('Status_Lookup', 'status')
-			->index('status_lookup', 'type');
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->string('status');
+		$definition->string('type');
+		$definition->index('Status_Lookup', 'status');
+		$definition->index('status_lookup', 'type');
 
 		$this->assertContains('Index Status_Lookup is defined more than once.', $definition->validationErrors());
 	}
 
 	public function test_it_rejects_primary_as_a_secondary_index_name(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'wp_reports'))
-			->bigIncrements('id')
-			->string('status')
-			->index('PRIMARY', 'status');
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->bigIncrements('id');
+		$definition->string('status');
+		$definition->index('PRIMARY', 'status');
 
 		$this->assertContains('The PRIMARY index name is reserved for the primary key.', $definition->validationErrors());
 	}

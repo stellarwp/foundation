@@ -19,31 +19,39 @@ interface Schema
 	public function createOrUpdate(Table $table): void;
 
 	/**
-	 * Execute explicit schema SQL.
+	 * Execute a complete, trusted schema SQL statement without placeholder binding.
 	 *
 	 * @throws DatabaseException When the statement cannot be executed.
 	 */
 	public function execute(string $sql): void;
 
 	/**
+	 * Determine whether a table exists in the active database scope.
+	 *
 	 * @throws DatabaseException When table inspection fails.
 	 */
-	public function hasTable(Table|string $table): bool;
+	public function hasTable(Table $table): bool;
 
 	/**
+	 * Determine whether a named index exists on a table.
+	 *
 	 * @throws DatabaseException When index inspection fails.
 	 */
-	public function hasIndex(Table|string $table, string $index): bool;
+	public function hasIndex(Table $table, string $index): bool;
 
 	/**
+	 * Remove a named secondary index from a table.
+	 *
 	 * @throws DatabaseException When the table name is invalid or the statement cannot be executed.
 	 */
-	public function dropIndex(Table|string $table, string $index): void;
+	public function dropIndex(Table $table, string $index): void;
 
 	/**
+	 * Drop a table when it exists.
+	 *
 	 * @throws DatabaseException When the table name is invalid or the statement cannot be executed.
 	 */
-	public function drop(Table|string $table): void;
+	public function drop(Table $table): void;
 
 	/**
 	 * Quote an identifier such as a table, column, or index name.

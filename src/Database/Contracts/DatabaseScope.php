@@ -10,9 +10,9 @@ use StellarWP\Foundation\Database\Exceptions\DatabaseContextChanged;
 interface DatabaseScope
 {
 	/**
-	 * Resolve a logical table name using the currently active database scope.
+	 * Apply the current database scope to an unprefixed table name.
 	 */
-	public function resolveTableName(string $table): string;
+	public function resolveTableName(string $unprefixedTableName): string;
 
 	/**
 	 * Capture the identifier of the currently active database scope.

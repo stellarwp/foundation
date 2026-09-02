@@ -12,7 +12,7 @@ final readonly class IndexReconciliationTable implements Table
 	 * @param non-empty-list<string> $indexColumns
 	 */
 	public function __construct(
-		private string $table,
+		private string $unprefixedName,
 		private bool $includeIndex,
 		private array $indexColumns = ['email'],
 		private string $indexType = IndexType::UNIQUE
@@ -23,15 +23,16 @@ final readonly class IndexReconciliationTable implements Table
 		return 'index_reconciliation_table';
 	}
 
-	public function name(): string {
-		return $this->table;
+	public function unprefixedName(): string {
+		return $this->unprefixedName;
 	}
 
 	public function definition(): TableDefinition {
-		$definition = TableDefinition::for($this)
-			->bigIncrements('id')
-			->string('email')
-			->string('tenant');
+		$definition = TableDefinition::for($this);
+
+		$definition->bigIncrements('id');
+		$definition->string('email');
+		$definition->string('tenant');
 
 		if (! $this->includeIndex) {
 			return $definition;

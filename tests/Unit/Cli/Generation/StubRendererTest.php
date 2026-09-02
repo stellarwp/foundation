@@ -38,4 +38,8 @@ final class StubRendererTest extends TestCase
 
 		(new StubRenderer())->render($missingStub, []);
 	}
+
+	public function test_it_renders_a_php_string_literal_for_stub_placeholders(): void {
+		$this->assertSame("'It\\'s ready.'", (new StubRenderer())->phpStringLiteral("It's ready."));
+	}
 }

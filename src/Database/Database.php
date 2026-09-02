@@ -7,7 +7,6 @@ use StellarWP\Foundation\Database\Contracts\DatabaseScope;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\QueryException;
-use StellarWP\Foundation\Database\Query\QueryBuilder;
 
 /**
  * WordPress database service backed by wpdb.
@@ -16,45 +15,58 @@ final readonly class Database implements DatabaseContract
 {
 	private const string ARRAY_A = 'ARRAY_A';
 
+	/**
+	 * Create the database API for a WordPress connection and naming scope.
+	 */
 	public function __construct(
 		private \wpdb $wpdb,
 		private DatabaseScope $scope
 	) {
 	}
 
-	public function table(Table|string $table, ?string $alias = null): QueryBuilder {
-		return new QueryBuilder($this, $table, $alias);
-	}
-
 	/**
-	 * @throws DatabaseException When the resulting WordPress table name exceeds MySQL's identifier limit.
+	 * Resolve and validate a table's physical name for the active WordPress database scope.
+	 *
+	 * @throws DatabaseException When the unprefixed name is invalid or the physical name is unsafe or exceeds MySQL's identifier limit.
 	 */
-	public function tableName(Table|string $table): string {
-		if ($table instanceof Table) {
-			$tableName = $table->name();
-		} else {
-			$tableName = $this->scope->resolveTableName($table);
+	public function tableName(Table $table): string {
+		$unprefixedTableName = $table->unprefixedName();
+
+		if ($unprefixedTableName === '' || trim($unprefixedTableName) !== $unprefixedTableName) {
+			throw new DatabaseException('The unprefixed database table name cannot be blank or contain surrounding whitespace.');
 		}
 
-		$length = preg_match_all('/./us', $tableName);
+		$tableName = $this->scope->resolveTableName($unprefixedTableName);
 
-		if (($length === false ? strlen($tableName) : $length) > 64) {
+		if (preg_match('/\A[A-Za-z0-9_]+\z/', $tableName) !== 1) {
+			throw new DatabaseException('Database table names may contain only ASCII letters, numbers, and underscores.');
+		}
+
+		if (strlen($tableName) > 64) {
 			throw new DatabaseException(sprintf('Database table name "%s" exceeds MySQL\'s 64-character identifier limit.', $tableName));
 		}
 
 		return $tableName;
 	}
 
-	public function tableExists(Table|string $table): bool {
-		$tableName = $this->tableName($table);
-
+	/**
+	 * Determine whether the table exists in the active WordPress database scope.
+	 *
+	 * @throws DatabaseException When table-name resolution or inspection fails.
+	 */
+	public function tableExists(Table $table): bool {
 		return $this->row(
 			'SHOW TABLES LIKE %s',
-			$this->escLike($tableName)
+			$this->escLike($this->tableName($table))
 		) !== null;
 	}
 
-	public function columnExists(Table|string $table, string $column): bool {
+	/**
+	 * Determine whether a named column exists on the table.
+	 *
+	 * @throws DatabaseException When table-name resolution or inspection fails.
+	 */
+	public function columnExists(Table $table, string $column): bool {
 		return $this->row(
 			'SHOW COLUMNS FROM %i LIKE %s',
 			$this->tableName($table),
@@ -62,7 +74,12 @@ final readonly class Database implements DatabaseContract
 		) !== null;
 	}
 
-	public function indexExists(Table|string $table, string $index): bool {
+	/**
+	 * Determine whether a named index exists on the table.
+	 *
+	 * @throws DatabaseException When table-name resolution or inspection fails.
+	 */
+	public function indexExists(Table $table, string $index): bool {
 		return $this->row(
 			'SHOW INDEX FROM %i WHERE Key_name = %s',
 			$this->tableName($table),
@@ -70,6 +87,11 @@ final readonly class Database implements DatabaseContract
 		) !== null;
 	}
 
+	/**
+	 * Prepare a non-empty SQL template with WordPress placeholder bindings.
+	 *
+	 * @throws QueryException When the template is empty or WordPress cannot prepare it.
+	 */
 	public function prepare(string $sql, mixed ...$bindings): string {
 		if (trim($sql) === '') {
 			throw new QueryException('SQL statement cannot be empty.', $sql, array_values($bindings));
@@ -90,6 +112,10 @@ final readonly class Database implements DatabaseContract
 	}
 
 	/**
+	 * Execute a query and return its first row when present.
+	 *
+	 * @throws QueryException When preparation or execution fails.
+	 *
 	 * @return array<string, mixed>|null
 	 */
 	public function row(string $sql, mixed ...$bindings): ?array {
@@ -102,10 +128,14 @@ final readonly class Database implements DatabaseContract
 			return null;
 		}
 
-		return $this->stringKeyedRow($result, $sql, $bindings);
+		return $this->stringKeyedRow($result);
 	}
 
 	/**
+	 * Execute a query and return all rows with string keys.
+	 *
+	 * @throws QueryException When preparation or execution fails.
+	 *
 	 * @return list<array<string, mixed>>
 	 */
 	public function rows(string $sql, mixed ...$bindings): array {
@@ -121,12 +151,17 @@ final readonly class Database implements DatabaseContract
 		$rows = [];
 
 		foreach ($results as $result) {
-			$rows[] = $this->stringKeyedRow($result, $sql, $bindings);
+			$rows[] = $this->stringKeyedRow($result);
 		}
 
 		return $rows;
 	}
 
+	/**
+	 * Execute a query and return the first column from its first row.
+	 *
+	 * @throws QueryException When preparation or execution fails.
+	 */
 	public function value(string $sql, mixed ...$bindings): mixed {
 		$bindings = array_values($bindings);
 		$query    = $this->prepare($sql, ...$bindings);
@@ -136,6 +171,11 @@ final readonly class Database implements DatabaseContract
 		return $result;
 	}
 
+	/**
+	 * Execute a write or schema statement and return its affected-row count.
+	 *
+	 * @throws QueryException When preparation or execution fails.
+	 */
 	public function execute(string $sql, mixed ...$bindings): int {
 		$bindings = array_values($bindings);
 		$query    = $this->prepare($sql, ...$bindings);
@@ -149,12 +189,14 @@ final readonly class Database implements DatabaseContract
 	}
 
 	/**
+	 * Insert one row into the supplied table.
+	 *
 	 * @param array<string, mixed> $data
 	 *
-	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException When table-name resolution or validation fails.
 	 * @throws QueryException    When the insert fails.
 	 */
-	public function insert(Table|string $table, array $data): int {
+	public function insert(Table $table, array $data): int {
 		$result = $this->wpdb->insert($this->tableName($table), $data);
 
 		if ($result === false) {
@@ -165,25 +207,29 @@ final readonly class Database implements DatabaseContract
 	}
 
 	/**
+	 * Insert one row and return the connection's auto-increment identifier.
+	 *
 	 * @param array<string, mixed> $data
 	 *
-	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException When table-name resolution or validation fails.
 	 * @throws QueryException    When the insert fails.
 	 */
-	public function insertGetId(Table|string $table, array $data): int {
+	public function insertGetId(Table $table, array $data): int {
 		$this->insert($table, $data);
 
 		return (int) $this->wpdb->insert_id;
 	}
 
 	/**
+	 * Update rows matching equality-based column values.
+	 *
 	 * @param array<string, mixed> $data
 	 * @param array<string, mixed> $where
 	 *
-	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException When table-name resolution or validation fails.
 	 * @throws QueryException    When the update fails.
 	 */
-	public function update(Table|string $table, array $data, array $where): int {
+	public function update(Table $table, array $data, array $where): int {
 		$result = $this->wpdb->update($this->tableName($table), $data, $where);
 
 		if ($result === false) {
@@ -194,12 +240,14 @@ final readonly class Database implements DatabaseContract
 	}
 
 	/**
+	 * Delete rows matching equality-based column values.
+	 *
 	 * @param array<string, mixed> $where
 	 *
-	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * @throws DatabaseException When table-name resolution or validation fails.
 	 * @throws QueryException    When the delete fails.
 	 */
-	public function delete(Table|string $table, array $where): int {
+	public function delete(Table $table, array $where): int {
 		$result = $this->wpdb->delete($this->tableName($table), $where);
 
 		if ($result === false) {
@@ -209,20 +257,33 @@ final readonly class Database implements DatabaseContract
 		return (int) $result;
 	}
 
+	/**
+	 * Quote one trusted SQL identifier while escaping embedded backticks.
+	 */
 	public function quoteIdentifier(string $identifier): string {
 		return '`' . str_replace('`', '``', $identifier) . '`';
 	}
 
+	/**
+	 * Escape SQL LIKE wildcard characters without adding a surrounding pattern.
+	 */
 	public function escLike(string $value): string {
 		return $this->wpdb->esc_like($value);
 	}
 
+	/**
+	 * Return the charset and collation clause configured by WordPress.
+	 */
 	public function charsetCollate(): string {
 		return $this->wpdb->get_charset_collate();
 	}
 
 	/**
+	 * Throw the current WordPress database error with its original query context.
+	 *
 	 * @param list<mixed> $bindings
+	 *
+	 * @throws QueryException When WordPress reports a query error.
 	 */
 	private function throwIfLastError(string $sql, array $bindings): void {
 		$error = $this->lastError();
@@ -232,10 +293,16 @@ final readonly class Database implements DatabaseContract
 		}
 	}
 
+	/**
+	 * Prefer the current WordPress database error over a generic fallback.
+	 */
 	private function message(string $fallback): string {
 		return $this->lastError() ?? $fallback;
 	}
 
+	/**
+	 * Return the current WordPress database error when one is present.
+	 */
 	private function lastError(): ?string {
 		$error = $this->wpdb->last_error;
 
@@ -243,6 +310,8 @@ final readonly class Database implements DatabaseContract
 	}
 
 	/**
+	 * Invoke wpdb::prepare() without relying on its variadic signature in static analysis.
+	 *
 	 * @param list<mixed> $bindings
 	 */
 	private function prepareWithWpdb(string $sql, array $bindings): mixed {
@@ -252,12 +321,15 @@ final readonly class Database implements DatabaseContract
 	}
 
 	/**
+	 * Validate that a WordPress row result contains only string keys.
+	 *
 	 * @param array<mixed> $result
-	 * @param list<mixed>  $bindings
+	 *
+	 * @throws DatabaseException When WordPress returns a non-string row key.
 	 *
 	 * @return array<string, mixed>
 	 */
-	private function stringKeyedRow(array $result, string $sql, array $bindings): array {
+	private function stringKeyedRow(array $result): array {
 		$row = [];
 
 		foreach ($result as $key => $value) {

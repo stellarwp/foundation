@@ -240,7 +240,9 @@ final class DatabaseProviderTest extends WPTestCase
 		$container->register(WPCliProvider::class);
 		$container->register(DatabaseProvider::class);
 
-		$database = $container->get(Database::class);
+		$database             = $container->get(Database::class);
+		$migrationTableObject = $container->get(MigrationTable::class);
+		$lockTableObject      = $container->get(LockTable::class);
 
 		try {
 			$migrator = $container->get(Migrator::class);
@@ -248,8 +250,8 @@ final class DatabaseProviderTest extends WPTestCase
 			$result = $migrator->run();
 
 			$this->assertSame([$migration->id()], $result->ran);
-			$this->assertTrue($database->tableExists($migrationsTableName));
-			$this->assertTrue($database->tableExists($locksTableName));
+			$this->assertTrue($database->tableExists($migrationTableObject));
+			$this->assertTrue($database->tableExists($lockTableObject));
 			$this->assertTrue($migrator->status()[0]->ran);
 		} finally {
 			$database->execute('DROP TABLE IF EXISTS %i', $migrationsTable);

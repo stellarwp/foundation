@@ -12,6 +12,8 @@ use StellarWP\Foundation\Database\Exceptions\QueryException;
 final class DbDelta implements SchemaExecutor
 {
 	/**
+	 * Execute dbDelta and fail when WordPress reports unapplied schema work.
+	 *
 	 * @throws DatabaseException When dbDelta or the global WordPress database is unavailable.
 	 * @throws QueryException    When dbDelta reports a database error while executing SQL.
 	 */
@@ -30,13 +32,13 @@ final class DbDelta implements SchemaExecutor
 			throw new DatabaseException('The global wpdb instance is not available.');
 		}
 
-		dbDelta($sql, true);
+		dbDelta([$sql], true);
 
 		if ($wpdb->last_error !== '') {
 			throw new QueryException($wpdb->last_error, $sql, [], $wpdb->last_error);
 		}
 
-		$pending = dbDelta($sql, false);
+		$pending = dbDelta([$sql], false);
 		$pending = array_filter(
 			$pending,
 			fn (string $change): bool => ! $this->createdTableExists($change, $wpdb)

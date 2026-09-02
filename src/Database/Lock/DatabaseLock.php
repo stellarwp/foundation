@@ -23,6 +23,9 @@ final readonly class DatabaseLock implements Lock
 	use GeneratesLockOwner;
 	use ValidatesLockTtl;
 
+	/**
+	 * Create a lock backend using the configured WordPress lock table.
+	 */
 	public function __construct(
 		private Database $database,
 		private LockTable $table
@@ -30,6 +33,8 @@ final readonly class DatabaseLock implements Lock
 	}
 
 	/**
+	 * Acquire an unexpired lock or return null when another owner holds it.
+	 *
 	 * @throws InvalidArgumentException When the lock name is empty or exceeds 191 bytes, or the TTL is invalid.
 	 * @throws LockUnavailableException When ownership cannot be generated or the database cannot determine the result.
 	 */
@@ -38,9 +43,10 @@ final readonly class DatabaseLock implements Lock
 		$this->assertValidLockTtl($ttl);
 
 		$owner = $this->generateLockOwner();
-		$table = $this->table->name();
 
 		try {
+			$table = $this->database->tableName($this->table);
+
 			$this->database->execute(
 				'INSERT INTO %i (name, owner, expires_at, created_at, updated_at)
 					VALUES (%s, %s, TIMESTAMPADD(SECOND, %d, UTC_TIMESTAMP(6)), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
@@ -84,13 +90,15 @@ final readonly class DatabaseLock implements Lock
 	}
 
 	/**
+	 * Release a lock only when its owner and unexpired token still match.
+	 *
 	 * @throws LockUnavailableException When the database cannot determine the release result.
 	 */
 	public function release(LockToken $token): bool {
 		try {
 			return $this->database->execute(
 				'DELETE FROM %i WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6)',
-				$this->table->name(),
+				$this->database->tableName($this->table),
 				$token->name,
 				$token->owner
 			) > 0;
@@ -100,14 +108,17 @@ final readonly class DatabaseLock implements Lock
 	}
 
 	/**
+	 * Extend an owned lock and return its updated expiration token.
+	 *
 	 * @throws InvalidArgumentException When the TTL is invalid.
 	 * @throws LockUnavailableException When the database cannot determine the refresh result.
 	 */
 	public function refresh(LockToken $token, int $ttl): ?LockToken {
 		$this->assertValidLockTtl($ttl);
-		$table = $this->table->name();
 
 		try {
+			$table = $this->database->tableName($this->table);
+
 			$this->database->execute(
 				'UPDATE %i SET expires_at = TIMESTAMPADD(SECOND, %d, UTC_TIMESTAMP(6)), updated_at = UTC_TIMESTAMP(6)
 					WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6)',
@@ -135,6 +146,8 @@ final readonly class DatabaseLock implements Lock
 	}
 
 	/**
+	 * Determine whether an unexpired lock exists for the supplied name.
+	 *
 	 * @throws InvalidArgumentException When the lock name is empty or exceeds 191 bytes.
 	 * @throws LockUnavailableException When the database cannot determine whether the lock exists.
 	 */
@@ -144,7 +157,7 @@ final readonly class DatabaseLock implements Lock
 		try {
 			return $this->database->row(
 				'SELECT name FROM %i WHERE name = %s AND expires_at > UTC_TIMESTAMP(6) LIMIT 1',
-				$this->table->name(),
+				$this->database->tableName($this->table),
 				$name
 			) !== null;
 		} catch (DatabaseException $exception) {
@@ -153,6 +166,8 @@ final readonly class DatabaseLock implements Lock
 	}
 
 	/**
+	 * Reject lock names that cannot be stored safely in the lock table.
+	 *
 	 * @throws InvalidArgumentException When the lock name is empty or exceeds 191 bytes.
 	 */
 	private function assertValidName(string $name): void {
@@ -166,6 +181,8 @@ final readonly class DatabaseLock implements Lock
 	}
 
 	/**
+	 * Convert a database expiration value into an immutable UTC timestamp.
+	 *
 	 * @param array{expires_at?: mixed} $row
 	 *
 	 * @throws LockUnavailableException When the database returns an invalid expiration.

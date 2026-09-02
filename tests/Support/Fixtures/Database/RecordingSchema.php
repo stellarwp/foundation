@@ -23,7 +23,7 @@ final class RecordingSchema implements Schema
 	public array $indexes = [];
 
 	public function createOrUpdate(Table $table): void {
-		$name                = $table->name();
+		$name                = $table->unprefixedName();
 		$this->tables[$name] = true;
 		$this->statements[]  = 'createOrUpdate:' . $name;
 	}
@@ -32,28 +32,24 @@ final class RecordingSchema implements Schema
 		$this->statements[] = $sql;
 	}
 
-	public function hasTable(Table|string $table): bool {
-		$name = $table instanceof Table ? $table->name() : $table;
-
-		return $this->tables[$name] ?? false;
+	public function hasTable(Table $table): bool {
+		return $this->tables[$table->unprefixedName()] ?? false;
 	}
 
-	public function hasIndex(Table|string $table, string $index): bool {
-		$name = $table instanceof Table ? $table->name() : $table;
-
-		return $this->indexes[$name][$index] ?? false;
+	public function hasIndex(Table $table, string $index): bool {
+		return $this->indexes[$table->unprefixedName()][$index] ?? false;
 	}
 
-	public function dropIndex(Table|string $table, string $index): void {
-		$name = $table instanceof Table ? $table->name() : $table;
+	public function dropIndex(Table $table, string $index): void {
+		$name = $table->unprefixedName();
 
 		unset($this->indexes[$name][$index]);
 
 		$this->statements[] = sprintf('dropIndex:%s:%s', $name, $index);
 	}
 
-	public function drop(Table|string $table): void {
-		$name = $table instanceof Table ? $table->name() : $table;
+	public function drop(Table $table): void {
+		$name = $table->unprefixedName();
 
 		unset($this->tables[$name]);
 

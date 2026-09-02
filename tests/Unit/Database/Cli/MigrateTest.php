@@ -6,6 +6,8 @@ use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use StellarWP\Foundation\Database\Cli\Migrate;
 use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
+use StellarWP\Foundation\Database\Migration\Factories\LeaseFactory;
+use StellarWP\Foundation\Database\Migration\Factories\SessionFactory;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Store;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
@@ -38,7 +40,7 @@ final class MigrateTest extends TestCase
 		$repository     = new InMemoryRepository();
 		$schema         = new RecordingSchema();
 		$lock           = new InMemoryLock(new SystemClock());
-		$store          = new Store($schema, $scope, $lock, $migrationTable, new LockTable('nx_foundation_locks', $database));
+		$store          = new Store($schema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, new LockTable('nx_foundation_locks', $database));
 		$command        = new Migrate(
 			$this->container,
 			new CommandPrefix('foundation'),
@@ -109,8 +111,8 @@ final class MigrateTest extends TestCase
 
 		$this->assertSame([], $repository->all());
 		$this->assertSame([
-			'createOrUpdate:wp_nx_foundation_locks',
-			'createOrUpdate:wp_nx_foundation_migrations',
+			'createOrUpdate:nx_foundation_locks',
+			'createOrUpdate:nx_foundation_migrations',
 		], $schema->statements);
 	}
 
@@ -167,9 +169,9 @@ final class MigrateTest extends TestCase
 			'yes'        => true,
 		]));
 
-		$this->assertSame(['wp_nx_foundation_locks' => true], $schema->tables);
-		$this->assertContains('drop:wp_nx_foundation_migrations', $schema->statements);
-		$this->assertNotContains('drop:wp_nx_foundation_locks', $schema->statements);
+		$this->assertSame(['nx_foundation_locks' => true], $schema->tables);
+		$this->assertContains('drop:nx_foundation_migrations', $schema->statements);
+		$this->assertNotContains('drop:nx_foundation_locks', $schema->statements);
 	}
 
 	public function test_it_shows_a_warning_when_status_tables_do_not_exist(): void {
@@ -214,7 +216,7 @@ final class MigrateTest extends TestCase
 		$repository     = new InMemoryRepository();
 		$migrationTable = new MigrationTable('nx_foundation_migrations', $database);
 		$lock           = new InMemoryLock(new SystemClock());
-		$store          = new Store($wpSchema, $scope, $lock, $migrationTable, new LockTable('nx_foundation_locks', $database));
+		$store          = new Store($wpSchema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, new LockTable('nx_foundation_locks', $database));
 		$command        = new Migrate(
 			$this->container,
 			new CommandPrefix('foundation'),

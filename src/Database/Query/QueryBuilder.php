@@ -36,13 +36,21 @@ final class QueryBuilder
 
 	private ?int $offset = null;
 
+	private ?string $aggregate = null;
+
+	/**
+	 * Begin a query for one table and an optional SQL alias.
+	 */
 	public function __construct(
 		private readonly Database $database,
-		private readonly Table|string $table,
+		private readonly Table $table,
 		private readonly ?string $alias = null
 	) {
 	}
 
+	/**
+	 * Replace the selected columns, or restore the wildcard when none are supplied.
+	 */
 	public function select(string ...$columns): self {
 		$this->columns = $columns === [] ? ['*'] : array_values($columns);
 
@@ -78,6 +86,8 @@ final class QueryBuilder
 	}
 
 	/**
+	 * Add an ordered result column and direction.
+	 *
 	 * @throws InvalidArgumentException When the column or direction is invalid.
 	 */
 	public function orderBy(string $column, string $direction = 'ASC'): self {
@@ -93,6 +103,8 @@ final class QueryBuilder
 	}
 
 	/**
+	 * Limit the result count and optionally skip an offset.
+	 *
 	 * @throws InvalidArgumentException When the limit or offset is invalid.
 	 */
 	public function limit(int $limit, ?int $offset = null): self {
@@ -111,15 +123,37 @@ final class QueryBuilder
 	}
 
 	/**
-	 * @throws DatabaseException        When the table name exceeds MySQL's identifier limit.
+	 * Return the maximum value for a column matching the current predicates.
+	 *
+	 * Ordering and pagination do not constrain aggregate input and are ignored.
+	 *
+	 * @throws DatabaseException        When table-name resolution or query execution fails.
+	 * @throws InvalidArgumentException When the column is invalid.
+	 */
+	public function max(string $column): mixed {
+		$query            = clone $this;
+		$query->aggregate = sprintf('MAX(%s)', $query->quoteColumn($column));
+		$query->orderBy   = [];
+		$query->limit     = null;
+		$query->offset    = null;
+
+		return $query->toQuery()->value();
+	}
+
+	/**
+	 * Create an inspectable query from the current builder state.
+	 *
+	 * @throws DatabaseException        When table-name resolution or validation fails.
 	 * @throws InvalidArgumentException When a selected column is invalid.
 	 */
-	public function query(): Query {
+	public function toQuery(): Query {
 		return new Query($this->database, $this->toSql(), $this->bindings());
 	}
 
 	/**
-	 * @throws DatabaseException        When the table name exceeds MySQL's identifier limit.
+	 * Render the current query as a SQL template with placeholders.
+	 *
+	 * @throws DatabaseException        When table-name resolution or validation fails.
 	 * @throws InvalidArgumentException When a selected column is invalid.
 	 */
 	public function toSql(): string {
@@ -150,6 +184,8 @@ final class QueryBuilder
 	}
 
 	/**
+	 * Return query bindings in the same order as rendered placeholders.
+	 *
 	 * @return list<mixed>
 	 */
 	public function bindings(): array {
@@ -167,6 +203,8 @@ final class QueryBuilder
 	}
 
 	/**
+	 * Render and prepare the current query with all bindings.
+	 *
 	 * @throws DatabaseException        When table-name resolution or query preparation fails.
 	 * @throws InvalidArgumentException When a selected column is invalid.
 	 */
@@ -175,16 +213,20 @@ final class QueryBuilder
 	}
 
 	/**
+	 * Execute the query and return every matching row.
+	 *
 	 * @throws DatabaseException        When table-name resolution or query execution fails.
 	 * @throws InvalidArgumentException When a selected column is invalid.
 	 *
 	 * @return list<array<string, mixed>>
 	 */
 	public function get(): array {
-		return $this->queryWithLimitBindings()->get();
+		return $this->toQuery()->get();
 	}
 
 	/**
+	 * Execute the query with a one-row limit and return the first match.
+	 *
 	 * @throws DatabaseException        When table-name resolution or query execution fails.
 	 * @throws InvalidArgumentException When a selected column is invalid.
 	 *
@@ -194,20 +236,23 @@ final class QueryBuilder
 		$query        = clone $this;
 		$query->limit = 1;
 
-		return $query->queryWithLimitBindings()->first();
+		return $query->toQuery()->first();
 	}
 
 	/**
-	 * @throws DatabaseException When the table name exceeds MySQL's identifier limit.
+	 * Render an aggregate expression or the configured selected columns.
 	 */
-	private function queryWithLimitBindings(): Query {
-		return new Query($this->database, $this->toSql(), $this->bindings());
-	}
-
 	private function selectSql(): string {
+		if ($this->aggregate !== null) {
+			return $this->aggregate;
+		}
+
 		return implode(', ', array_map(fn (string $column): string => $this->quoteColumn($column, true), $this->columns));
 	}
 
+	/**
+	 * Render the validated table alias clause when one is configured.
+	 */
 	private function aliasSql(): string {
 		if ($this->alias === null || $this->alias === '') {
 			return '';
@@ -216,6 +261,11 @@ final class QueryBuilder
 		return ' AS ' . $this->database->quoteIdentifier($this->alias);
 	}
 
+	/**
+	 * Normalize and validate a supported comparison operator.
+	 *
+	 * @throws InvalidArgumentException When the operator is unsupported.
+	 */
 	private function operator(string $operator): string {
 		$operator = strtoupper(trim($operator));
 

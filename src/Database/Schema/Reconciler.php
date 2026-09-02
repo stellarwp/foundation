@@ -37,7 +37,7 @@ final readonly class Reconciler
 
 		$this->executor->execute($this->createTableSql($table, $definition));
 		$this->reconcileComplexDefaults($table, $definition);
-		$this->assertColumnPropertiesMatch($table, $definition);
+		$this->reconcileColumnProperties($table, $definition);
 		$this->assertIndexesMatch($table, $definition);
 	}
 
@@ -88,15 +88,29 @@ final readonly class Reconciler
 	}
 
 	/**
-	 * Verify properties that dbDelta does not reliably reconcile.
+	 * Reconcile comments and verify properties that dbDelta does not reliably reconcile.
 	 *
-	 * @throws DatabaseException When column metadata is missing, invalid, or differs from the definition.
+	 * MySQL requires the complete column declaration when changing or removing a
+	 * comment, so every supported attribute is rendered from the declared column.
+	 *
+	 * @throws DatabaseException When column metadata is missing, invalid, cannot be replaced, or differs from the definition.
 	 */
-	private function assertColumnPropertiesMatch(Table $table, TableDefinition $definition): void {
+	private function reconcileColumnProperties(Table $table, TableDefinition $definition): void {
 		$differences = [];
 
 		foreach ($definition->columns() as $column) {
 			$properties = $this->columnProperties($table, $column);
+			$comment    = $column->commentText() ?? '';
+
+			if ($comment !== $properties['comment']) {
+				$this->database->execute(sprintf(
+					'ALTER TABLE %s MODIFY COLUMN %s',
+					$this->database->quoteIdentifier($this->database->tableName($table)),
+					$column->sql()
+				));
+
+				$properties = $this->columnProperties($table, $column);
+			}
 
 			if ($properties['nullable'] !== $column->nullable) {
 				$differences[] = sprintf(
@@ -116,7 +130,7 @@ final readonly class Reconciler
 				);
 			}
 
-			$expectedExtra = $this->normalizeExtra($column->extra);
+			$expectedExtra = $column->autoIncrement ? 'auto_increment' : '';
 			$actualExtra   = $this->normalizeExtra($properties['extra']);
 
 			if ($expectedExtra !== $actualExtra) {
@@ -125,6 +139,15 @@ final readonly class Reconciler
 					$column->name,
 					$expectedExtra === '' ? 'none' : $expectedExtra,
 					$actualExtra   === '' ? 'none' : $actualExtra
+				);
+			}
+
+			if ($comment !== $properties['comment']) {
+				$differences[] = sprintf(
+					'column %s expected comment %s, found %s',
+					$column->name,
+					$comment               === '' ? 'none' : $comment,
+					$properties['comment'] === '' ? 'none' : $properties['comment']
 				);
 			}
 		}
@@ -143,7 +166,7 @@ final readonly class Reconciler
 	 *
 	 * @throws DatabaseException When column metadata is missing or invalid.
 	 *
-	 * @return array{nullable: bool, default: mixed, extra: string}
+	 * @return array{nullable: bool, default: mixed, extra: string, comment: string}
 	 */
 	private function columnProperties(Table $table, Column $column): array {
 		$row = $this->database->row(
@@ -162,12 +185,14 @@ final readonly class Reconciler
 
 		$nullable = $row['Null'] ?? null;
 		$extra    = $row['Extra'] ?? null;
+		$comment  = $row['Comment'] ?? '';
 
 		if (
 			! is_string($nullable)
 			|| ! in_array(strtoupper($nullable), ['YES', 'NO'], true)
 			|| ! array_key_exists('Default', $row)
 			|| ! is_string($extra)
+			|| ! is_string($comment)
 		) {
 			throw new DatabaseException(sprintf(
 				'Database returned invalid column metadata for %s.%s.',
@@ -180,6 +205,7 @@ final readonly class Reconciler
 			'nullable' => strtoupper($nullable) === 'YES',
 			'default'  => $row['Default'],
 			'extra'    => $extra,
+			'comment'  => $comment,
 		];
 	}
 

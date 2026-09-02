@@ -6,6 +6,7 @@ use StellarWP\Foundation\Database\Schema;
 use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchemaExecutor;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestTable;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class SchemaTest extends TestCase
@@ -15,9 +16,11 @@ final class SchemaTest extends TestCase
 		$database->rowResults[] = ['table' => 'wp_example'];
 		$database->rowResults[] = ['Key_name' => 'example_key'];
 		$schema                 = new Schema($database, new Reconciler($database, new RecordingSchemaExecutor()));
+		$table                  = new TestTable('example_table', 'example%');
+		$indexTable             = new TestTable('index_table', 'example');
 
-		$this->assertTrue($schema->hasTable('example%'));
-		$this->assertTrue($schema->hasIndex('example', 'example_key'));
+		$this->assertTrue($schema->hasTable($table));
+		$this->assertTrue($schema->hasIndex($indexTable, 'example_key'));
 		$this->assertStringContainsString("SHOW TABLES LIKE 'wp\\\\_example\\\\%'", $database->rowQueries[0]);
 		$this->assertStringContainsString('SHOW INDEX FROM `wp_example`', $database->rowQueries[1]);
 	}
@@ -25,8 +28,9 @@ final class SchemaTest extends TestCase
 	public function test_it_drops_indexes(): void {
 		$database = new FakeDatabase();
 		$schema   = new Schema($database, new Reconciler($database, new RecordingSchemaExecutor()));
+		$table    = new TestTable('example_table', 'example');
 
-		$schema->dropIndex('example', 'example_key');
+		$schema->dropIndex($table, 'example_key');
 
 		$this->assertSame('ALTER TABLE `wp_example` DROP INDEX `example_key`', $database->executed[0]);
 	}
