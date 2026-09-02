@@ -155,11 +155,9 @@ Foundation can add, change, and remove column comments. When a stored comment di
 Column comments may contain apostrophes and semicolons, but they cannot contain backslashes or control characters. Foundation rejects those comments because their SQL meaning can change with the database connection's SQL mode.
 :::
 
-Use `column()` when the named helpers do not cover the required MySQL type:
+Use `column()` when the named helpers do not cover the required MySQL type. Import `StellarWP\Foundation\Database\Table\Column` with the table class's other imports, then add the custom columns inside `definition()`:
 
 ```php title="Reports_Table.php"
-use StellarWP\Foundation\Database\Table\Column;
-
 $table->column( new Column( 'amount', 'decimal(10,2)' ) )->default( 0 );
 $table->column( new Column( 'checksum', 'varbinary', 32 ) )->nullable();
 ```
@@ -515,7 +513,7 @@ final class ReportsTableTest extends WPTestCase {
 			$schema->createOrUpdate( $table );
 
 			$this->assertTrue( $schema->hasTable( $table ) );
-			$this->assertTrue( $schema->hasIndex( $table, 'status' ) );
+			$this->assertTrue( $schema->hasIndex( $table, 'status_created_at' ) );
 		} finally {
 			$schema->drop( $table );
 		}
