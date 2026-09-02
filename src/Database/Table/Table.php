@@ -23,6 +23,13 @@ abstract readonly class Table implements TableContract
 	}
 
 	/**
+	 * Return the database service for custom operations scoped to this table.
+	 */
+	final protected function database(): Database {
+		return $this->database;
+	}
+
+	/**
 	 * Return the stable table name before WordPress scope is applied.
 	 */
 	final public function unprefixedName(): string {
