@@ -145,6 +145,8 @@ $table->longText( 'payload' )->comment( 'Serialized report payload' );
 
 Available modifiers are `unsigned()`, `nullable()`, `notNull()`, `default()`, `autoIncrement()`, and `comment()`. An explicit `default( null )` is valid only on a nullable column.
 
+Prefer `bigIncrements()` for the usual generated primary key. When applying `autoIncrement()` manually, use an integer column without a default, define only one auto-increment column in the table, and make it the first column in a primary, unique, or regular index. Foundation validates these requirements before executing schema SQL.
+
 :::note[Comment reconciliation uses the complete column]
 Foundation can add, change, and remove column comments. When a stored comment differs, Foundation replaces that physical column from its complete declaration and preserves attributes represented by the column API. Do not add other attributes to that column through separate SQL because comment reconciliation may replace attributes that are absent from the table definition.
 :::

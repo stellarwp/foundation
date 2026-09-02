@@ -211,14 +211,30 @@ final class TableDefinition
 	 * @return list<string>
 	 */
 	public function validationErrors(): array {
-		$errors = [];
+		$errors  = [];
+		$columns = $this->columns();
 
-		if ($this->columns === []) {
+		if ($columns === []) {
 			$errors[] = sprintf('Table %s does not define any columns.', $this->table->id());
 		}
 
-		foreach ($this->columns() as $column) {
+		foreach ($columns as $column) {
 			array_push($errors, ...$column->validationErrors());
+		}
+
+		$autoIncrementColumns = array_values(array_filter(
+			$columns,
+			static fn (Column $column): bool => $column->autoIncrement
+		));
+
+		if (count($autoIncrementColumns) > 1) {
+			$errors[] = 'A table can define only one AUTO_INCREMENT column.';
+		}
+
+		foreach ($autoIncrementColumns as $column) {
+			if (! $this->isFirstColumnInAnyIndex($column->name)) {
+				$errors[] = sprintf('AUTO_INCREMENT column %s must be the first column in an index.', $column->name);
+			}
 		}
 
 		foreach ($this->indexes as $index) {
@@ -294,5 +310,18 @@ final class TableDefinition
 			$this->indexes,
 			static fn (Index $index): bool => strcasecmp($index->name, $name) === 0
 		));
+	}
+
+	/**
+	 * Determine whether a column leads at least one declared table index.
+	 */
+	private function isFirstColumnInAnyIndex(string $column): bool {
+		foreach ($this->indexes as $index) {
+			if (strcasecmp($index->columns[0], $column) === 0) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 }

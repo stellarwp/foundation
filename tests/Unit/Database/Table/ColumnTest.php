@@ -87,6 +87,20 @@ final class ColumnTest extends TestCase
 		);
 	}
 
+	public function test_it_rejects_auto_increment_on_non_integer_columns(): void {
+		$this->assertSame(
+			['Column slug must use an integer type because it uses AUTO_INCREMENT.'],
+			(new Column('slug', 'varchar', 191))->autoIncrement()->validationErrors()
+		);
+	}
+
+	public function test_it_rejects_explicit_defaults_on_auto_increment_columns(): void {
+		$this->assertSame(
+			['Column id cannot define a default because it uses AUTO_INCREMENT.'],
+			(new Column('id', 'bigint', 20))->autoIncrement()->default(10)->validationErrors()
+		);
+	}
+
 	public function test_it_escapes_string_defaults_as_sql_literals(): void {
 		$column = (new Column('label', 'varchar', 50))->default("customer's \\ path");
 

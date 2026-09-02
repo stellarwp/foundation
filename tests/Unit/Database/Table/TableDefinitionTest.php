@@ -166,6 +166,50 @@ final class TableDefinitionTest extends TestCase
 		$this->assertSame([], $definition->validationErrors());
 	}
 
+	public function test_it_rejects_an_unindexed_auto_increment_column(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->integer('sequence')->autoIncrement();
+
+		$this->assertSame([
+			'AUTO_INCREMENT column sequence must be the first column in an index.',
+		], $definition->validationErrors());
+	}
+
+	public function test_it_rejects_multiple_auto_increment_columns(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->bigIncrements('id');
+		$definition->integer('legacy_id')->autoIncrement();
+		$definition->index('legacy_id', 'legacy_id');
+
+		$this->assertSame([
+			'A table can define only one AUTO_INCREMENT column.',
+		], $definition->validationErrors());
+	}
+
+	public function test_it_requires_an_auto_increment_column_to_lead_its_index(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->string('tenant');
+		$definition->integer('sequence')->autoIncrement();
+		$definition->index('tenant_sequence', 'tenant', 'sequence');
+
+		$this->assertSame([
+			'AUTO_INCREMENT column sequence must be the first column in an index.',
+		], $definition->validationErrors());
+	}
+
+	public function test_it_accepts_an_auto_increment_column_leading_a_secondary_index(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->integer('sequence')->autoIncrement();
+		$definition->string('tenant');
+		$definition->index('sequence_tenant', 'sequence', 'tenant');
+
+		$this->assertSame([], $definition->validationErrors());
+	}
+
 	public function test_it_rejects_indexes_without_columns(): void {
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('An index must define at least one column.');

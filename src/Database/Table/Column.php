@@ -13,6 +13,15 @@ use StellarWP\Foundation\Database\Table\ValueObjects\ColumnComment;
  */
 final readonly class Column
 {
+	private const array AUTO_INCREMENT_TYPES = [
+		'tinyint',
+		'smallint',
+		'mediumint',
+		'int',
+		'integer',
+		'bigint',
+	];
+
 	/**
 	 * Create a column description from its normalized schema attributes.
 	 *
@@ -178,11 +187,24 @@ final readonly class Column
 	public function validationErrors(): array {
 		$errors = [];
 
-		if ($this->autoIncrement && $this->nullable) {
-			$errors[] = sprintf('Column %s cannot be nullable because it uses AUTO_INCREMENT.', $this->name);
+		if ($this->autoIncrement) {
+			preg_match('/\A([a-z]+)/i', trim($this->type), $matches);
+			$type = strtolower($matches[1] ?? '');
+
+			if (! in_array($type, self::AUTO_INCREMENT_TYPES, true)) {
+				$errors[] = sprintf('Column %s must use an integer type because it uses AUTO_INCREMENT.', $this->name);
+			}
+
+			if ($this->nullable) {
+				$errors[] = sprintf('Column %s cannot be nullable because it uses AUTO_INCREMENT.', $this->name);
+			}
+
+			if ($this->hasDefault) {
+				$errors[] = sprintf('Column %s cannot define a default because it uses AUTO_INCREMENT.', $this->name);
+			}
 		}
 
-		if ($this->hasDefault && $this->default === null && ! $this->nullable) {
+		if (! $this->autoIncrement && $this->hasDefault && $this->default === null && ! $this->nullable) {
 			$errors[] = sprintf('Column %s cannot use DEFAULT NULL unless it is nullable.', $this->name);
 		}
 
