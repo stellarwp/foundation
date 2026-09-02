@@ -34,7 +34,7 @@ vendor/bin/foundation make:database-table Reports_Table --migration
 
 The `--migration` flag creates the table class and its initial create-table migration together. Both classes are also added to the generated database provider when it exists. Table `--namespace` and `--path` options apply to the table class; the migration remains in the conventional `Database\\Migrations` namespace and path. Pass `--migration-id=<id>` only when the generated timestamp identifier must be replaced.
 
-The table generator derives the unprefixed WordPress table name from the class name. Pass `--table-name=report_entries` when the physical table name should differ from that default. The migration generator's `--table` option has a separate, class-oriented meaning: it selects the existing table class whose schema should be reconciled.
+The table generator derives the unprefixed WordPress table name from the class name. Pass `--table-name=report_entries` when that unprefixed name should differ from the default; Foundation applies the active WordPress prefix at runtime, producing a physical name such as `wp_report_entries`. Do not include `wp_` or another site prefix in this option, because `--table-name=wp_report_entries` could produce `wp_wp_report_entries`. The migration generator's `--table` option has a separate, class-oriented meaning: it selects the existing table class whose schema should be reconciled.
 
 The generators use the project's Composer namespace and create this feature structure by default:
 
