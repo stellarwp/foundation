@@ -73,22 +73,22 @@ jobs:
               repo: context.repo.repo,
               issue_number: context.issue.number,
             });
-            const existing = comments.find((comment) =>
+            const previous = comments.filter((comment) =>
               comment.user?.login === 'github-actions[bot]' && comment.body?.includes(marker)
             );
 
-            if (existing) {
-              await github.rest.issues.updateComment({
+            // Replace rather than edit so the preview link surfaces as a new comment on every deploy.
+            await Promise.all(previous.map((comment) =>
+              github.rest.issues.deleteComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
+                comment_id: comment.id,
+              })
+            ));
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
