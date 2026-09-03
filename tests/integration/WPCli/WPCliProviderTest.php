@@ -4,8 +4,8 @@ namespace StellarWP\Foundation\Tests\Integration\WPCli;
 
 use Adbar\Dot;
 use InvalidArgumentException;
-use lucatume\DI52\Container as C;
 use stdClass;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Tests\Support\Fixtures\WPCli\RecordingCommand;
 use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
 use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;

@@ -76,6 +76,7 @@ In `src/Catalog/Provider.php`, bind an interface when the container cannot infer
 namespace YourPlugin\Catalog;
 
 use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 
 /**
  * Selects the catalog implementation used by the application.
@@ -99,7 +100,7 @@ Bindings are lazy. Registering `Remote_Catalog` does not construct it; the conta
 
 ### Supply configuration and scalar values
 
-In the same `src/Catalog/Provider.php`, use a contextual binding when one class needs a scalar or a feature-specific implementation. Target scalar constructor arguments by their `$name`. Import `lucatume\DI52\Container as C` when a factory callback must resolve another service:
+In the same `src/Catalog/Provider.php`, use a contextual binding when one class needs a scalar or a feature-specific implementation. Target scalar constructor arguments by their `$name`. Import Foundation's `Resolver` as `C` when a factory callback must resolve another service:
 
 ```php title="Provider.php"
 private function register_catalog(): void {
@@ -116,6 +117,12 @@ private function register_catalog(): void {
 ```
 
 The callback aliases `Catalog` to the configured `Remote_Catalog` singleton. This preserves the contextual bindings registered for the concrete class and ensures both identifiers resolve the same object.
+
+Factory callbacks receive Foundation's `Resolver` contract. Application providers should not type-hint DI52 directly; keeping the callback behind the Foundation contract allows the underlying container integration to change without requiring edits throughout application providers.
+
+:::caution[Replace direct DI52 callback types]
+Callbacks typed as `lucatume\DI52\Container` are not supported by the Foundation adapter. Replace that import with `StellarWP\Foundation\Container\Contracts\Resolver as C` and keep the existing `C $c` callback parameter.
+:::
 
 Use a factory callback only when the value must be computed or fetched from the container. Let the container construct the complete service whenever it can.
 

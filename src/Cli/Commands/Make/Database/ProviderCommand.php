@@ -85,10 +85,11 @@ final class ProviderCommand extends Command
 			path: $path . '/' . $className . '.php',
 			relativePath: $relative,
 			contents: $this->stubRenderer->render($stub, [
-				'namespace'                    => $namespace,
-				'class'                        => $className,
-				'foundation_database_provider' => $project->foundationClass('StellarWP\\Foundation\\Database\\DatabaseProvider'),
-				'foundation_service_provider'  => $project->foundationClass('StellarWP\\Foundation\\Container\\Contracts\\Provider'),
+				'namespace'                     => $namespace,
+				'class'                         => $className,
+				'foundation_container_resolver' => $project->foundationClass('StellarWP\\Foundation\\Container\\Contracts\\Resolver'),
+				'foundation_database_provider'  => $project->foundationClass('StellarWP\\Foundation\\Database\\DatabaseProvider'),
+				'foundation_service_provider'   => $project->foundationClass('StellarWP\\Foundation\\Container\\Contracts\\Provider'),
 			])
 		);
 	}

@@ -58,7 +58,7 @@ Do not declare empty constructors when PHP's implicit public constructor provide
 
 Keep convenience methods and implementation machinery on the concrete class unless they form a genuine reusable capability. Do not expose private helpers as public API speculatively. Prefer composition, and extract a focused collaborator when another real implementation needs to share the same policy or behavior.
 
-Avoid `use ... as ...` import aliases unless they resolve a real class-name collision or ambiguity. Prefer importing the class by its actual short name. The standing exception is `use lucatume\DI52\Container as C;`, which may be used for concise container factory callbacks.
+Avoid `use ... as ...` import aliases unless they resolve a real class-name collision or ambiguity. Prefer importing the class by its actual short name. The standing exception is `use StellarWP\Foundation\Container\Contracts\Resolver as C;`, which may be used for concise container factory callbacks. Factory callbacks registered through Foundation container APIs must type-hint this Foundation resolver; raw `lucatume\DI52\Container` type references belong only in `ContainerAdapter` and composition-root bootstrap code that constructs and wraps DI52.
 
 Exceptions should live in an `Exceptions/` folder. Put shared package exceptions at the package root, for example `src/Database/Exceptions/DatabaseException.php`; put feature-only exceptions under that feature's `Exceptions/` folder only when they are not shared outside that feature.
 
@@ -109,6 +109,8 @@ If local scaffolding assets such as `foundation/stubs/` should not be included i
 ## Container Providers
 
 When writing providers or container registration code, prefer container-driven construction over inline factories with explicit `new` calls. Bind classes and interfaces directly when the container can autowire them.
+
+Container factory closures receive `StellarWP\Foundation\Container\Contracts\Resolver`, not the underlying DI engine. Type-hint that contract whenever a factory must resolve another service so generated and application code remains independent of DI52.
 
 Use contextual bindings with `$this->container->when()->needs()->give()` for scalar constructor arguments, command lists, or feature-specific substitutions. Use a factory closure only when the value must be computed or resolved from the container, and keep that closure focused on supplying the constructor dependency rather than constructing the full object.
 

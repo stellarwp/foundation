@@ -461,7 +461,7 @@ final class DatabaseCommandTest extends TestCase
 		$contents = (string) file_get_contents($path);
 
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Database;', $contents);
-		$this->assertStringContainsString('use lucatume\\DI52\\Container as C;', $contents);
+		$this->assertStringContainsString('use StellarWP\\Foundation\\Container\\Contracts\\Resolver as C;', $contents);
 		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\DatabaseProvider;', $contents);
 		$this->assertStringContainsString('use StellarWP\\Foundation\\Container\\Contracts\\Provider as Service_Provider;', $contents);
 		$this->assertStringContainsString('final class Provider extends Service_Provider {', $contents);
@@ -969,7 +969,7 @@ PHP);
 
 namespace Acme\Plugin\Database;
 
-use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Database\DatabaseProvider;
 
 final class Provider
@@ -1233,7 +1233,7 @@ PHP);
 
 namespace Acme\Plugin\Database;
 
-use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Database\DatabaseProvider;
 
 final class Provider
@@ -1271,7 +1271,7 @@ PHP);
 
 namespace Acme\Plugin\Database;
 
-use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Database\DatabaseProvider;
 
 final class Provider
@@ -1308,7 +1308,7 @@ PHP);
 
 namespace Acme\Plugin\Database;
 
-use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Database\DatabaseProvider;
 
 final class Provider
@@ -1381,7 +1381,7 @@ PHP);
 namespace Acme\Plugin\Database;
 
 use Acme\Other\DatabaseProvider;
-use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 
 final class Provider
 {
@@ -1849,8 +1849,10 @@ PHP);
 		$contents = (string) file_get_contents($root . '/src/Database/Provider.php');
 
 		$this->assertSame(Command::SUCCESS, $statusCode);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Container\\Contracts\\Resolver as C;', $contents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\DatabaseProvider;', $contents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Container\\Contracts\\Provider as Service_Provider;', $contents);
+		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Container\\Contracts\\Resolver as C;', $contents);
 		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\DatabaseProvider;', $contents);
 	}
 

@@ -2,7 +2,7 @@
 
 namespace {{ namespace }};
 
-use lucatume\DI52\Container as C;
+use {{ foundation_container_resolver }} as C;
 use {{ foundation_database_provider }};
 use {{ foundation_service_provider }} as Service_Provider;
 

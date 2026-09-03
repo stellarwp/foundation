@@ -2,7 +2,6 @@
 
 namespace StellarWP\Foundation\Cli;
 
-use lucatume\DI52\Container;
 use PhpParser\Lexer;
 use PhpParser\ParserFactory;
 use StellarWP\Foundation\Cli\Commands\Make\Database\Factories\MigrationFileFactory;
@@ -28,6 +27,7 @@ use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Cli\Process\Contracts\ProcessRunner;
 use StellarWP\Foundation\Cli\Process\ShellProcessRunner;
 use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 
 /**
  * Registers the default Foundation CLI application and command dependencies.
@@ -73,7 +73,7 @@ final class CliProvider extends Provider
 	private function registerGeneration(): void {
 		$this->container->when(ProjectDirectory::class)
 			->needs('$path')
-			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+			->give(static fn (C $c): string => $c->get(self::ROOT_PATH));
 
 		$this->container->singleton(WordPressClassNameResolver::class);
 		$this->container->singleton(ComposerAutoloadResolver::class);
@@ -92,11 +92,11 @@ final class CliProvider extends Provider
 	private function registerPackageCommand(): void {
 		$this->container->when(PackageResolver::class)
 			->needs('$rootPath')
-			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+			->give(static fn (C $c): string => $c->get(self::ROOT_PATH));
 
 		$this->container->when(PackageScaffolder::class)
 			->needs('$rootPath')
-			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+			->give(static fn (C $c): string => $c->get(self::ROOT_PATH));
 
 		$this->container->singleton(PackageResolver::class);
 		$this->container->singleton(PackageScaffolder::class);
@@ -130,7 +130,7 @@ final class CliProvider extends Provider
 	private function registerApplication(): void {
 		$this->container->when(Application::class)
 			->needs('$commands')
-			->give(static fn (Container $c): array => [
+			->give(static fn (C $c): array => [
 				$c->get(CreateCommand::class),
 				$c->get(MigrationCommand::class),
 				$c->get(ProviderCommand::class),
