@@ -3,8 +3,8 @@
 namespace StellarWP\Foundation\Tests\Unit\Database\Migration;
 
 use DateTimeImmutable;
-use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Database\Migration\Collection;
+use StellarWP\Foundation\Database\Migration\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Database\Migration\Exceptions\UninitializedStore;
 use StellarWP\Foundation\Database\Migration\Factories\LeaseFactory;
 use StellarWP\Foundation\Database\Migration\Factories\SessionFactory;
@@ -73,12 +73,12 @@ final class MigratorTest extends TestCase
 	public function test_it_exposes_migration_status_for_configured_migrations(): void {
 		[$migrator, , $schema] = $this->newMigrator();
 
-		$this->assertFalse($migrator->status()[0]->ran);
+		$this->assertTrue($migrator->status()[0]->isPending());
 		$this->assertSame([], $schema->statements);
 
 		$migrator->run();
 
-		$this->assertTrue($migrator->status()[0]->ran);
+		$this->assertTrue($migrator->status()[0]->isApplied());
 	}
 
 	public function test_it_initializes_and_drops_the_migration_store(): void {
@@ -159,7 +159,7 @@ final class MigratorTest extends TestCase
 		unset($schema->tables['nx_foundation_locks']);
 
 		$this->assertFalse($migrator->isInitialized());
-		$this->assertTrue($migrator->status()[0]->ran);
+		$this->assertTrue($migrator->status()[0]->isApplied());
 	}
 
 	public function test_it_rejects_migration_operations_before_storage_is_initialized(): void {
@@ -217,7 +217,7 @@ final class MigratorTest extends TestCase
 		$migrator = new Migrator(
 			new Collection([new TestMigration('2026_06_23_000001_create_example')]),
 			new InMemoryRepository(),
-			new Store($schema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, $lockTable)
+			new Store($schema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, $lockTable, 'nx-foundation-database-migrations', 300)
 		);
 
 		$this->expectException(UninitializedStore::class);
@@ -237,7 +237,7 @@ final class MigratorTest extends TestCase
 		$database       = new FakeDatabase();
 		$migrationTable = new MigrationTable('nx_foundation_migrations', $database);
 		$lockTable      = new LockTable('nx_foundation_locks', $database);
-		$store          = new Store($schema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, $lockTable);
+		$store          = new Store($schema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, $lockTable, 'nx-foundation-database-migrations', 300);
 
 		$migrator = new Migrator(
 			new Collection([

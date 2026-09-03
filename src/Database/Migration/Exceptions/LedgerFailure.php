@@ -9,8 +9,8 @@ use StellarWP\Foundation\Database\Exceptions\DatabaseException;
  */
 final class LedgerFailure extends DatabaseException
 {
-	public static function missingAfterInsert(string $migration): self {
-		return new self(sprintf('Migration "%s" was inserted but could not be read from the ledger.', $migration));
+	public static function notInsertedAfterRun(string $migration): self {
+		return new self(sprintf('Migration "%s" ran but its ledger record was not inserted.', $migration));
 	}
 
 	public static function notDeletedAfterRollback(string $migration): self {

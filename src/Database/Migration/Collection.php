@@ -5,7 +5,7 @@ namespace StellarWP\Foundation\Database\Migration;
 use ArrayIterator;
 use IteratorAggregate;
 use StellarWP\Foundation\Database\Contracts\Migration;
-use StellarWP\Foundation\Database\Exceptions\DuplicateMigration;
+use StellarWP\Foundation\Database\Migration\Exceptions\DuplicateMigration;
 use StellarWP\Foundation\Database\Migration\Exceptions\InvalidMigrationId;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Id;
 use Traversable;

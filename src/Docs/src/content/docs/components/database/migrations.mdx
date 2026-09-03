@@ -306,7 +306,7 @@ namespace YourPlugin\Database\Migrations;
 
 use StellarWP\Foundation\Database\Contracts\Migration;
 use StellarWP\Foundation\Database\Contracts\Schema;
-use StellarWP\Foundation\Database\Exceptions\IrreversibleMigration;
+use StellarWP\Foundation\Database\Migration\Exceptions\IrreversibleMigration;
 use YourPlugin\Database\Tables\Reports_Table;
 
 final readonly class Backfill_Report_Status implements Migration {
@@ -440,7 +440,7 @@ wp your-plugin migrate
 :::caution[Allow enough time for each migration]
 Foundation renews its lock immediately before and after each migration. The configured `database.lock_ttl` must exceed the longest uninterrupted `up()`, `down()`, or ledger operation because blocking work cannot renew its lease while it is running. Increase the TTL or split long work into separate migrations before deploying it.
 
-If a migration finishes but the following renewal fails, Foundation leaves the ledger unchanged and stops. A later command may therefore call that migration again. Write `up()` and `down()` so repeated execution can safely reconcile the intended state.
+If a migration finishes but the following lock renewal or ledger write fails, Foundation leaves that migration unrecorded and stops. A later command may therefore call it again. Write `up()` and `down()` so repeated execution can safely reconcile the intended state.
 :::
 
 ### Roll back or rebuild
@@ -489,6 +489,29 @@ $result = $migrator->run();
 ```
 
 The result exposes the migration IDs that were run, rolled back, or skipped through its `ran`, `rolledBack`, and `skipped` properties. The programmatic API follows the same ledger and lock rules as the command. Do not run migrations during every normal WordPress request.
+
+### Inspect migration status from PHP
+
+`Migrator::status()` returns one `Status` object for each configured or recorded migration. Each status is in exactly one state:
+
+- `isPending()` identifies a configured migration with no ledger record.
+- `isApplied()` identifies a configured migration with a ledger record.
+- `isUnavailable()` identifies a ledger record whose migration is not registered in the current deployment.
+
+An unavailable migration has a ledger record and may have been applied by an earlier deployment. `isApplied()` checks the exact configured-and-recorded state; it does not answer whether any ledger record exists. Use these methods for application logic instead of comparing raw status values:
+
+```php
+use StellarWP\Foundation\Database\Migration\Migrator;
+$migrator = $container->get( Migrator::class );
+
+foreach ( $migrator->status() as $migration_status ) {
+	if ( $migration_status->isUnavailable() ) {
+		// The ledger contains a migration that is not registered in this deployment.
+	}
+}
+```
+
+Every status includes the migration identifier. Applied and unavailable migrations also include the ledger `batch` and `ranAt` timestamp; pending migrations expose `null` for both values. The `state()` method returns the textual state name when it is needed for presentation.
 
 ## Testing
 

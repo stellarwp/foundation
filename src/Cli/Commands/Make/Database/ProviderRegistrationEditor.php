@@ -2,6 +2,7 @@
 
 namespace StellarWP\Foundation\Cli\Commands\Make\Database;
 
+use StellarWP\Foundation\Cli\Commands\Make\Database\ValueObjects\ProviderRegistrationResult;
 use StellarWP\Foundation\Cli\Generation\Php\PhpSourceEditor;
 
 /**
@@ -13,20 +14,10 @@ use StellarWP\Foundation\Cli\Generation\Php\PhpSourceEditor;
  */
 final class ProviderRegistrationEditor
 {
-	private const string TABLE_MARKER      = '// foundation:database-tables';
-	private const string MIGRATION_MARKER  = '// foundation:database-migrations';
-	private const string MIGRATIONS_CLASS  = 'StellarWP\\Foundation\\Database\\DatabaseProvider';
-	private const string MIGRATIONS_CONST  = 'MIGRATIONS';
-	public const string UPDATED            = 'updated';
-	public const string ALREADY_REGISTERED = 'already_registered';
-	public const string NOT_FOUND          = 'not_found';
-	public const string READ_FAILED        = 'read_failed';
-	public const string NOT_WRITABLE       = 'not_writable';
-	public const string MISSING_ANCHOR     = 'missing_anchor';
-	public const string MISSING_MARKER     = 'missing_marker';
-	public const string IMPORT_COLLISION   = 'import_collision';
-	public const string PARSE_FAILED       = 'parse_failed';
-	public const string WRITE_FAILED       = 'write_failed';
+	private const string TABLE_MARKER     = '// foundation:database-tables';
+	private const string MIGRATION_MARKER = '// foundation:database-migrations';
+	private const string MIGRATIONS_CLASS = 'StellarWP\\Foundation\\Database\\DatabaseProvider';
+	private const string MIGRATIONS_CONST = 'MIGRATIONS';
 
 	/**
 	 * Create an editor backed by structured PHP source inspection.
@@ -39,7 +30,7 @@ final class ProviderRegistrationEditor
 	/**
 	 * Add a table singleton registration to a generated database provider.
 	 */
-	public function addTable(string $providerPath, string $class, string $classNamespace): string {
+	public function addTable(string $providerPath, string $class, string $classNamespace): ProviderRegistrationResult {
 		return $this->addRegistration(
 			providerPath: $providerPath,
 			class: $class,
@@ -53,7 +44,7 @@ final class ProviderRegistrationEditor
 	/**
 	 * Add a migration contribution to a generated database provider.
 	 */
-	public function addMigration(string $providerPath, string $class, string $classNamespace): string {
+	public function addMigration(string $providerPath, string $class, string $classNamespace): ProviderRegistrationResult {
 		return $this->addMergeArrayVarRegistration(
 			providerPath: $providerPath,
 			class: $class,
@@ -71,59 +62,59 @@ final class ProviderRegistrationEditor
 		string $tableNamespace,
 		string $migrationClass,
 		string $migrationNamespace
-	): string {
+	): ProviderRegistrationResult {
 		if (! is_file($providerPath) || ! is_readable($providerPath)) {
-			return self::NOT_FOUND;
+			return ProviderRegistrationResult::notFound();
 		}
 
 		if (! $this->isWritableTarget($providerPath)) {
-			return self::NOT_WRITABLE;
+			return ProviderRegistrationResult::notWritable();
 		}
 
 		$contents = file_get_contents($providerPath);
 
 		if ($contents === false) {
-			return self::READ_FAILED;
+			return ProviderRegistrationResult::readFailed();
 		}
 
 		$temporaryPath = tempnam(dirname($providerPath), '.foundation-provider-');
 
 		if ($temporaryPath === false) {
-			return self::WRITE_FAILED;
+			return ProviderRegistrationResult::writeFailed();
 		}
 
 		try {
 			$written = file_put_contents($temporaryPath, $contents);
 
 			if ($written !== strlen($contents)) {
-				return self::WRITE_FAILED;
+				return ProviderRegistrationResult::writeFailed();
 			}
 
-			$tableStatus = $this->addTable($temporaryPath, $tableClass, $tableNamespace);
+			$tableResult = $this->addTable($temporaryPath, $tableClass, $tableNamespace);
 
-			if (! $this->registrationSucceeded($tableStatus)) {
-				return $tableStatus;
+			if (! $tableResult->succeeded()) {
+				return $tableResult;
 			}
 
-			$migrationStatus = $this->addMigration($temporaryPath, $migrationClass, $migrationNamespace);
+			$migrationResult = $this->addMigration($temporaryPath, $migrationClass, $migrationNamespace);
 
-			if (! $this->registrationSucceeded($migrationStatus)) {
-				return $migrationStatus;
+			if (! $migrationResult->succeeded()) {
+				return $migrationResult;
 			}
 
-			if ($tableStatus === self::ALREADY_REGISTERED && $migrationStatus === self::ALREADY_REGISTERED) {
-				return self::ALREADY_REGISTERED;
+			if ($tableResult->wasAlreadyRegistered() && $migrationResult->wasAlreadyRegistered()) {
+				return ProviderRegistrationResult::alreadyRegistered();
 			}
 
 			$updatedContents = file_get_contents($temporaryPath);
 
 			if ($updatedContents === false) {
-				return self::WRITE_FAILED;
+				return ProviderRegistrationResult::writeFailed();
 			}
 
 			return $this->writeContents($providerPath, $updatedContents)
-				? self::UPDATED
-				: self::WRITE_FAILED;
+				? ProviderRegistrationResult::updated()
+				: ProviderRegistrationResult::writeFailed();
 		} finally {
 			@unlink($temporaryPath);
 		}
@@ -132,7 +123,7 @@ final class ProviderRegistrationEditor
 	/**
 	 * Verify that a table registration can be added without changing the provider.
 	 */
-	public function checkTable(string $providerPath, string $class, string $classNamespace): string {
+	public function checkTable(string $providerPath, string $class, string $classNamespace): ProviderRegistrationResult {
 		return $this->addRegistration(
 			providerPath: $providerPath,
 			class: $class,
@@ -146,7 +137,7 @@ final class ProviderRegistrationEditor
 	/**
 	 * Verify that a migration contribution can be added without changing the provider.
 	 */
-	public function checkMigration(string $providerPath, string $class, string $classNamespace): string {
+	public function checkMigration(string $providerPath, string $class, string $classNamespace): ProviderRegistrationResult {
 		return $this->addMergeArrayVarRegistration(
 			providerPath: $providerPath,
 			class: $class,
@@ -164,130 +155,130 @@ final class ProviderRegistrationEditor
 		string $tableNamespace,
 		string $migrationClass,
 		string $migrationNamespace
-	): string {
-		$tableStatus = $this->checkTable($providerPath, $tableClass, $tableNamespace);
+	): ProviderRegistrationResult {
+		$tableResult = $this->checkTable($providerPath, $tableClass, $tableNamespace);
 
-		if (! $this->registrationSucceeded($tableStatus)) {
-			return $tableStatus;
+		if (! $tableResult->succeeded()) {
+			return $tableResult;
 		}
 
-		$migrationStatus = $this->checkMigration($providerPath, $migrationClass, $migrationNamespace);
+		$migrationResult = $this->checkMigration($providerPath, $migrationClass, $migrationNamespace);
 
-		if (! $this->registrationSucceeded($migrationStatus)) {
-			return $migrationStatus;
+		if (! $migrationResult->succeeded()) {
+			return $migrationResult;
 		}
 
-		return $tableStatus === self::ALREADY_REGISTERED && $migrationStatus === self::ALREADY_REGISTERED
-			? self::ALREADY_REGISTERED
-			: self::UPDATED;
+		return $tableResult->wasAlreadyRegistered() && $migrationResult->wasAlreadyRegistered()
+			? ProviderRegistrationResult::alreadyRegistered()
+			: ProviderRegistrationResult::ready();
 	}
 
 	/**
 	 * Validate and optionally insert one marker-based provider registration.
 	 */
-	private function addRegistration(string $providerPath, string $class, string $classNamespace, string $marker, string $registration, bool $write): string {
+	private function addRegistration(string $providerPath, string $class, string $classNamespace, string $marker, string $registration, bool $write): ProviderRegistrationResult {
 		if (! is_file($providerPath) || ! is_readable($providerPath)) {
-			return self::NOT_FOUND;
+			return ProviderRegistrationResult::notFound();
 		}
 
 		$contents = file_get_contents($providerPath);
 
 		if ($contents === false) {
-			return self::READ_FAILED;
+			return ProviderRegistrationResult::readFailed();
 		}
 
 		if (! $this->sourceEditor->canParse($contents)) {
-			return self::PARSE_FAILED;
+			return ProviderRegistrationResult::parseFailed();
 		}
 
 		if (! $this->sourceEditor->hasLineComment($contents, $marker)) {
-			return self::MISSING_MARKER;
+			return ProviderRegistrationResult::missingMarker();
 		}
 
 		$fullyQualifiedClass = $classNamespace . '\\' . $class;
 
 		if ($this->sourceEditor->hasContainerSingleton($contents, $fullyQualifiedClass)) {
-			return self::ALREADY_REGISTERED;
+			return ProviderRegistrationResult::alreadyRegistered();
 		}
 
 		if ($this->sourceEditor->hasImportShortNameCollision($contents, $class, $fullyQualifiedClass)) {
-			return self::IMPORT_COLLISION;
+			return ProviderRegistrationResult::importCollision();
 		}
 
 		if (! $this->isWritableTarget($providerPath)) {
-			return self::NOT_WRITABLE;
+			return ProviderRegistrationResult::notWritable();
 		}
 
 		if (! $write) {
-			return self::UPDATED;
+			return ProviderRegistrationResult::ready();
 		}
 
 		$contents = $this->sourceEditor->addImport($contents, $fullyQualifiedClass);
 
 		if ($contents === null) {
-			return self::PARSE_FAILED;
+			return ProviderRegistrationResult::parseFailed();
 		}
 
 		$contents = $this->sourceEditor->insertBeforeLineComment($contents, $marker, $registration);
 
 		if ($contents === null) {
-			return self::MISSING_MARKER;
+			return ProviderRegistrationResult::missingMarker();
 		}
 
 		if (! $this->writeContents($providerPath, $contents)) {
-			return self::WRITE_FAILED;
+			return ProviderRegistrationResult::writeFailed();
 		}
 
-		return self::UPDATED;
+		return ProviderRegistrationResult::updated();
 	}
 
 	/**
 	 * Validate and optionally add a class to the provider's migration contribution.
 	 */
-	private function addMergeArrayVarRegistration(string $providerPath, string $class, string $classNamespace, bool $write): string {
+	private function addMergeArrayVarRegistration(string $providerPath, string $class, string $classNamespace, bool $write): ProviderRegistrationResult {
 		if (! is_file($providerPath) || ! is_readable($providerPath)) {
-			return self::NOT_FOUND;
+			return ProviderRegistrationResult::notFound();
 		}
 
 		$contents = file_get_contents($providerPath);
 
 		if ($contents === false) {
-			return self::READ_FAILED;
+			return ProviderRegistrationResult::readFailed();
 		}
 
 		if (! $this->sourceEditor->canParse($contents)) {
-			return self::PARSE_FAILED;
+			return ProviderRegistrationResult::parseFailed();
 		}
 
 		$containerExpression = $this->sourceEditor->mergeArrayVarContainerExpression($contents, self::MIGRATIONS_CLASS, self::MIGRATIONS_CONST);
 
 		if ($containerExpression === null || ! $this->sourceEditor->canInsertIntoMergeArrayVar($contents, self::MIGRATIONS_CLASS, self::MIGRATIONS_CONST, self::MIGRATION_MARKER)) {
-			return self::MISSING_ANCHOR;
+			return ProviderRegistrationResult::missingAnchor();
 		}
 
 		$fullyQualifiedClass = $classNamespace . '\\' . $class;
 		$registration        = sprintf('%s->get(%s::class),', $containerExpression, $class);
 
 		if ($this->sourceEditor->mergeArrayVarContainsClass($contents, self::MIGRATIONS_CLASS, self::MIGRATIONS_CONST, $fullyQualifiedClass)) {
-			return self::ALREADY_REGISTERED;
+			return ProviderRegistrationResult::alreadyRegistered();
 		}
 
 		if ($this->sourceEditor->hasImportShortNameCollision($contents, $class, $fullyQualifiedClass)) {
-			return self::IMPORT_COLLISION;
+			return ProviderRegistrationResult::importCollision();
 		}
 
 		if (! $this->isWritableTarget($providerPath)) {
-			return self::NOT_WRITABLE;
+			return ProviderRegistrationResult::notWritable();
 		}
 
 		if (! $write) {
-			return self::UPDATED;
+			return ProviderRegistrationResult::ready();
 		}
 
 		$contents = $this->sourceEditor->addImport($contents, $fullyQualifiedClass);
 
 		if ($contents === null) {
-			return self::PARSE_FAILED;
+			return ProviderRegistrationResult::parseFailed();
 		}
 
 		$contents = $this->sourceEditor->insertIntoMergeArrayVar(
@@ -299,21 +290,14 @@ final class ProviderRegistrationEditor
 		);
 
 		if ($contents === null) {
-			return self::MISSING_ANCHOR;
+			return ProviderRegistrationResult::missingAnchor();
 		}
 
 		if (! $this->writeContents($providerPath, $contents)) {
-			return self::WRITE_FAILED;
+			return ProviderRegistrationResult::writeFailed();
 		}
 
-		return self::UPDATED;
-	}
-
-	/**
-	 * Determine whether a registration is valid with or without a source change.
-	 */
-	private function registrationSucceeded(string $status): bool {
-		return $status === self::UPDATED || $status === self::ALREADY_REGISTERED;
+		return ProviderRegistrationResult::updated();
 	}
 
 	/**

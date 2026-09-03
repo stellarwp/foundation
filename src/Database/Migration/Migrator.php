@@ -4,11 +4,11 @@ namespace StellarWP\Foundation\Database\Migration;
 
 use StellarWP\Foundation\Database\Contracts\Migration;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
-use StellarWP\Foundation\Database\Exceptions\MigrationFailed;
-use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Database\Migration\Contracts\Repository;
 use StellarWP\Foundation\Database\Migration\Exceptions\InvalidRollbackBatch;
 use StellarWP\Foundation\Database\Migration\Exceptions\LedgerFailure;
+use StellarWP\Foundation\Database\Migration\Exceptions\MigrationFailed;
+use StellarWP\Foundation\Database\Migration\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Database\Migration\Exceptions\UnavailableMigration;
 use StellarWP\Foundation\Database\Migration\Exceptions\UninitializedStore;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Record;
@@ -67,23 +67,24 @@ final readonly class Migrator
 	 * Run all pending configured migrations.
 	 *
 	 * @throws DatabaseException        When migration storage or schema access fails.
+	 * @throws LedgerFailure            When an applied migration cannot be recorded in the ledger.
 	 * @throws MigrationFailed          When a migration fails while running.
 	 * @throws MigrationLockFailed      When the lock cannot be acquired, renewed, or released.
 	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
 	 * @throws UninitializedStore       When migration storage has not been initialized.
 	 */
 	public function run(): Result {
-		$configured = $this->migrations->all();
+		$migrations = $this->migrations->all();
 
 		return $this->store->withMigrationLock(
-			fn (Session $session): Result => $this->runPending($configured, $session)
+			fn (Session $session): Result => $this->runPending($migrations, $session)
 		);
 	}
 
 	/**
 	 * Roll back the latest recorded migration batch.
 	 *
-	 * @param int|null $batch The expected latest batch, available as Status::$batch from status(). Pass null to roll back whichever batch is latest.
+	 * @param int|null $expectedLatestBatch The expected latest batch, available as Status::$batch from status(). Pass null to roll back whichever batch is latest.
 	 *
 	 * @throws DatabaseException        When migration storage or schema access fails.
 	 * @throws InvalidRollbackBatch     When the requested batch does not match the latest recorded batch.
@@ -94,21 +95,20 @@ final readonly class Migrator
 	 * @throws UnavailableMigration     When a recorded migration implementation is unavailable.
 	 * @throws UninitializedStore       When migration storage has not been initialized.
 	 */
-	public function rollback(?int $batch = null): Result {
-		$configured = $this->migrations->all();
-
-		return $this->store->withMigrationLock(function (Session $session) use ($configured, $batch): Result {
+	public function rollback(?int $expectedLatestBatch = null): Result {
+		return $this->store->withMigrationLock(function (Session $session) use ($expectedLatestBatch): Result {
+			$configured  = $this->migrations->all();
 			$latestBatch = $this->repository->latestBatch();
 
-			if ($batch !== null && $batch !== $latestBatch) {
-				throw new InvalidRollbackBatch($batch, $latestBatch);
+			if ($expectedLatestBatch !== null && $expectedLatestBatch !== $latestBatch) {
+				throw new InvalidRollbackBatch($expectedLatestBatch, $latestBatch);
 			}
 
-			$batch ??= $latestBatch;
-
-			if ($batch === null) {
+			if ($latestBatch === null) {
 				return new Result();
 			}
+
+			$batch = $latestBatch;
 
 			return $this->rollbackRecords(
 				$configured,
@@ -122,6 +122,7 @@ final readonly class Migrator
 	 * Roll back and rerun all configured migrations.
 	 *
 	 * @throws DatabaseException        When migration storage or schema access fails.
+	 * @throws LedgerFailure            When an applied migration cannot be recorded in the ledger.
 	 * @throws MigrationFailed          When a migration fails while running or rolling back.
 	 * @throws MigrationLockFailed      When the lock cannot be acquired, renewed, or released.
 	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
@@ -129,11 +130,10 @@ final readonly class Migrator
 	 * @throws UninitializedStore       When migration storage has not been initialized.
 	 */
 	public function refresh(): Result {
-		$configured = $this->migrations->all();
-
-		return $this->store->withMigrationLock(function (Session $session) use ($configured): Result {
-			$rollback = $this->rollbackRecords($configured, array_values($this->repository->all()), $session);
-			$run      = $this->runPending($configured, $session);
+		return $this->store->withMigrationLock(function (Session $session): Result {
+			$configured = $this->migrations->all();
+			$rollback   = $this->rollbackRecords($configured, array_values($this->repository->all()), $session);
+			$run        = $this->runPending($configured, $session);
 
 			return new Result(
 				ran: $run->ran,
@@ -165,7 +165,7 @@ final readonly class Migrator
 
 		foreach ($configured as $migration) {
 			$statuses[] = isset($records[$migration->id()])
-				? Status::fromRecord($records[$migration->id()])
+				? Status::applied($records[$migration->id()])
 				: Status::pending($migration->id());
 
 			unset($records[$migration->id()]);
@@ -225,6 +225,7 @@ final readonly class Migrator
 	 * @param Session                  $session    The active migration session that maintains lock ownership.
 	 *
 	 * @throws DatabaseException        When migration ledger access fails.
+	 * @throws LedgerFailure            When an applied migration cannot be recorded in the ledger.
 	 * @throws MigrationFailed          When a migration fails while running.
 	 * @throws MigrationLockFailed      When the migration lock cannot be renewed.
 	 * @throws LockUnavailableException When the lock backend cannot determine the refresh result.
@@ -233,7 +234,7 @@ final readonly class Migrator
 		$records = $this->repository->all();
 		$ran     = [];
 		$skipped = [];
-		$batch   = $this->repository->nextBatch();
+		$batch   = ($this->repository->latestBatch() ?? 0) + 1;
 
 		foreach ($migrations as $migration) {
 			if (isset($records[$migration->id()])) {

@@ -40,7 +40,7 @@ final class MigrateTest extends TestCase
 		$repository     = new InMemoryRepository();
 		$schema         = new RecordingSchema();
 		$lock           = new InMemoryLock(new SystemClock());
-		$store          = new Store($schema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, new LockTable('nx_foundation_locks', $database));
+		$store          = new Store($schema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, new LockTable('nx_foundation_locks', $database), 'nx-foundation-database-migrations', 300);
 		$command        = new Migrate(
 			$this->container,
 			new CommandPrefix('foundation'),
@@ -188,7 +188,7 @@ final class MigrateTest extends TestCase
 		$command->runCommand([], ['initialize' => true]);
 		$command->runCommand([], ['run' => true]);
 
-		$this->expectOutputRegex('/2026_06_23_000001_create_example\s+ran\s+1\s+2026-01-01 00:00:00/');
+		$this->expectOutputRegex('/2026_06_23_000001_create_example\s+applied\s+1\s+2026-01-01 00:00:00/');
 
 		$this->assertSame(0, $command->runCommand());
 	}
@@ -216,7 +216,7 @@ final class MigrateTest extends TestCase
 		$repository     = new InMemoryRepository();
 		$migrationTable = new MigrationTable('nx_foundation_migrations', $database);
 		$lock           = new InMemoryLock(new SystemClock());
-		$store          = new Store($wpSchema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, new LockTable('nx_foundation_locks', $database));
+		$store          = new Store($wpSchema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, new LockTable('nx_foundation_locks', $database), 'nx-foundation-database-migrations', 300);
 		$command        = new Migrate(
 			$this->container,
 			new CommandPrefix('foundation'),

@@ -145,16 +145,16 @@ final class MigrationCommand extends Command
 			throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->projectDirectory->relativePath($providerPath)));
 		}
 
-		$status = $this->providerUpdater->checkMigration($providerPath, $migration->class, $migration->namespace);
+		$result = $this->providerUpdater->checkMigration($providerPath, $migration->class, $migration->namespace);
 
-		if ($status === ProviderRegistrationEditor::UPDATED || $status === ProviderRegistrationEditor::ALREADY_REGISTERED) {
+		if ($result->succeeded()) {
 			return;
 		}
 
 		throw new RuntimeException(sprintf(
 			'Could not update database provider "%s": %s.',
 			$this->projectDirectory->relativePath($providerPath),
-			$this->providerUpdateFailure($status)
+			$result->failureReason() ?? 'provider could not be updated'
 		));
 	}
 
@@ -176,13 +176,13 @@ final class MigrationCommand extends Command
 			return null;
 		}
 
-		$status = $this->providerUpdater->addMigration($providerPath, $migration->class, $migration->namespace);
+		$result = $this->providerUpdater->addMigration($providerPath, $migration->class, $migration->namespace);
 
-		if ($status === ProviderRegistrationEditor::UPDATED) {
+		if ($result->wasUpdated()) {
 			return $providerPath;
 		}
 
-		if ($status === ProviderRegistrationEditor::ALREADY_REGISTERED) {
+		if ($result->succeeded()) {
 			return null;
 		}
 
@@ -190,14 +190,14 @@ final class MigrationCommand extends Command
 			throw new RuntimeException(sprintf(
 				'Could not update database provider "%s": %s.',
 				$this->projectDirectory->relativePath($providerPath),
-				$this->providerUpdateFailure($status)
+				$result->failureReason() ?? 'provider could not be updated'
 			));
 		}
 
 		$output->writeln(sprintf(
 			'<comment>Provider not updated:</comment> %s (%s). Register %s manually.',
 			$this->projectDirectory->relativePath($providerPath),
-			$this->providerUpdateFailure($status),
+			$result->failureReason() ?? 'provider could not be updated',
 			$migration->class
 		));
 
@@ -281,23 +281,6 @@ final class MigrationCommand extends Command
 	 */
 	private function providerExists(InputInterface $input): bool {
 		return is_file($this->providerPath($input, $this->autoloadResolver->project()));
-	}
-
-	/**
-	 * Translate an editor status into an actionable console message.
-	 */
-	private function providerUpdateFailure(string $status): string {
-		return match ($status) {
-			ProviderRegistrationEditor::NOT_FOUND        => 'file does not exist or is not readable',
-			ProviderRegistrationEditor::READ_FAILED      => 'file could not be read',
-			ProviderRegistrationEditor::NOT_WRITABLE     => 'file is not writable',
-			ProviderRegistrationEditor::MISSING_ANCHOR   => 'file does not contain a generated database provider registration point',
-			ProviderRegistrationEditor::MISSING_MARKER   => 'file does not contain the generated database provider markers',
-			ProviderRegistrationEditor::IMPORT_COLLISION => 'another class declaration or import uses the same short class name',
-			ProviderRegistrationEditor::PARSE_FAILED     => 'file could not be parsed as PHP',
-			ProviderRegistrationEditor::WRITE_FAILED     => 'file could not be written',
-			default                                      => 'provider could not be updated',
-		};
 	}
 
 	/**

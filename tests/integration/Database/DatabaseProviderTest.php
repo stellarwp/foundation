@@ -252,7 +252,7 @@ final class DatabaseProviderTest extends WPTestCase
 			$this->assertSame([$migration->id()], $result->ran);
 			$this->assertTrue($database->tableExists($migrationTableObject));
 			$this->assertTrue($database->tableExists($lockTableObject));
-			$this->assertTrue($migrator->status()[0]->ran);
+			$this->assertTrue($migrator->status()[0]->isApplied());
 		} finally {
 			$database->execute('DROP TABLE IF EXISTS %i', $migrationsTable);
 			$database->execute('DROP TABLE IF EXISTS %i', $locksTable);

@@ -154,10 +154,10 @@ final class TableDefinition
 	/**
 	 * Add a primary key over the columns in their declared order.
 	 *
-	 * @throws InvalidArgumentException When no columns are provided.
+	 * @throws InvalidArgumentException When no columns are provided or a column name is blank.
 	 */
 	public function primary(string ...$columns): self {
-		$this->indexes[] = new Index('primary', $this->nonEmptyColumns(array_values($columns)), IndexType::PRIMARY);
+		$this->indexes[] = new Index('primary', array_values($columns), IndexType::PRIMARY);
 
 		return $this;
 	}
@@ -165,10 +165,10 @@ final class TableDefinition
 	/**
 	 * Add a named unique index over the columns in their declared order.
 	 *
-	 * @throws InvalidArgumentException When no columns are provided.
+	 * @throws InvalidArgumentException When the index name is blank, no columns are provided, or a column name is blank.
 	 */
 	public function unique(string $name, string ...$columns): self {
-		$this->indexes[] = new Index($name, $this->nonEmptyColumns(array_values($columns)), IndexType::UNIQUE);
+		$this->indexes[] = new Index($name, array_values($columns), IndexType::UNIQUE);
 
 		return $this;
 	}
@@ -176,10 +176,10 @@ final class TableDefinition
 	/**
 	 * Add a named non-unique index over the columns in their declared order.
 	 *
-	 * @throws InvalidArgumentException When no columns are provided.
+	 * @throws InvalidArgumentException When the index name is blank, no columns are provided, or a column name is blank.
 	 */
 	public function index(string $name, string ...$columns): self {
-		$this->indexes[] = new Index($name, $this->nonEmptyColumns(array_values($columns)), IndexType::KEY);
+		$this->indexes[] = new Index($name, array_values($columns), IndexType::KEY);
 
 		return $this;
 	}
@@ -237,8 +237,13 @@ final class TableDefinition
 			}
 		}
 
+		/** @var array<string, array{name: string, count: int}> $secondaryIndexes */
+		$secondaryIndexes = [];
+		$primaryCount     = 0;
+
 		foreach ($this->indexes as $index) {
-			if ($index->type === IndexType::PRIMARY) {
+			if ($index->isPrimary()) {
+				$primaryCount++;
 				continue;
 			}
 
@@ -247,15 +252,18 @@ final class TableDefinition
 				continue;
 			}
 
-			foreach ($this->indexesByName($index->name) as $duplicate) {
-				if ($duplicate !== $index && $duplicate->type !== IndexType::PRIMARY) {
-					$errors[] = sprintf('Index %s is defined more than once.', $index->name);
-					break 2;
-				}
+			$key = strtolower($index->name);
+			$secondaryIndexes[$key] ??= ['name' => $index->name, 'count' => 0];
+			$secondaryIndexes[$key]['count']++;
+		}
+
+		foreach ($secondaryIndexes as $index) {
+			if ($index['count'] > 1) {
+				$errors[] = sprintf('Index %s is defined more than once.', $index['name']);
 			}
 		}
 
-		if (count(array_filter($this->indexes, static fn (Index $index): bool => $index->type === IndexType::PRIMARY)) > 1) {
+		if ($primaryCount > 1) {
 			$errors[] = 'A table can define only one primary key.';
 		}
 
@@ -281,35 +289,6 @@ final class TableDefinition
 		if ($errors !== []) {
 			throw new InvalidArgumentException(implode(' ', $errors));
 		}
-	}
-
-	/**
-	 * Assert that an index declaration contains at least one column.
-	 *
-	 * @param list<string> $columns
-	 *
-	 * @throws InvalidArgumentException When the list is empty.
-	 *
-	 * @return non-empty-list<string>
-	 */
-	private function nonEmptyColumns(array $columns): array {
-		if ($columns === []) {
-			throw new InvalidArgumentException('An index must define at least one column.');
-		}
-
-		return $columns;
-	}
-
-	/**
-	 * Return all indexes whose names match case-insensitively.
-	 *
-	 * @return list<Index>
-	 */
-	private function indexesByName(string $name): array {
-		return array_values(array_filter(
-			$this->indexes,
-			static fn (Index $index): bool => strcasecmp($index->name, $name) === 0
-		));
 	}
 
 	/**

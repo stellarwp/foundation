@@ -5,6 +5,7 @@ namespace StellarWP\Foundation\Cli\Commands\Make\Database;
 use RuntimeException;
 use StellarWP\Foundation\Cli\Commands\Make\Database\Factories\MigrationFileFactory;
 use StellarWP\Foundation\Cli\Commands\Make\Database\ValueObjects\GeneratedMigration;
+use StellarWP\Foundation\Cli\Commands\Make\Database\ValueObjects\ProviderRegistrationResult;
 use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
@@ -234,7 +235,7 @@ final class TableCommand extends Command
 			throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->projectDirectory->relativePath($providerPath)));
 		}
 
-		$status = $migration === null
+		$result = $migration === null
 			? $this->providerUpdater->checkTable($providerPath, $className, $namespace)
 			: $this->providerUpdater->checkTableAndMigration(
 				$providerPath,
@@ -244,11 +245,11 @@ final class TableCommand extends Command
 				$migration->namespace
 			);
 
-		if ($status !== ProviderRegistrationEditor::UPDATED && $status !== ProviderRegistrationEditor::ALREADY_REGISTERED) {
+		if (! $result->succeeded()) {
 			throw new RuntimeException(sprintf(
 				'Could not update database provider "%s": %s.',
 				$this->projectDirectory->relativePath($providerPath),
-				$this->providerUpdateFailure($status)
+				$result->failureReason() ?? 'provider could not be updated'
 			));
 		}
 	}
@@ -273,7 +274,7 @@ final class TableCommand extends Command
 			return null;
 		}
 
-		$status = $migration === null
+		$result = $migration === null
 			? $this->providerUpdater->addTable($providerPath, $className, $namespace)
 			: $this->providerUpdater->addTableAndMigration(
 				$providerPath,
@@ -283,23 +284,23 @@ final class TableCommand extends Command
 				$migration->namespace
 			);
 
-		if ($status !== ProviderRegistrationEditor::UPDATED && $status !== ProviderRegistrationEditor::ALREADY_REGISTERED && $explicit) {
+		if (! $result->succeeded() && $explicit) {
 			throw new RuntimeException(sprintf(
 				'Could not update database provider "%s": %s.',
 				$this->projectDirectory->relativePath($providerPath),
-				$this->providerUpdateFailure($status)
+				$result->failureReason() ?? 'provider could not be updated'
 			));
 		}
 
-		if ($status !== ProviderRegistrationEditor::UPDATED && $status !== ProviderRegistrationEditor::ALREADY_REGISTERED) {
+		if (! $result->succeeded()) {
 			$classes = $migration === null
 				? $className
 				: $className . ' and ' . $migration->class;
 
-			$this->writeProviderWarning($output, $providerPath, $status, $classes);
+			$this->writeProviderWarning($output, $providerPath, $result, $classes);
 		}
 
-		return $status === ProviderRegistrationEditor::UPDATED ? $providerPath : null;
+		return $result->wasUpdated() ? $providerPath : null;
 	}
 
 	/**
@@ -320,11 +321,11 @@ final class TableCommand extends Command
 	/**
 	 * Report a non-fatal conventional-provider update failure.
 	 */
-	private function writeProviderWarning(OutputInterface $output, string $providerPath, string $status, string $className): void {
+	private function writeProviderWarning(OutputInterface $output, string $providerPath, ProviderRegistrationResult $result, string $className): void {
 		$output->writeln(sprintf(
 			'<comment>Provider not updated:</comment> %s (%s). Register %s manually.',
 			$this->projectDirectory->relativePath($providerPath),
-			$this->providerUpdateFailure($status),
+			$result->failureReason() ?? 'provider could not be updated',
 			$className
 		));
 	}
@@ -430,23 +431,6 @@ final class TableCommand extends Command
 	 */
 	private function providerExists(InputInterface $input): bool {
 		return is_file($this->providerPath($input, $this->autoloadResolver->project()));
-	}
-
-	/**
-	 * Translate an editor status into an actionable console message.
-	 */
-	private function providerUpdateFailure(string $status): string {
-		return match ($status) {
-			ProviderRegistrationEditor::NOT_FOUND        => 'file does not exist or is not readable',
-			ProviderRegistrationEditor::READ_FAILED      => 'file could not be read',
-			ProviderRegistrationEditor::NOT_WRITABLE     => 'file is not writable',
-			ProviderRegistrationEditor::MISSING_ANCHOR   => 'file does not contain a generated database provider registration point',
-			ProviderRegistrationEditor::MISSING_MARKER   => 'file does not contain the generated database provider markers',
-			ProviderRegistrationEditor::IMPORT_COLLISION => 'another class declaration or import uses the same short class name',
-			ProviderRegistrationEditor::PARSE_FAILED     => 'file could not be parsed as PHP',
-			ProviderRegistrationEditor::WRITE_FAILED     => 'file could not be written',
-			default                                      => 'provider could not be updated',
-		};
 	}
 
 	/**

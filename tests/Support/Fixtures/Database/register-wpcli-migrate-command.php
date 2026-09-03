@@ -57,7 +57,7 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 	$lockTable          = new LockTable($lockTableName, $database);
 	$repository         = new Repository($migrationTable);
 	$lock               = new DatabaseLock($database, $lockTable);
-	$store              = new Store($schema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, $lockTable);
+	$store              = new Store($schema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, $lockTable, 'nx-foundation-database-migrations', 300);
 
 	$migration = new class(new TestTable('foundation_cli_example', $exampleTable)) implements Migration {
 		public function __construct(

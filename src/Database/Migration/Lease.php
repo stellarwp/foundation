@@ -4,7 +4,7 @@ namespace StellarWP\Foundation\Database\Migration;
 
 use StellarWP\Foundation\Database\Contracts\DatabaseScope;
 use StellarWP\Foundation\Database\Exceptions\DatabaseContextChanged;
-use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
+use StellarWP\Foundation\Database\Migration\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use StellarWP\Foundation\Lock\LockToken;

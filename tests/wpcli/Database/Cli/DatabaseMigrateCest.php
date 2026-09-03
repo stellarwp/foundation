@@ -24,7 +24,7 @@ final class DatabaseMigrateCest
 		$I->cli(['foundation', 'migrate']);
 		$I->seeResultCodeIs(0);
 		$I->seeInShellOutput('2026_06_23_000001_create_foundation_cli_example');
-		$I->seeInShellOutput('ran');
+		$I->seeInShellOutput('applied');
 
 		$I->cli(['foundation', 'migrate', '--rollback']);
 		$I->seeResultCodeIs(0);

@@ -4,15 +4,15 @@ namespace StellarWP\Foundation\Database\Table;
 
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Table\ValueObjects\ColumnComment;
+use StellarWP\Foundation\Database\Traits\QuotesSqlIdentifiers;
 
 /**
- * Immutable value object describing one database table column.
- *
- * Modifier methods return a new column so a {@see ColumnDefinition} can safely
- * replace its current snapshot without leaking partially configured state.
+ * Immutable value object describing one completed database table column.
  */
 final readonly class Column
 {
+	use QuotesSqlIdentifiers;
+
 	private const array AUTO_INCREMENT_TYPES = [
 		'tinyint',
 		'smallint',
@@ -27,6 +27,8 @@ final readonly class Column
 	 *
 	 * The $hasDefault flag distinguishes an omitted default from an explicit
 	 * DEFAULT NULL because both states store null in $default.
+	 *
+	 * @throws InvalidArgumentException When a non-null default is not marked as explicitly configured.
 	 */
 	public function __construct(
 		public string $name,
@@ -39,6 +41,12 @@ final readonly class Column
 		public bool $autoIncrement = false,
 		public ?ColumnComment $comment = null
 	) {
+		if (! $this->hasDefault && $this->default !== null) {
+			throw new InvalidArgumentException(sprintf(
+				'Column %s must set hasDefault when a default value is provided.',
+				$this->name
+			));
+		}
 	}
 
 	/**
@@ -46,8 +54,8 @@ final readonly class Column
 	 */
 	public function sql(): string {
 		$sql = sprintf(
-			'`%s` %s%s%s%s',
-			str_replace('`', '``', $this->name),
+			'%s %s%s%s%s',
+			$this->quoteSqlIdentifier($this->name),
 			$this->type,
 			$this->length === null ? '' : sprintf('(%d)', $this->length),
 			$this->unsigned ? ' unsigned' : '',
@@ -75,7 +83,7 @@ final readonly class Column
 	 * Return the SQL literal for an explicit default value.
 	 */
 	public function defaultSql(): ?string {
-		if ($this->default === null && ! $this->hasDefault) {
+		if (! $this->hasDefault) {
 			return null;
 		}
 
@@ -87,96 +95,6 @@ final readonly class Column
 	 */
 	public function commentText(): ?string {
 		return $this->comment?->comment;
-	}
-
-	/**
-	 * Return a copy configured to use or omit the UNSIGNED attribute.
-	 */
-	public function unsigned(bool $unsigned = true): self {
-		return new self(
-			name: $this->name,
-			type: $this->type,
-			length: $this->length,
-			unsigned: $unsigned,
-			nullable: $this->nullable,
-			default: $this->default,
-			hasDefault: $this->hasDefault,
-			autoIncrement: $this->autoIncrement,
-			comment: $this->comment
-		);
-	}
-
-	/**
-	 * Return a copy configured to accept or reject NULL values.
-	 */
-	public function nullable(bool $nullable = true): self {
-		return new self(
-			name: $this->name,
-			type: $this->type,
-			length: $this->length,
-			unsigned: $this->unsigned,
-			nullable: $nullable,
-			default: $this->default,
-			hasDefault: $this->hasDefault,
-			autoIncrement: $this->autoIncrement,
-			comment: $this->comment
-		);
-	}
-
-	/**
-	 * Return a copy with an explicit default value.
-	 *
-	 * Passing null records DEFAULT NULL but does not make the column nullable;
-	 * callers must apply nullable() separately for that final state to be valid.
-	 */
-	public function default(mixed $default): self {
-		return new self(
-			name: $this->name,
-			type: $this->type,
-			length: $this->length,
-			unsigned: $this->unsigned,
-			nullable: $this->nullable,
-			default: $default,
-			hasDefault: true,
-			autoIncrement: $this->autoIncrement,
-			comment: $this->comment
-		);
-	}
-
-	/**
-	 * Return a copy configured to use MySQL's AUTO_INCREMENT attribute.
-	 */
-	public function autoIncrement(): self {
-		return new self(
-			name: $this->name,
-			type: $this->type,
-			length: $this->length,
-			unsigned: $this->unsigned,
-			nullable: $this->nullable,
-			default: $this->default,
-			hasDefault: $this->hasDefault,
-			autoIncrement: true,
-			comment: $this->comment
-		);
-	}
-
-	/**
-	 * Return a copy with the descriptive comment stored in database metadata.
-	 *
-	 * @throws InvalidArgumentException When the comment requires SQL-mode-dependent escaping.
-	 */
-	public function comment(string $comment): self {
-		return new self(
-			name: $this->name,
-			type: $this->type,
-			length: $this->length,
-			unsigned: $this->unsigned,
-			nullable: $this->nullable,
-			default: $this->default,
-			hasDefault: $this->hasDefault,
-			autoIncrement: $this->autoIncrement,
-			comment: new ColumnComment($comment)
-		);
 	}
 
 	/**

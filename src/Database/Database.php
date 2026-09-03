@@ -7,12 +7,15 @@ use StellarWP\Foundation\Database\Contracts\DatabaseScope;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\QueryException;
+use StellarWP\Foundation\Database\Traits\QuotesSqlIdentifiers;
 
 /**
  * WordPress database service backed by wpdb.
  */
 final readonly class Database implements DatabaseContract
 {
+	use QuotesSqlIdentifiers;
+
 	private const string ARRAY_A = 'ARRAY_A';
 
 	/**
@@ -102,10 +105,10 @@ final readonly class Database implements DatabaseContract
 		}
 
 		$bindings = array_values($bindings);
-		$prepared = $this->prepareWithWpdb($sql, $bindings);
+		$prepared = $this->prepareDynamicSql($sql, $bindings);
 
 		if (! is_string($prepared) || $prepared === '') {
-			throw new QueryException('Unable to prepare SQL statement.', $sql, $bindings, $this->lastError());
+			throw new QueryException('Unable to prepare SQL statement.', $sql, $bindings);
 		}
 
 		return $prepared;
@@ -197,10 +200,16 @@ final readonly class Database implements DatabaseContract
 	 * @throws QueryException    When the insert fails.
 	 */
 	public function insert(Table $table, array $data): int {
-		$result = $this->wpdb->insert($this->tableName($table), $data);
+		$tableName = $this->tableName($table);
+		$result    = $this->wpdb->insert($tableName, $data);
 
 		if ($result === false) {
-			throw new QueryException($this->message('Unable to insert database row.'), 'INSERT', [], $this->lastError());
+			throw new QueryException(
+				$this->message('Unable to insert database row.'),
+				sprintf('INSERT INTO %s', $this->quoteIdentifier($tableName)),
+				[],
+				$this->lastError()
+			);
 		}
 
 		return (int) $result;
@@ -230,10 +239,16 @@ final readonly class Database implements DatabaseContract
 	 * @throws QueryException    When the update fails.
 	 */
 	public function update(Table $table, array $data, array $where): int {
-		$result = $this->wpdb->update($this->tableName($table), $data, $where);
+		$tableName = $this->tableName($table);
+		$result    = $this->wpdb->update($tableName, $data, $where);
 
 		if ($result === false) {
-			throw new QueryException($this->message('Unable to update database rows.'), 'UPDATE', [], $this->lastError());
+			throw new QueryException(
+				$this->message('Unable to update database rows.'),
+				sprintf('UPDATE %s', $this->quoteIdentifier($tableName)),
+				[],
+				$this->lastError()
+			);
 		}
 
 		return (int) $result;
@@ -248,10 +263,16 @@ final readonly class Database implements DatabaseContract
 	 * @throws QueryException    When the delete fails.
 	 */
 	public function delete(Table $table, array $where): int {
-		$result = $this->wpdb->delete($this->tableName($table), $where);
+		$tableName = $this->tableName($table);
+		$result    = $this->wpdb->delete($tableName, $where);
 
 		if ($result === false) {
-			throw new QueryException($this->message('Unable to delete database rows.'), 'DELETE', [], $this->lastError());
+			throw new QueryException(
+				$this->message('Unable to delete database rows.'),
+				sprintf('DELETE FROM %s', $this->quoteIdentifier($tableName)),
+				[],
+				$this->lastError()
+			);
 		}
 
 		return (int) $result;
@@ -261,7 +282,7 @@ final readonly class Database implements DatabaseContract
 	 * Quote one trusted SQL identifier while escaping embedded backticks.
 	 */
 	public function quoteIdentifier(string $identifier): string {
-		return '`' . str_replace('`', '``', $identifier) . '`';
+		return $this->quoteSqlIdentifier($identifier);
 	}
 
 	/**
@@ -310,11 +331,12 @@ final readonly class Database implements DatabaseContract
 	}
 
 	/**
-	 * Invoke wpdb::prepare() without relying on its variadic signature in static analysis.
+	 * Invoke wpdb::prepare() for runtime SQL that cannot satisfy the WordPress
+	 * stubs' literal-string requirement during static analysis.
 	 *
 	 * @param list<mixed> $bindings
 	 */
-	private function prepareWithWpdb(string $sql, array $bindings): mixed {
+	private function prepareDynamicSql(string $sql, array $bindings): mixed {
 		$method = 'prepare';
 
 		return call_user_func_array([$this->wpdb, $method], array_merge([$sql], $bindings));
