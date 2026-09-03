@@ -1,0 +1,252 @@
+---
+title: Log
+description: Add configurable PSR-3 logging to application services with console, PHP error log, stacked, or null channels.
+sidebar:
+  order: 4
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Foundation Log configures [Monolog](https://github.com/Seldaek/monolog) behind the standard `Psr\Log\LoggerInterface`. Application services depend on the PSR-3 contract, while configuration selects where records are written and which levels are kept.
+
+## Installation
+
+Install the split package:
+
+```shell
+composer require stellarwp/foundation-log
+```
+
+### Prepare the application
+
+Foundation Log uses the shared application configuration and provider architecture established in these guides:
+
+<CardGrid>
+  <LinkCard
+    title="Configure the Container"
+    description="Make config.php available to Foundation providers."
+    href="/start/configure-the-container/"
+  />
+  <LinkCard
+    title="Bootstrap a WordPress Plugin"
+    description="Register infrastructure providers in application order."
+    href="/start/bootstrap-wordpress-plugin/"
+  />
+  <LinkCard
+    title="Register Service Providers"
+    description="Inject configured services into focused application features."
+    href="/start/register-service-providers/"
+  />
+</CardGrid>
+
+## Configuration
+
+### Choose where records are written
+
+Set one channel for the application:
+
+| Channel | Writes to | Use when |
+| --- | --- | --- |
+| `console` | A configured stream, with colored levels | Local development, CLI processes, or container logs |
+| `errorlog` | PHP's `error_log()` | The hosting platform collects the PHP error log |
+| `stack` | Both `console` and `errorlog` | The same records must reach the process stream and PHP error log |
+| `null` | Nothing | Logging must be intentionally disabled, including in focused tests |
+
+:::caution[Choose a production channel explicitly]
+The example below defaults to `null` so an unconfigured application does not write somewhere unexpected. Set `APP_LOG_CHANNEL` in deployed environments where records must be retained; otherwise failures will not be logged.
+:::
+
+Map the channel, minimum level, and stream in the application's root `config.php`:
+
+```php title="config.php"
+<?php declare(strict_types=1);
+
+return [
+	'log' => [
+		'channel'  => $_ENV['APP_LOG_CHANNEL'] ?? 'null',
+		'level'    => $_ENV['APP_LOG_LEVEL'] ?? 'info',
+		'channels' => [
+			'console' => [
+				'with' => [
+					'stream' => 'php://stdout',
+				],
+			],
+			'stack' => [
+				'with' => [
+					'stream' => 'php://stdout',
+				],
+			],
+		],
+	],
+];
+```
+
+The stream setting is used by `console` and by the console side of `stack`. Common values are `php://stdout` and `php://stderr`.
+
+### Choose the minimum level
+
+The configured level keeps records at that severity and above:
+
+| Level | Typical use |
+| --- | --- |
+| `debug` | Detailed diagnostics useful during development |
+| `info` | Normal application milestones |
+| `notice` | Significant but expected events |
+| `warning` | Unexpected conditions from which the operation can recover |
+| `error` | An operation failed but the application can continue |
+| `critical` | A major application capability is unavailable |
+| `alert` | Immediate operator action is required |
+| `emergency` | The application or site is unusable |
+
+Use lowercase names in configuration. Foundation also accepts title case and uppercase variants.
+
+### Register the logging provider
+
+In `src/App.php`, add `LogProvider` before feature providers that consume `LoggerInterface`:
+
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Log\LogProvider;
+use YourPlugin\Catalog;
+
+/** @var list<class-string<Providable>> */
+private const array PROVIDERS = [
+	LogProvider::class,
+	Catalog\Provider::class,
+];
+```
+
+`LogProvider` is an optional default. Applications that need rotating files, a remote log service, custom processors, or different failure behavior can omit it and bind `LoggerInterface` in their own provider.
+
+### Understand configuration failures
+
+An unavailable PHP `error_log()` function does not stop the application:
+
+- The `errorlog` channel falls back to the null handler.
+- The `stack` channel keeps the console handler and skips the unavailable error-log handler.
+
+Invalid configuration is different. An unsupported level fails while `LogProvider` is registered, and an unsupported channel fails when `LoggerInterface` is first resolved. Use one of the documented values rather than silently losing records because of a typo.
+
+```php
+// error_log() is disabled: the application continues without that handler.
+$_ENV['APP_LOG_CHANNEL'] = 'errorlog';
+
+// Unsupported configuration: fix the value instead of continuing silently.
+$_ENV['APP_LOG_CHANNEL'] = 'file';
+```
+
+## Usage
+
+### Inject the PSR-3 logger
+
+In `src/Catalog/Catalog_Importer.php`, depend on `Psr\Log\LoggerInterface`, not Monolog or a Foundation handler. Include structured context with identifiers and values needed to investigate the event:
+
+```php title="Catalog_Importer.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Catalog;
+
+use Psr\Log\LoggerInterface;
+
+/**
+ * Imports remote products into the local catalog.
+ */
+final readonly class Catalog_Importer {
+
+	public function __construct(
+		private LoggerInterface $logger
+	) {
+	}
+
+	public function import( int $site_id, array $products ): void {
+		$this->logger->info(
+			'Starting catalog import.',
+			[
+				'site_id'       => $site_id,
+				'product_count' => count( $products ),
+			]
+		);
+
+		foreach ( $products as $product ) {
+			if ( empty( $product['sku'] ) ) {
+				$this->logger->warning(
+					'Skipping a product without a SKU.',
+					[
+						'site_id'    => $site_id,
+						'product_id' => $product['id'] ?? null,
+					]
+				);
+
+				continue;
+			}
+
+			// Import the product.
+		}
+	}
+}
+```
+
+Context remains machine-readable and keeps operational data out of the message text. Do not include passwords, access tokens, payment details, or other secrets.
+
+### Record exceptions with their context
+
+Pass the exception under the conventional `exception` key so handlers and processors can inspect it:
+
+```php
+try {
+	$this->catalog->synchronize( $site_id );
+} catch ( Throwable $exception ) {
+	$this->logger->error(
+		'Catalog synchronization failed.',
+		[
+			'site_id'  => $site_id,
+			'exception' => $exception,
+		]
+	);
+
+	throw $exception;
+}
+```
+
+Log the failure at the boundary responsible for handling or reporting it. Avoid recording the same exception again at every layer through which it passes.
+
+## Testing
+
+### Disable records when logging is irrelevant
+
+Replace the application logger with the PSR-3 `NullLogger` when a focused test does not assert logging behavior:
+
+```php
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
+
+$this->container->bind( LoggerInterface::class, NullLogger::class );
+```
+
+### Assert important records
+
+Monolog's `TestHandler` captures records without writing them to an external destination:
+
+```php
+use Monolog\Handler\TestHandler;
+use Monolog\Logger;
+use Psr\Log\LoggerInterface;
+
+$handler = new TestHandler();
+$logger  = new Logger( 'test', [ $handler ] );
+
+$this->container->bind( LoggerInterface::class, $logger );
+
+$service = $this->container->get( Catalog_Importer::class );
+$service->import( 42, [ [ 'id' => 10 ] ] );
+
+$this->assertTrue( $handler->hasWarning( [
+	'message' => 'Skipping a product without a SKU.',
+	'context' => [
+		'site_id'    => 42,
+		'product_id' => 10,
+	],
+] ) );
+```
+
+Assert logs only when they are part of the feature's observable operational contract. Otherwise, test the feature's result and use `NullLogger`.

@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\Tests\Unit\Cli\Generation;
 
 use RuntimeException;
 use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\StraussConfig;
 use StellarWP\Foundation\Tests\TestCase;
 
@@ -39,7 +40,7 @@ final class ComposerAutoloadResolverTest extends TestCase
 			],
 		]);
 
-		$namespace = (new ComposerAutoloadResolver($root))->firstPsr4Namespace();
+		$namespace = $this->resolver($root)->firstPsr4Namespace();
 
 		$this->assertSame('Acme\\Plugin\\', $namespace->namespace);
 		$this->assertSame('src', $namespace->path);
@@ -60,7 +61,7 @@ final class ComposerAutoloadResolverTest extends TestCase
 			],
 		]);
 
-		$project = (new ComposerAutoloadResolver($root))->project();
+		$project = $this->resolver($root)->project();
 		$shared  = $project->psr4NamespaceFor('Acme\\Shared\\Cli');
 
 		$this->assertCount(3, $project->psr4Namespaces);
@@ -80,7 +81,7 @@ final class ComposerAutoloadResolverTest extends TestCase
 			],
 		]);
 
-		$project = (new ComposerAutoloadResolver($root))->project();
+		$project = $this->resolver($root)->project();
 		$match   = $project->psr4NamespaceFor('Acme\\Plugin\\Cli');
 
 		$this->assertNotNull($match);
@@ -98,10 +99,25 @@ final class ComposerAutoloadResolverTest extends TestCase
 			],
 		]);
 
-		$namespace = (new ComposerAutoloadResolver($root))->firstPsr4Namespace();
+		$namespace = $this->resolver($root)->firstPsr4Namespace();
 
 		$this->assertSame('Acme\\Plugin\\', $namespace->namespace);
 		$this->assertSame('src', $namespace->path);
+	}
+
+	public function test_it_rejects_invalid_string_psr4_namespaces(): void {
+		$root = $this->temporaryRoot([
+			'autoload' => [
+				'psr-4' => [
+					'Acme Plugin\\' => 'src',
+				],
+			],
+		]);
+
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('Namespace "Acme Plugin" is not a valid PHP namespace.');
+
+		$this->resolver($root)->project();
 	}
 
 	public function test_it_skips_non_string_psr4_array_paths(): void {
@@ -113,7 +129,7 @@ final class ComposerAutoloadResolverTest extends TestCase
 			],
 		]);
 
-		$namespace = (new ComposerAutoloadResolver($root))->firstPsr4Namespace();
+		$namespace = $this->resolver($root)->firstPsr4Namespace();
 
 		$this->assertSame('Acme\\Plugin\\', $namespace->namespace);
 		$this->assertSame('src', $namespace->path);
@@ -128,7 +144,7 @@ final class ComposerAutoloadResolverTest extends TestCase
 			],
 		]);
 
-		$namespace = (new ComposerAutoloadResolver($root))->firstPsr4Namespace();
+		$namespace = $this->resolver($root)->firstPsr4Namespace();
 
 		$this->assertSame('Acme\\Plugin\\', $namespace->namespace);
 		$this->assertSame('', $namespace->path);
@@ -139,13 +155,13 @@ final class ComposerAutoloadResolverTest extends TestCase
 		$this->expectException(RuntimeException::class);
 		$this->expectExceptionMessage('Could not find a valid autoload.psr-4 namespace in composer.json.');
 
-		(new ComposerAutoloadResolver($this->temporaryRoot([
+		$this->resolver($this->temporaryRoot([
 			'autoload' => [
 				'psr-4' => [
 					'' => 'src',
 				],
 			],
-		])))->firstPsr4Namespace();
+		]))->firstPsr4Namespace();
 	}
 
 	public function test_it_resolves_strauss_namespace_prefix(): void {
@@ -157,7 +173,22 @@ final class ComposerAutoloadResolverTest extends TestCase
 			],
 		]);
 
-		$this->assertSame('Acme\\Product\\', (new ComposerAutoloadResolver($root))->straussNamespacePrefix());
+		$this->assertSame('Acme\\Product\\', $this->resolver($root)->straussNamespacePrefix());
+	}
+
+	public function test_it_rejects_an_invalid_strauss_namespace_prefix(): void {
+		$root = $this->temporaryRoot([
+			'extra' => [
+				'strauss' => [
+					'namespace_prefix' => 'Acme Product\\',
+				],
+			],
+		]);
+
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('Namespace "Acme Product" is not a valid PHP namespace.');
+
+		$this->resolver($root)->straussNamespacePrefix();
 	}
 
 	public function test_it_refuses_to_prefix_non_foundation_classes(): void {
@@ -177,7 +208,7 @@ final class ComposerAutoloadResolverTest extends TestCase
 		$this->expectException(RuntimeException::class);
 		$this->expectExceptionMessage('Cannot apply Foundation namespace prefix to non-Foundation class');
 
-		(new ComposerAutoloadResolver($root))->project()->foundationClass('Acme\\Plugin\\Command');
+		$this->resolver($root)->project()->foundationClass('Acme\\Plugin\\Command');
 	}
 
 	public function test_strauss_config_refuses_to_prefix_non_foundation_classes(): void {
@@ -188,14 +219,14 @@ final class ComposerAutoloadResolverTest extends TestCase
 	}
 
 	public function test_it_returns_null_when_strauss_namespace_prefix_is_missing(): void {
-		$this->assertNull((new ComposerAutoloadResolver($this->temporaryRoot([])))->straussNamespacePrefix());
+		$this->assertNull($this->resolver($this->temporaryRoot([]))->straussNamespacePrefix());
 	}
 
 	public function test_it_fails_when_composer_json_is_missing(): void {
 		$this->expectException(RuntimeException::class);
 		$this->expectExceptionMessage('Could not find composer.json');
 
-		(new ComposerAutoloadResolver($this->temporaryRoot()))->firstPsr4Namespace();
+		$this->resolver($this->temporaryRoot())->firstPsr4Namespace();
 	}
 
 	public function test_it_fails_when_composer_json_root_is_not_an_object(): void {
@@ -206,7 +237,7 @@ final class ComposerAutoloadResolverTest extends TestCase
 		$this->expectException(RuntimeException::class);
 		$this->expectExceptionMessage('Could not read composer.json');
 
-		(new ComposerAutoloadResolver($root))->firstPsr4Namespace();
+		$this->resolver($root)->firstPsr4Namespace();
 	}
 
 	public function test_it_fails_when_composer_json_is_malformed(): void {
@@ -217,29 +248,33 @@ final class ComposerAutoloadResolverTest extends TestCase
 		$this->expectException(RuntimeException::class);
 		$this->expectExceptionMessage('Could not parse composer.json');
 
-		(new ComposerAutoloadResolver($root))->firstPsr4Namespace();
+		$this->resolver($root)->firstPsr4Namespace();
 	}
 
 	public function test_it_fails_when_composer_json_has_no_psr4_autoload(): void {
 		$this->expectException(RuntimeException::class);
 		$this->expectExceptionMessage('Could not find an autoload.psr-4 namespace in composer.json.');
 
-		(new ComposerAutoloadResolver($this->temporaryRoot([
+		$this->resolver($this->temporaryRoot([
 			'autoload' => [],
-		])))->firstPsr4Namespace();
+		]))->firstPsr4Namespace();
 	}
 
 	public function test_it_fails_when_psr4_autoload_has_no_valid_path(): void {
 		$this->expectException(RuntimeException::class);
 		$this->expectExceptionMessage('Could not find a valid autoload.psr-4 namespace in composer.json.');
 
-		(new ComposerAutoloadResolver($this->temporaryRoot([
+		$this->resolver($this->temporaryRoot([
 			'autoload' => [
 				'psr-4' => [
 					'Acme\\Plugin\\' => [],
 				],
 			],
-		])))->firstPsr4Namespace();
+		]))->firstPsr4Namespace();
+	}
+
+	private function resolver(string $root): ComposerAutoloadResolver {
+		return new ComposerAutoloadResolver(new ProjectDirectory($root));
 	}
 
 	/**

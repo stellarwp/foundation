@@ -1,0 +1,251 @@
+---
+title: Identifier
+description: Generate and validate injectable ULIDs without coupling application services to static helpers.
+sidebar:
+  order: 5
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Foundation Identifier provides injectable contracts for string identifiers and a default ULID implementation. Generated ULIDs are canonical 26-character uppercase strings that combine a millisecond timestamp with secure randomness.
+
+ULIDs work well for identifiers that must be portable across databases or systems while remaining roughly sortable by creation time.
+
+## Installation
+
+Install the split package:
+
+```shell
+composer require stellarwp/foundation-identifier
+```
+
+### Prepare the application
+
+Identifier services are registered through the shared application provider list:
+
+<CardGrid>
+  <LinkCard
+    title="Bootstrap a WordPress Plugin"
+    description="Register infrastructure providers in application order."
+    href="/start/bootstrap-wordpress-plugin/"
+  />
+  <LinkCard
+    title="Register Service Providers"
+    description="Select application contracts from focused feature providers."
+    href="/start/register-service-providers/"
+  />
+  <LinkCard
+    title="Container"
+    description="Understand aliases, contextual bindings, and provider composition."
+    href="/components/container/"
+  />
+</CardGrid>
+
+## Configuration
+
+### Register the identifier provider
+
+In `src/App.php`, add the Foundation provider before features that generate or validate ULIDs:
+
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Identifier\IdentifierProvider;
+use YourPlugin\Job;
+
+/** @var list<class-string<Providable>> */
+private const array PROVIDERS = [
+	IdentifierProvider::class,
+	Job\Provider::class,
+];
+```
+
+The provider registers secure entropy, a system millisecond clock, `UlidGenerator`, and `UlidValidator` as shared services.
+
+### Choose the contract your feature needs
+
+Use the narrowest contract that describes the feature:
+
+| Contract | Use when |
+| --- | --- |
+| `Ulid\Contracts\UlidGenerator` | The stored or exchanged identifier must be a ULID |
+| `Contracts\IdentifierGenerator` | The feature needs a unique string but should not choose its format |
+
+`IdentifierProvider` binds the ULID-specific contract. It deliberately does not bind the broad `IdentifierGenerator` contract because the application must decide whether ULID is its default identifier strategy.
+
+If the application chooses ULIDs as its default, create `src/Identifier/Provider.php`:
+
+```php title="Provider.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Identifier;
+
+use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\Identifier\Contracts\IdentifierGenerator;
+use StellarWP\Foundation\Identifier\Ulid\Contracts\UlidGenerator;
+
+/**
+ * Selects ULID as the application's default identifier strategy.
+ */
+final class Provider extends Service_Provider {
+
+	public function register(): void {
+		$this->register_default_generator();
+	}
+
+	private function register_default_generator(): void {
+		$this->container->bind(
+			IdentifierGenerator::class,
+			static fn ( C $c ): UlidGenerator => $c->get( UlidGenerator::class )
+		);
+	}
+}
+```
+
+Register both providers in `src/App.php`, in that order:
+
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Identifier\IdentifierProvider;
+use YourPlugin\Identifier;
+
+/** @var list<class-string<Providable>> */
+private const array PROVIDERS = [
+	IdentifierProvider::class,
+	Identifier\Provider::class,
+];
+```
+
+The callback aliases the broad contract to the configured ULID singleton, so both contracts resolve the same generator.
+
+## Usage
+
+### Generate the application's default identifier
+
+In `src/Job/Job_Creator.php`, inject the broad contract when the feature needs a unique string but does not own its format. With the application binding above, it resolves to the ULID generator:
+
+```php title="Job_Creator.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Job;
+
+use StellarWP\Foundation\Identifier\Contracts\IdentifierGenerator;
+
+/**
+ * Creates identifiers for queued jobs.
+ */
+final readonly class Job_Creator {
+
+	public function __construct(
+		private IdentifierGenerator $generator
+	) {
+	}
+
+	public function create_id(): string {
+		return $this->generator->generate();
+	}
+}
+```
+
+A generated value looks like `01ARYZ6S410000000000000000`.
+
+If a database column, message contract, or remote API specifically requires a ULID, inject `Ulid\Contracts\UlidGenerator` instead. That type makes the format requirement explicit and does not require the broad application binding.
+
+:::caution[Do not replace failed secure generation with a weaker identifier]
+Generation fails when secure entropy is unavailable, the clock is outside the ULID timestamp range, or an injected entropy source returns the wrong number of bytes. Abort or retry the operation. Do not fall back to `uniqid()`, a timestamp, or another predictable value that weakens identifier guarantees.
+:::
+
+### Validate external ULIDs
+
+In `src/Job/Job_Request.php`, use `UlidValidator` at input boundaries before passing an external identifier into application behavior:
+
+```php title="Job_Request.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Job;
+
+use InvalidArgumentException;
+use StellarWP\Foundation\Identifier\Ulid\UlidValidator;
+
+/**
+ * Validates a job identifier received from outside the application.
+ */
+final readonly class Job_Request {
+
+	public function __construct(
+		private UlidValidator $validator
+	) {
+	}
+
+	/**
+	 * @throws InvalidArgumentException When the identifier is not a canonical ULID.
+	 */
+	public function identifier( string $value ): string {
+		if ( ! $this->validator->isValid( $value ) ) {
+			throw new InvalidArgumentException( 'The job identifier is invalid.' );
+		}
+
+		return $value;
+	}
+}
+```
+
+Validation accepts canonical uppercase ULIDs only. Lowercase values, invalid lengths, ambiguous characters such as `I`, `L`, `O`, and `U`, and timestamps outside the ULID range are rejected.
+
+### Understand ordering and exposure
+
+The first ten ULID characters encode creation time in milliseconds, so sorting canonical ULID strings groups identifiers by generation time.
+
+:::caution[ULIDs are not a total sequence]
+The default generator uses random entropy and is not monotonic. Two identifiers generated within the same millisecond are valid but are not guaranteed to sort in generation order. Use a database sequence or another explicit ordering field when exact order matters.
+:::
+
+:::caution[ULIDs are identifiers, not secrets]
+A ULID exposes its approximate creation time. Never use possession of an identifier as authorization, and do not place secrets in or derive secrets from it. Continue to enforce normal capability and ownership checks when loading the identified resource.
+:::
+
+## Testing
+
+### Replace format-agnostic generation
+
+When application code depends on `IdentifierGenerator`, use a small fixture that always returns a known value. Create `tests/Support/Fixtures/Identifier/Fixed_Identifier_Generator.php`:
+
+```php title="Fixed_Identifier_Generator.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Tests\Support\Fixtures\Identifier;
+
+use StellarWP\Foundation\Identifier\Contracts\IdentifierGenerator;
+
+/**
+ * Returns one predictable identifier in focused tests.
+ */
+final readonly class Fixed_Identifier_Generator implements IdentifierGenerator {
+
+	public function __construct(
+		private string $identifier
+	) {
+	}
+
+	public function generate(): string {
+		return $this->identifier;
+	}
+}
+```
+
+Bind the fixture before resolving the service under test:
+
+```php
+$identifier = '01ARYZ6S410000000000000000';
+
+$this->container->bind(
+	IdentifierGenerator::class,
+	new Fixed_Identifier_Generator( $identifier )
+);
+
+$service = $this->container->get( Job_Creator::class );
+
+$this->assertSame( $identifier, $service->create_id() );
+```
+
+Use `UlidValidator` when a test only needs to confirm that production generation returns a valid ULID. Avoid asserting an exact value from the system clock and secure entropy.

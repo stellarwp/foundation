@@ -1,0 +1,325 @@
+---
+title: Pipeline
+description: Pass a value through an ordered sequence of container-resolved transformations and checks.
+sidebar:
+  order: 6
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Foundation Pipeline passes a value through an ordered chain of pipes. Each pipe can transform the value, perform a check, stop execution, or call the next pipe. The implementation is based on Laravel's Pipeline pattern and uses the Foundation container to resolve class-based pipes.
+
+Pipelines are useful when one operation has several independent steps whose order should remain visible, such as normalizing input, validating business rules, enriching data, and persisting the final result.
+
+## Installation
+
+Install the split package:
+
+```shell
+composer require stellarwp/foundation-pipeline
+```
+
+### Prepare the application
+
+Pipeline has no service provider or configuration file. It uses the shared container when class names are supplied as pipes:
+
+<CardGrid>
+  <LinkCard
+    title="Configure the Container"
+    description="Construct the container used to resolve class-based pipes."
+    href="/start/configure-the-container/"
+  />
+  <LinkCard
+    title="Register Service Providers"
+    description="Configure dependencies required by individual pipes."
+    href="/start/register-service-providers/"
+  />
+  <LinkCard
+    title="Container"
+    description="Understand autowiring and contextual dependencies."
+    href="/components/container/"
+  />
+</CardGrid>
+
+## Configuration
+
+### Configure a pipeline in a provider
+
+Define the ordered pipe list in the feature provider, then use a contextual binding to select that configured pipeline for its consumer. This keeps workflow composition out of the class that runs it.
+
+In `src/Catalog/Provider.php`:
+
+```php title="Provider.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Catalog;
+
+use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\Pipeline\Pipeline;
+
+/**
+ * Configures the catalog import workflow.
+ */
+final class Provider extends Service_Provider {
+
+	private const string PRODUCT_IMPORT_PIPELINE = 'your-plugin.catalog.product-import-pipeline';
+
+	public function register(): void {
+		$this->register_product_import_pipeline();
+	}
+
+	private function register_product_import_pipeline(): void {
+		$this->container->bind(
+			self::PRODUCT_IMPORT_PIPELINE,
+			static fn ( C $c ): Pipeline => $c->get( Pipeline::class )->through( [
+				Normalize_Product::class,
+				Require_Product_Sku::class,
+			] )
+		);
+
+		$this->container->when( Product_Importer::class )
+			->needs( Pipeline::class )
+			->give(
+				static fn ( C $c ): Pipeline => $c->get( self::PRODUCT_IMPORT_PIPELINE )
+			);
+	}
+}
+```
+
+In `src/Catalog/Product_Importer.php`, the consumer uses the pipeline it receives without knowing which pipes compose it:
+
+```php title="Product_Importer.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Catalog;
+
+use InvalidArgumentException;
+use StellarWP\Foundation\Pipeline\Pipeline;
+
+/**
+ * Applies the catalog import workflow to incoming product data.
+ */
+final readonly class Product_Importer {
+
+	public function __construct(
+		private Pipeline $pipeline,
+		private Product_Repository $products
+	) {
+	}
+
+	/**
+	 * @param array<string, mixed> $product
+	 *
+	 * @throws InvalidArgumentException When the product has no SKU.
+	 */
+	public function import( array $product ): Product {
+		/** @var Product $imported */
+		$imported = $this->pipeline
+			->send( $product )
+			->then(
+				fn ( array $normalized ): Product => $this->products->save( $normalized )
+			);
+
+		return $imported;
+	}
+}
+```
+
+:::caution[Use a prototype binding]
+Use `bind()` for configured pipelines. `send()`, `through()`, `pipe()`, and `via()` change the pipeline instance, so a singleton can leak mutable state between operations in a long-running process.
+:::
+
+Register each distinct workflow under its own container identifier and contextually give consumers the one they need. Class-name pipes are resolved through the container, so their own dependencies remain injectable.
+
+## Usage
+
+### Create a transforming pipe
+
+Create `src/Catalog/Normalize_Product.php` for the first pipe. A pipe receives the current value and a `$next` closure; pass the transformed value to `$next` to continue:
+
+```php title="Normalize_Product.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Catalog;
+
+use Closure;
+
+/**
+ * Normalizes product fields before import.
+ */
+final class Normalize_Product {
+
+	/**
+	 * @param array<string, mixed> $product
+	 *
+	 * @return mixed
+	 */
+	public function handle( array $product, Closure $next ): mixed {
+		$product['sku']  = strtoupper( trim( (string) ( $product['sku'] ?? '' ) ) );
+		$product['name'] = trim( (string) ( $product['name'] ?? '' ) );
+
+		return $next( $product );
+	}
+}
+```
+
+The first configured pipe runs first. The destination passed to `then()` runs only after every pipe calls `$next`.
+
+### Reject invalid input
+
+Create `src/Catalog/Require_Product_Sku.php` for the validation pipe. Throw when the operation cannot continue; Pipeline rethrows exceptions from pipes and the destination unchanged:
+
+```php title="Require_Product_Sku.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Catalog;
+
+use Closure;
+use InvalidArgumentException;
+
+/**
+ * Requires a normalized SKU before a product is saved.
+ */
+final class Require_Product_Sku {
+
+	/**
+	 * @param array<string, mixed> $product
+	 *
+	 * @throws InvalidArgumentException When the product has no SKU.
+	 *
+	 * @return mixed
+	 */
+	public function handle( array $product, Closure $next ): mixed {
+		if ( $product['sku'] === '' ) {
+			throw new InvalidArgumentException( 'A product SKU is required.' );
+		}
+
+		return $next( $product );
+	}
+}
+```
+
+Catch the exception at the application boundary that can report, retry, or convert the failure. Avoid swallowing it inside the pipeline unless stopping is an expected result.
+
+### Stop without running later pipes
+
+A pipe short-circuits the pipeline by returning a result without calling `$next`:
+
+```php
+public function handle( array $product, Closure $next ): mixed {
+	if ( ( $product['status'] ?? '' ) === 'ignored' ) {
+		return $product;
+	}
+
+	return $next( $product );
+}
+```
+
+In this example, later pipes and the final destination do not run. Use short-circuiting only when the returned type is valid for the entire pipeline; otherwise callers receive an unexpected result type.
+
+### Choose a pipe form
+
+The provider's `through()` call accepts several pipe forms:
+
+| Pipe | Behavior |
+| --- | --- |
+| Class name | Resolved through the container; `handle()` is called when present, otherwise the object must be invokable |
+| Object | Used directly; `handle()` is called when present, otherwise the object must be invokable |
+| Callable | Called directly with the current value and `$next` |
+| `ClassName:param1,param2` | Resolved through the container and given the extra string parameters after `$next` |
+
+Prefer class-name pipes for reusable application behavior because their constructor dependencies remain injectable. Closures are useful for a small operation local to one configured pipeline:
+
+```php
+static fn ( C $c ): Pipeline => $c->get( Pipeline::class )
+	->through(
+		Normalize_Product::class,
+		static fn ( array $value, Closure $next ): mixed => $next( [
+			...$value,
+			'source' => 'remote',
+		] )
+	);
+```
+
+The consumer uses `thenReturn()` when the fully processed value is the result. It uses `then()` when the destination performs the final operation, such as saving the normalized product.
+
+### Pass literal parameters to a pipe
+
+Append comma-separated string parameters after the class name in the provider's pipe list:
+
+```php
+$pipeline->through(
+	Replace_Product_Status::class . ':draft,pending'
+);
+```
+
+The matching pipe receives them after the value and `$next`:
+
+```php
+public function handle(
+	array $product,
+	Closure $next,
+	string $from,
+	string $to
+): mixed {
+	if ( ( $product['status'] ?? '' ) === $from ) {
+		$product['status'] = $to;
+	}
+
+	return $next( $product );
+}
+```
+
+Parameters from the pipe string are always strings. Prefer constructor injection and provider configuration for service dependencies or structured configuration.
+
+### Use a different pipe method
+
+Pipes use `handle()` by default. Configure `via()` when every object pipe in that pipeline exposes another method:
+
+```php
+static fn ( C $c ): Pipeline => $c->get( Pipeline::class )
+	->via( 'process' )
+	->through( [
+		Product_Normalizer::class,
+		Product_Validator::class,
+	] );
+```
+
+Both classes in this example must expose `process( $value, Closure $next )`. Use `through()` to replace the configured pipe list and `pipe()` to append additional pipes.
+
+## Testing
+
+### Test each pipe in isolation
+
+Call the pipe with an identity closure so the test observes the value passed to the next stage:
+
+```php
+$pipe = new Normalize_Product();
+
+$result = $pipe->handle(
+	[
+		'sku'  => ' abc-123 ',
+		'name' => ' Example product ',
+	],
+	static fn ( array $product ): array => $product
+);
+
+$this->assertSame( 'ABC-123', $result['sku'] );
+$this->assertSame( 'Example product', $result['name'] );
+```
+
+### Test the configured order once
+
+Use the real container for one focused test that resolves the consumer and proves the provider-configured pipeline runs in the intended order:
+
+```php
+$product = $this->container->get( Product_Importer::class )->import( [
+		'sku'  => ' abc-123 ',
+		'name' => ' Example product ',
+	] );
+
+$this->assertSame( 'ABC-123', $product->sku() );
+```
+
+Keep most tests on individual pipes. The pipeline package already owns the generic chaining behavior; application tests need to prove only their transformations, short circuits, and configured order.

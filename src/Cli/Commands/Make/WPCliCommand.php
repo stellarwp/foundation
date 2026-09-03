@@ -9,6 +9,8 @@ use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ComposerProject;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\PhpNamespace;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\Psr4Namespace;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\WPCli\WPCliStubPath;
@@ -29,7 +31,7 @@ final class WPCliCommand extends Command
 	private const string NAME = 'make:wpcli-command';
 
 	public function __construct(
-		private readonly string $rootPath,
+		private readonly ProjectDirectory $projectDirectory,
 		private readonly ComposerAutoloadResolver $autoloadResolver,
 		private readonly WordPressClassNameResolver $classNameResolver,
 		private readonly StubResolver $stubResolver,
@@ -61,7 +63,7 @@ final class WPCliCommand extends Command
 
 		$output->writeln(sprintf('<info>Created:</info> %s', $file->relativePath));
 		$output->writeln('');
-		$output->writeln('<comment>Register this command from your WP-CLI provider and configure its $commandPrefix container argument.</comment>');
+		$output->writeln('<comment>Contribute this command to WPCliProvider::COMMANDS from its feature provider.</comment>');
 
 		$runtimeDependencyWarning = $this->runtimeDependencyWarning();
 
@@ -79,7 +81,7 @@ final class WPCliCommand extends Command
 		$namespace   = $this->namespace($input, $project->defaultPsr4Namespace());
 		$path        = $this->path($input, $namespace, $project);
 		$stub        = $this->stubResolver->resolve('wpcli', 'command', WPCliStubPath::command());
-		$relative    = $this->relativePath($path . '/' . $className . '.php');
+		$relative    = $this->projectDirectory->relativePath($path . '/' . $className . '.php');
 		$description = (string) ($input->getOption('description') ?: $this->classNameResolver->description($className));
 		$subcommand  = (string) ($input->getOption('subcommand') ?: $this->classNameResolver->subcommand($className));
 
@@ -91,22 +93,18 @@ final class WPCliCommand extends Command
 				'class'                    => $className,
 				'foundation_wpcli_command' => $project->foundationClass('StellarWP\\Foundation\\WPCli\\Command'),
 				'subcommand'               => $subcommand,
-				'subcommand_php'           => $this->phpString($subcommand),
+				'subcommand_php'           => $this->stubRenderer->phpStringLiteral($subcommand),
 				'description'              => $description,
-				'description_php'          => $this->phpString($description),
+				'description_php'          => $this->stubRenderer->phpStringLiteral($description),
 			])
 		);
-	}
-
-	private function phpString(string $value): string {
-		return var_export($value, true);
 	}
 
 	private function namespace(InputInterface $input, Psr4Namespace $autoload): string {
 		$namespace = $input->getOption('namespace');
 
 		if (is_string($namespace) && trim($namespace) !== '') {
-			return $this->validNamespace(trim($namespace, '\\'));
+			return (new PhpNamespace(trim($namespace, '\\')))->value;
 		}
 
 		return trim($autoload->namespace, '\\') . '\\Cli\\Commands';
@@ -116,7 +114,7 @@ final class WPCliCommand extends Command
 		$path = $input->getOption('path');
 
 		if (is_string($path) && trim($path) !== '') {
-			return $this->absolutePath($path);
+			return $this->projectDirectory->absolutePath($path);
 		}
 
 		$autoload = $project->psr4NamespaceFor($namespace);
@@ -128,39 +126,11 @@ final class WPCliCommand extends Command
 			));
 		}
 
-		return $this->rootPath . '/' . $autoload->pathFor($namespace);
-	}
-
-	private function absolutePath(string $path): string {
-		$path = trim($path);
-
-		if (str_starts_with($path, '/')) {
-			return rtrim($path, '/');
-		}
-
-		return $this->rootPath . '/' . trim($path, '/');
-	}
-
-	private function relativePath(string $path): string {
-		$root = rtrim($this->rootPath, '/') . '/';
-
-		if (str_starts_with($path, $root)) {
-			return substr($path, strlen($root));
-		}
-
-		return $path;
-	}
-
-	private function validNamespace(string $namespace): string {
-		if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\\\\[A-Za-z_][A-Za-z0-9_]*)*$/', $namespace)) {
-			throw new RuntimeException(sprintf('Namespace "%s" is not a valid PHP namespace.', $namespace));
-		}
-
-		return $namespace;
+		return $this->projectDirectory->absolutePath($autoload->pathFor($namespace));
 	}
 
 	private function runtimeDependencyWarning(): ?string {
-		$composerPath = $this->rootPath . '/composer.json';
+		$composerPath = $this->projectDirectory->absolutePath('composer.json');
 
 		if (! is_readable($composerPath)) {
 			return null;

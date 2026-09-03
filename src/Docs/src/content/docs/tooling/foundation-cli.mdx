@@ -1,0 +1,248 @@
+---
+title: Foundation CLI
+description: Generate Foundation-aware WordPress classes and build project-specific developer commands.
+sidebar:
+  order: 1
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Foundation CLI is development tooling for generating project code. It reads the consuming project's Composer configuration, follows WordPress naming and formatting conventions, and uses stubs owned by the runtime package that defines each generated API.
+
+## Installation
+
+Install the CLI as a development dependency in a consuming project:
+
+```shell
+composer require --dev stellarwp/foundation-cli
+```
+
+List its available commands:
+
+```shell
+vendor/bin/foundation list
+```
+
+:::caution[Keep the CLI out of production plugin archives]
+`stellarwp/foundation-cli` includes Symfony Console, generators, and scaffolding assets. Install it with `--dev` and build standalone plugin archives with `composer install --no-dev`. Generated classes depend on their runtime Foundation package, not on the generator.
+
+The aggregate `stellarwp/foundation` package includes the CLI in its normal installation. Require individual split packages when a production archive must remain lean.
+:::
+
+Do not register `StellarWP\Foundation\Cli\CliProvider` in the WordPress application's provider list. It boots the Symfony Console application for the `foundation` executable and is unrelated to WordPress request bootstrap.
+
+### Add a Composer script
+
+The binary can be exposed through a project script in `composer.json`:
+
+```json title="composer.json"
+{
+  "scripts": {
+    "foundation": "@php vendor/bin/foundation"
+  }
+}
+```
+
+Pass command arguments after `--`:
+
+```shell
+composer run foundation -- list
+```
+
+## Generate project code
+
+### Generate a WP-CLI command
+
+```shell
+vendor/bin/foundation make:wpcli-command Sync_Products_Command
+```
+
+The generated class extends Foundation's WP-CLI command base and demonstrates positional arguments, associative options, and flags. A command shipped by the plugin requires the runtime package:
+
+```shell
+composer require stellarwp/foundation-wpcli
+```
+
+<LinkCard
+  title="Build a WP-CLI Command"
+  description="Configure command prefixes, implement command behavior, and register commands lazily."
+  href="/components/wp-cli/"
+/>
+
+### Generate a database feature
+
+Generate the application provider first so later generators can register the table and migration automatically:
+
+```shell
+vendor/bin/foundation make:database-provider
+vendor/bin/foundation make:database-table Reports_Table --migration
+```
+
+The `--migration` flag creates and registers the table's initial migration in the same operation. Table `--namespace` and `--path` options affect only the table class; the migration uses its conventional namespace and path. Use `--migration-id=<id>` only when the generated timestamp identifier must be replaced.
+
+Use `--table-name=<name>` when the table's unprefixed WordPress name should differ from the name derived from its class. On `make:database-migration`, `--table=<class>` instead selects the existing table class whose schema should be reconciled.
+
+Generated database classes require the runtime package:
+
+```shell
+composer require stellarwp/foundation-database
+```
+
+Database table and migration generators refuse to overwrite existing files. Edit an unapplied migration directly, or create a new migration after the existing one has been deployed.
+
+The migration generator selects one of three modes:
+
+| Invocation | Generated behavior | Override stub |
+| --- | --- | --- |
+| `make:database-migration Create_Reports_Table --create=Reports_Table` | Creates the explicitly selected table; `down()` drops the table | `create-table-migration.stub` |
+| `make:database-migration Add_Status_To_Reports --table=Reports_Table` | Reconciles the table's current definition; `down()` throws `IrreversibleMigration` until replaced | `reconcile-table-migration.stub` |
+| `make:database-migration Backfill_Report_Status` | Generates a generic migration; add service or table dependencies manually | `migration.stub` |
+
+The `--create` and `--table` options are mutually exclusive. Each accepts a class from the default `Database\\Tables` namespace or a fully qualified table class. Migration names never select destructive behavior by themselves.
+
+<LinkCard
+  title="Create Database Migrations"
+  description="Define tables, register migration history, and run migrations during deployment."
+  href="/components/database/migrations/"
+/>
+
+### Inspect command options
+
+Use Symfony Console's built-in help for supported names, paths, namespaces, and feature-specific options:
+
+```shell
+vendor/bin/foundation help make:wpcli-command
+vendor/bin/foundation help make:database-provider
+vendor/bin/foundation help make:database-table
+vendor/bin/foundation help make:database-migration
+```
+
+The generators use the first `autoload.psr-4` entry in the project's `composer.json` to determine the default namespace and source path. Explicit `--namespace` and `--path` options override those defaults.
+
+## Customize generation
+
+### Override package stubs
+
+Place project-specific stubs under `foundation/stubs/` using the same feature path as the package default:
+
+```text
+foundation/stubs/
+  wpcli/
+    command.stub
+  database/
+    provider.stub
+    table.stub
+    create-table-migration.stub
+    reconcile-table-migration.stub
+    migration.stub
+```
+
+Copy the package's default stub before customizing it so required placeholders remain available. Local scaffolding assets that should not ship in a production zip should be excluded in the consuming project's `.gitattributes`.
+
+### Generate Strauss-compatible imports
+
+When the consuming project's `composer.json` defines `extra.strauss.namespace_prefix`, generators apply that prefix to Foundation imports. For example, a configured `YourPlugin\\` prefix changes:
+
+```php
+use StellarWP\Foundation\WPCli\Command;
+```
+
+to:
+
+```php
+use YourPlugin\StellarWP\Foundation\WPCli\Command;
+```
+
+This keeps generated classes compatible when Strauss prefixes dependencies without updating project call sites. Handwritten imports remain the application's responsibility.
+
+## Build a project-specific CLI
+
+The installed `vendor/bin/foundation` executable contains Foundation's commands. A project that needs its own Symfony Console commands can create a separate executable using `StellarWP\Foundation\Cli\Application`.
+
+In `src/Cli/Cache_Clear_Command.php`:
+
+```php title="Cache_Clear_Command.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Cli;
+
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
+
+final class Cache_Clear_Command extends Command {
+
+	public function __construct() {
+		parent::__construct( 'cache:clear' );
+	}
+
+	protected function execute( InputInterface $input, OutputInterface $output ): int {
+		$output->writeln( 'Cache cleared.' );
+
+		return Command::SUCCESS;
+	}
+}
+```
+
+In `src/Cli/Command_Provider.php`:
+
+```php title="Command_Provider.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Cli;
+
+use StellarWP\Foundation\Cli\Contracts\CommandProvider;
+
+final class Command_Provider implements CommandProvider {
+
+	public function __construct(
+		private readonly Cache_Clear_Command $command
+	) {
+	}
+
+	public function commands(): iterable {
+		yield $this->command;
+	}
+}
+```
+
+Then create the project's executable, for example `bin/your-plugin`:
+
+```php title="your-plugin"
+#!/usr/bin/env php
+<?php declare(strict_types=1);
+
+use StellarWP\Foundation\Cli\Application;
+use YourPlugin\Cli\Cache_Clear_Command;
+use YourPlugin\Cli\Command_Provider;
+
+require dirname( __DIR__ ) . '/vendor/autoload.php';
+
+$application = new Application( commandProviders: [
+	new Command_Provider( new Cache_Clear_Command() ),
+] );
+
+exit( $application->run() );
+```
+
+This small example has no application dependencies. When commands need services, construct the command provider through the project's container instead of creating dependencies inside command classes.
+
+## Foundation monorepo maintenance
+
+:::danger[Not a consuming-project command]
+`package:create` exists only for maintainers working inside the Foundation monorepo. It creates split-package scaffolding and configures read-only GitHub repositories; it is not a general package generator.
+:::
+
+Preview the repository actions without changing GitHub:
+
+```shell
+composer run foundation -- package:create Log
+```
+
+Pass `--apply` only after reviewing the generated actions:
+
+```shell
+composer run foundation -- package:create Log --apply
+```
+
+The command can create `src/<Package>` scaffolding, asks for the Composer package name, and runs `composer monorepo merge` after local package creation.

@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\WPCli;
 
 use StellarWP\Foundation\Container\Contracts\Container;
+use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 use WP_CLI;
 use WP_CLI_Command;
 
@@ -22,7 +23,7 @@ abstract class Command extends WP_CLI_Command
 
 	public function __construct(
 		protected Container $container,
-		private readonly string $commandPrefix
+		private readonly CommandPrefix $commandPrefix
 	) {
 		parent::__construct();
 	}
@@ -56,14 +57,20 @@ abstract class Command extends WP_CLI_Command
 	 * Register the command with WP-CLI.
 	 */
 	public function register(): void {
-		WP_CLI::add_command($this->command(), [$this, 'runCommand'], [
+		WP_CLI::add_command($this->command(), function (array $args, array $assocArgs): void {
+			$status = $this->runCommand(array_values($args), $assocArgs);
+
+			if ($status !== self::SUCCESS) {
+				WP_CLI::halt($status);
+			}
+		}, [
 			'shortdesc' => $this->description(),
 			'synopsis'  => $this->arguments(),
 		]);
 	}
 
 	protected function command(): string {
-		return trim($this->commandPrefix . ' ' . $this->subcommand());
+		return trim($this->commandPrefix->value . ' ' . $this->subcommand());
 	}
 
 	/**

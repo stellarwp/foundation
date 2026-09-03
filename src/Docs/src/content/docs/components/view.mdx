@@ -1,0 +1,289 @@
+---
+title: View
+description: Render trusted PHP templates to strings from configured or runtime-selected directories.
+sidebar:
+  order: 9
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Foundation View provides a small contract for rendering named views and a default `PhpView` implementation that renders trusted PHP templates from an explicit directory. It keeps markup in view files while application services remain responsible for selecting the view and preparing its data.
+
+`PhpView` uses ordinary PHP templates without introducing custom template syntax. It captures their output and returns it as a string instead of echoing it automatically. A configured renderer can also create an immutable renderer for another trusted directory at runtime.
+
+## Installation
+
+Install the split package:
+
+```shell
+composer require stellarwp/foundation-view
+```
+
+### Prepare the application
+
+Foundation View uses the shared application configuration and provider architecture established in these guides:
+
+<CardGrid>
+  <LinkCard
+    title="Configure the Container"
+    description="Make config.php available to Foundation providers."
+    href="/start/configure-the-container/"
+  />
+  <LinkCard
+    title="Bootstrap a WordPress Plugin"
+    description="Construct the application before registering feature providers."
+    href="/start/bootstrap-wordpress-plugin/"
+  />
+  <LinkCard
+    title="Register Service Providers"
+    description="Register view infrastructure before features that render templates."
+    href="/start/register-service-providers/"
+  />
+</CardGrid>
+
+## Configuration
+
+### Choose the default view directory
+
+Create a `views/` directory at the application root. In the root `config.php`, provide its absolute path:
+
+```php title="config.php"
+<?php declare(strict_types=1);
+
+return [
+	'view' => [
+		'directory' => __DIR__ . '/views',
+	],
+];
+```
+
+`view.directory` is required and must identify an existing, readable directory. Foundation resolves it to its canonical path before rendering.
+
+### Register the view provider
+
+In `src/App.php`, add `ViewProvider` before feature providers that consume the `View` contract:
+
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\View\ViewProvider;
+use YourPlugin\Admin;
+
+/** @var list<class-string<Providable>> */
+private const array PROVIDERS = [
+	ViewProvider::class,
+	Admin\Provider::class,
+];
+```
+
+`ViewProvider` binds one shared `PhpView` instance to `StellarWP\Foundation\View\Contracts\View` and `StellarWP\Foundation\View\Contracts\DirectoryAwareView`.
+
+## Usage
+
+### Create a view before rendering it
+
+View names are relative to the configured directory and omit the `.php` extension. For the name `admin/product-summary`, first create `views/admin/product-summary.php`:
+
+```php title="product-summary.php"
+<?php
+/**
+ * @var string $title   The notice heading.
+ * @var string $summary The product availability summary.
+ */
+?>
+<div class="notice notice-info">
+	<p><strong><?php echo esc_html( $title ); ?></strong></p>
+	<p><?php echo esc_html( $summary ); ?></p>
+</div>
+```
+
+:::note[Document every view variable]
+Add a typed `@var` annotation, including a short description, for every value the view expects. These annotations define the template's input contract, allow PHPStan to analyze the file without undefined-variable errors, and provide type-aware completion in supported IDEs.
+:::
+
+:::caution[Reserved view variable names]
+`PhpView` uses `foundationViewPath` and `foundationViewData` internally. Passing either name as a view data key throws `InvalidArgumentException`; choose application-specific variable names instead.
+:::
+
+:::caution[Escape output in the view]
+Foundation passes data into trusted PHP files but does not escape it automatically. Escape each value for its HTML, attribute, URL, or JavaScript context when the view outputs it. Do not render user-uploaded PHP templates.
+:::
+
+### Render the view from a service
+
+In `src/Admin/Product_Summary_Notice.php`, inject the `View` contract and return or echo the rendered string at the application boundary:
+
+```php title="Product_Summary_Notice.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Admin;
+
+use StellarWP\Foundation\View\Contracts\View;
+
+/**
+ * Displays the current product count in WordPress administration.
+ */
+final readonly class Product_Summary_Notice {
+
+	public function __construct(
+		private View $view,
+		private Product_Repository $products
+	) {
+	}
+
+	/**
+	 * @action admin_notices
+	 */
+	public function display(): void {
+		$count = $this->products->count();
+
+		echo $this->view->render(
+			'admin/product-summary',
+			[
+				'title'   => __( 'Product catalog', 'your-plugin' ),
+				'summary' => sprintf(
+					/* translators: %d: number of products. */
+					_n( '%d product is available.', '%d products are available.', $count, 'your-plugin' ),
+					$count
+				),
+			]
+		);
+	}
+}
+```
+
+Register the WordPress callback from `src/Admin/Provider.php`:
+
+```php title="Provider.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Admin;
+
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+
+/**
+ * Registers administration services and hooks.
+ */
+final class Provider extends Service_Provider {
+
+	public function register(): void {
+		add_action(
+			'admin_notices',
+			$this->container->callback( Product_Summary_Notice::class, 'display' )
+		);
+	}
+}
+```
+
+### Select another directory at runtime
+
+Inject `DirectoryAwareView` instead of the base `View` contract when a service must select another trusted template root, such as a theme override directory:
+
+```php title="Receipt_Renderer.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Receipt;
+
+use StellarWP\Foundation\View\Contracts\DirectoryAwareView;
+
+final readonly class Receipt_Renderer {
+
+	public function __construct(
+		private DirectoryAwareView $view
+	) {
+	}
+
+	public function render( string $trusted_template_directory, Receipt $receipt ): string {
+		$renderer = $this->view->withDirectory( $trusted_template_directory );
+
+		return $renderer->render(
+			'email/receipt',
+			[ 'receipt' => $receipt ]
+		);
+	}
+}
+```
+
+`withDirectory()` returns a new renderer. It does not mutate the shared renderer or affect other services using the configured directory.
+
+:::caution[Do not accept a directory from request input]
+Runtime directory selection is for trusted application paths. Never pass a URL parameter, form value, REST field, or other untrusted input to `withDirectory()`.
+:::
+
+### Supply another renderer
+
+The base `View` contract requires only named rendering. A renderer that does not use PHP files or directories can implement it without supporting `withDirectory()`:
+
+```php title="Json_View.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\View;
+
+use JsonException;
+use StellarWP\Foundation\View\Contracts\View;
+
+final class Json_View implements View {
+
+	/**
+	 * @throws JsonException When the supplied data cannot be encoded.
+	 */
+	public function render( string $name, array $data = [] ): string {
+		return json_encode(
+			[
+				'view' => $name,
+				'data' => $data,
+			],
+			JSON_THROW_ON_ERROR
+		);
+	}
+}
+```
+
+Bind the replacement from the application's feature provider instead of registering `ViewProvider`:
+
+```php title="Provider.php"
+use StellarWP\Foundation\View\Contracts\View;
+
+public function register(): void {
+	$this->container->singleton( View::class, Json_View::class );
+}
+```
+
+Use a separate capability contract when a custom renderer supports optional behavior such as runtime directory selection. Application services that only call `render()` should continue depending on `View`.
+
+### Handle missing views
+
+The renderer throws `ViewNotFoundException` when a view is missing, unreadable, or resolves outside the selected directory. Empty names, absolute paths, null bytes, and parent traversal such as `../private` are rejected with `InvalidArgumentException`.
+
+Exceptions thrown by the view itself are propagated after Foundation removes any removable buffers opened while rendering. A view may use balanced buffers of its own, but it must not clean, flush, close, or replace Foundation's rendering buffer. Invalid buffer state is rejected instead of returning incomplete output. Let application-level error handling record or present those failures rather than returning a partial template.
+
+:::danger[Do not create non-removable output buffers]
+A PHP template must not start a buffer without `PHP_OUTPUT_HANDLER_REMOVABLE`. PHP cannot close such a buffer before the process ends, so no in-process PHP renderer can restore the request's output-buffer stack afterward. Treat view files as trusted application code and keep any buffers they open balanced and removable.
+:::
+
+## Testing
+
+Place small PHP view fixtures under the test data directory. For example, create `tests/_data/views/message.php`:
+
+```php title="message.php"
+<?php
+/** @var string $message */
+?><p><?php echo htmlspecialchars( $message, ENT_QUOTES, 'UTF-8' ); ?></p>
+```
+
+Render the fixture with the concrete class:
+
+```php
+use StellarWP\Foundation\View\PhpView;
+
+$view = new PhpView( codecept_data_dir( 'views' ) );
+
+$this->assertSame(
+	'<p>Hello, Foundation</p>',
+	$view->render(
+		'message',
+		[ 'message' => 'Hello, Foundation' ]
+	)
+);
+```
+
+Test feature services through the `View` contract when the rendered markup is part of their observable behavior. Use a temporary directory under `tests/_data/temp` for path-containment or runtime-directory tests that must create files.

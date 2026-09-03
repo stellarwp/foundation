@@ -5,6 +5,8 @@ namespace StellarWP\Foundation\Cli\Generation;
 use JsonException;
 use RuntimeException;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ComposerProject;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\PhpNamespace;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\Psr4Namespace;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\StraussConfig;
 
@@ -17,7 +19,7 @@ use StellarWP\Foundation\Cli\Generation\ValueObjects\StraussConfig;
 final readonly class ComposerAutoloadResolver
 {
 	public function __construct(
-		private string $rootPath
+		private ProjectDirectory $projectDirectory
 	) {
 	}
 
@@ -36,9 +38,11 @@ final readonly class ComposerAutoloadResolver
 				continue;
 			}
 
+			$namespace = (new PhpNamespace(trim($namespace, '\\')))->value . '\\';
+
 			foreach ($this->paths($paths) as $path) {
 				$psr4Namespaces[] = new Psr4Namespace(
-					namespace: trim($namespace, '\\') . '\\',
+					namespace: $namespace,
 					path: trim($path, '/')
 				);
 			}
@@ -77,14 +81,14 @@ final readonly class ComposerAutoloadResolver
 			return null;
 		}
 
-		return new StraussConfig(trim($prefix, '\\') . '\\');
+		return new StraussConfig((new PhpNamespace(trim($prefix, '\\')))->value . '\\');
 	}
 
 	/**
 	 * @return array<string,mixed>
 	 */
 	private function composer(): array {
-		$composerPath = $this->rootPath . '/composer.json';
+		$composerPath = $this->projectDirectory->absolutePath('composer.json');
 
 		if (! file_exists($composerPath)) {
 			throw new RuntimeException(sprintf('Could not find composer.json at "%s".', $composerPath));

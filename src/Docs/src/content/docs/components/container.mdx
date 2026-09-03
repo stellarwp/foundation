@@ -1,0 +1,216 @@
+---
+title: Container
+description: Autowire application services, select implementations, and compose features through service providers.
+sidebar:
+  order: 1
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Foundation Container adapts [DI52](https://github.com/lucatume/di52) behind a shared container contract and service provider base class. Use it to describe how application services are constructed while keeping dependency resolution out of the services themselves.
+
+## Installation
+
+Install the split package in applications that define their own container or service providers:
+
+```shell
+composer require stellarwp/foundation-container
+```
+
+Other Foundation packages install Container automatically when they depend on it. Composer does not require a second explicit installation in that case.
+
+### Prepare the application
+
+Create one container in the application composition root and register providers in dependency order. These guides establish that structure:
+
+<CardGrid>
+  <LinkCard
+    title="Configure the Container"
+    description="Construct the shared adapter and make application configuration available."
+    href="/start/configure-the-container/"
+  />
+  <LinkCard
+    title="Bootstrap a WordPress Plugin"
+    description="Own the container and ordered provider list in one application object."
+    href="/start/bootstrap-wordpress-plugin/"
+  />
+  <LinkCard
+    title="Register Service Providers"
+    description="Keep feature definitions, configuration, and WordPress hooks together."
+    href="/start/register-service-providers/"
+  />
+</CardGrid>
+
+## Usage
+
+### Let the container autowire concrete classes
+
+The container can construct an unbound concrete class when its constructor dependencies are also concrete classes:
+
+```php
+final readonly class Catalog_Synchronizer {
+
+	public function __construct(
+		private Product_Repository $products,
+		private Remote_Catalog $catalog
+	) {
+	}
+}
+```
+
+Resolve the application entrypoint where it is needed:
+
+```php
+$synchronizer = $container->get( Catalog_Synchronizer::class );
+```
+
+Prefer constructor injection throughout application code. Calling `get()` inside a service hides its dependencies and turns the container into a service locator.
+
+### Select an interface implementation
+
+In `src/Catalog/Provider.php`, bind an interface when the container cannot infer which implementation the application wants. Use `bind()` for a new instance on each resolution and `singleton()` when every resolution should return the same instance:
+
+```php title="Provider.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Catalog;
+
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+
+/**
+ * Selects the catalog implementation used by the application.
+ */
+final class Provider extends Service_Provider {
+
+	public function register(): void {
+		$this->register_catalog();
+	}
+
+	private function register_catalog(): void {
+		$this->container->singleton(
+			Catalog::class,
+			Remote_Catalog::class
+		);
+	}
+}
+```
+
+Bindings are lazy. Registering `Remote_Catalog` does not construct it; the container builds it when another service first requests `Catalog`.
+
+### Supply configuration and scalar values
+
+In the same `src/Catalog/Provider.php`, use a contextual binding when one class needs a scalar or a feature-specific implementation. Target scalar constructor arguments by their `$name`. Import `lucatume\DI52\Container as C` when a factory callback must resolve another service:
+
+```php title="Provider.php"
+private function register_catalog(): void {
+	$this->container->when( Remote_Catalog::class )
+		->needs( '$endpoint' )
+		->give( (string) $this->config->get( 'catalog.endpoint' ) );
+
+	$this->container->singleton( Remote_Catalog::class );
+	$this->container->singleton(
+		Catalog::class,
+		static fn ( C $c ): Remote_Catalog => $c->get( Remote_Catalog::class )
+	);
+}
+```
+
+The callback aliases `Catalog` to the configured `Remote_Catalog` singleton. This preserves the contextual bindings registered for the concrete class and ensures both identifiers resolve the same object.
+
+Use a factory callback only when the value must be computed or fetched from the container. Let the container construct the complete service whenever it can.
+
+### Build a collection across providers
+
+In `src/Report/Provider.php`, use `mergeArrayVar()` when independent providers contribute to one ordered collection. The provider that owns the collection registers its default and supplies it to the consuming class:
+
+```php title="Provider.php"
+public const string EXPORTERS = 'your-plugin.report.exporters';
+
+private function register_exporter_collection(): void {
+	$this->container->mergeArrayVar( self::EXPORTERS, [] );
+
+	$this->container->when( Exporter_Collection::class )
+		->needs( '$exporters' )
+		->give( static fn ( C $c ): array => $c->get( self::EXPORTERS ) );
+}
+```
+
+:::note[Name shared container identifiers]
+Use class and interface names as container identifiers for services. Introduce a text identifier only when a provider owns a shared scalar, configured object, or contribution point that has no natural service contract.
+
+Application-owned text identifiers should start with a stable application or plugin prefix, followed by the feature and value name, as shown by `your-plugin.report.exporters` above. This keeps ownership visible and prevents unrelated features from choosing the same key. Keep the identifier stable if the provider class is renamed.
+
+Text container identifiers are internal application wiring. Do not reuse them as configuration paths, database tables, cache keys, lock names, commands, or other externally visible values.
+:::
+
+Other feature providers append their implementations without replacing earlier contributions. For example, `src/Report/Csv/Provider.php` can contribute the CSV implementation:
+
+```php title="Provider.php"
+private function register_csv_exporter(): void {
+	$this->container->mergeArrayVar(
+		Report\Provider::EXPORTERS,
+		static fn ( C $c ): array => [
+			$c->get( Csv_Exporter::class ),
+		]
+	);
+}
+```
+
+:::caution[Complete registration before resolving the collection]
+Register every contributing provider before resolving services that consume the collection. An existing service will not be rebuilt when a later provider adds another contribution.
+:::
+
+### Register lazy WordPress callbacks
+
+In `src/Catalog/Provider.php`, use `callback()` to let WordPress resolve a service only when its hook runs:
+
+```php title="Provider.php"
+private function register_catalog_sync(): void {
+	$this->container->singleton( Catalog_Synchronizer::class );
+
+	add_action(
+		'your_plugin/sync_catalog',
+		$this->container->callback( Catalog_Synchronizer::class, 'synchronize' )
+	);
+}
+```
+
+This avoids constructing the synchronizer during every request merely to register its callback.
+
+### Decorate a service
+
+In `src/Catalog/Provider.php`, use a decorator chain when cross-cutting behavior should wrap a service without changing its implementation. List the outermost decorator first and the base implementation last:
+
+```php title="Provider.php"
+private function register_catalog(): void {
+	$this->container->singletonDecorators(
+		Catalog::class,
+		[
+			Logging_Catalog::class,
+			Caching_Catalog::class,
+			Remote_Catalog::class,
+		]
+	);
+}
+```
+
+Resolving `Catalog` returns one `Logging_Catalog` that wraps `Caching_Catalog`, which wraps `Remote_Catalog`. Use `bindDecorators()` instead when the application needs a new chain on every resolution.
+
+## Testing
+
+### Replace an implementation in a focused test
+
+Bind a test double to the same contract before resolving the class under test:
+
+```php
+$catalog = new Fake_Catalog();
+
+$this->container->bind( Catalog::class, $catalog );
+
+$synchronizer = $this->container->get( Catalog_Synchronizer::class );
+$synchronizer->synchronize();
+
+$this->assertTrue( $catalog->was_synchronized() );
+```
+
+Test application services through their public behavior. Reserve container integration tests for provider graphs where the binding itself is the behavior under test.

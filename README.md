@@ -1,16 +1,28 @@
 # Foundation
 
-Foundation is a StellarWP Composer monorepo for reusable PHP packages intended for libraries and WordPress plugin ecosystems.
+Foundation is a StellarWP Composer monorepo of shared PHP infrastructure for Nexcess libraries and WordPress plugins. Its packages are publicly available, while Nexcess application needs primarily drive changes and the roadmap.
 
 > [!NOTE]
 > This monorepo splits each package out into their own sub-repository, if you only need a specific component you can install only that specific one.
 
+See the [Foundation documentation](https://foundation.nexcess.dev/) for installation, application architecture, component configuration, and developer tooling.
+
 ## Repositories
-- [stellarwp/foundation-container](https://github.com/stellarwp/foundation-container)
-- [stellarwp/foundation-pipeline](https://github.com/stellarwp/foundation-pipeline)
-- [stellarwp/foundation-log](https://github.com/stellarwp/foundation-log)
-- [stellarwp/foundation-wpcli](https://github.com/stellarwp/foundation-wpcli)
-- [stellarwp/foundation-cli](https://github.com/stellarwp/foundation-cli)
+
+| Package | Use when | Installation |
+| --- | --- | --- |
+| [stellarwp/foundation-container](https://github.com/stellarwp/foundation-container) | The application needs Foundation's DI container and providers | Runtime |
+| [stellarwp/foundation-pipeline](https://github.com/stellarwp/foundation-pipeline) | Work should pass through an ordered middleware-style pipeline | Runtime |
+| [stellarwp/foundation-log](https://github.com/stellarwp/foundation-log) | Services need a configured PSR logger | Runtime |
+| [stellarwp/foundation-shutdown](https://github.com/stellarwp/foundation-shutdown) | Deferred work should run during PHP shutdown, optionally after finishing the response | Runtime |
+| [stellarwp/foundation-lock](https://github.com/stellarwp/foundation-lock) | Code needs the portable lock contract or process-local test implementation | Runtime |
+| [stellarwp/foundation-lock-redis](https://github.com/stellarwp/foundation-lock-redis) | Multiple processes or servers coordinate through dedicated Redis | Runtime |
+| [stellarwp/foundation-database](https://github.com/stellarwp/foundation-database) | A WordPress application needs queries, migrations, or database-backed locks | Runtime |
+| [stellarwp/foundation-identifier](https://github.com/stellarwp/foundation-identifier) | Services need injectable ULID generation and validation | Runtime |
+| [stellarwp/foundation-view](https://github.com/stellarwp/foundation-view) | Services need scoped PHP template rendering without global state | Runtime |
+| [stellarwp/foundation-wpcli](https://github.com/stellarwp/foundation-wpcli) | A shipped WordPress plugin exposes WP-CLI commands | Runtime |
+| [stellarwp/foundation-cli](https://github.com/stellarwp/foundation-cli) | Developers need Foundation generators or monorepo maintenance commands | Development |
+| [stellarwp/foundation-docs](https://github.com/stellarwp/foundation-docs) | Contributors maintain or deploy the Foundation documentation site | Documentation |
 
 ## Installation
 
@@ -52,7 +64,10 @@ Run the Codeception suites with SLIC:
 ```bash
 slic run unit
 slic run feature
+composer test:redis
+composer test:integration
 composer test:wpunit
+composer test:wpcli
 ```
 
 The first time you run the WordPress suite locally, point SLIC at the directory that contains this repository and select the `foundation` project:
@@ -64,7 +79,10 @@ cd foundation
 slic use foundation
 slic composer install
 slic cc build
+composer test:integration
+composer test:redis
 composer test:wpunit
+composer test:wpcli
 ```
 
 If dependencies were installed on a different host PHP version and the SLIC container reports Composer platform conflicts, refresh them inside SLIC:
@@ -75,13 +93,15 @@ slic composer update --with-all-dependencies
 
 Run `slic cc build` again after changing Codeception suite configuration or modules. Generated Codeception actor files are written to `tests/CodeceptionSupport/` and are intentionally ignored.
 
-The `unit` and `feature` SLIC suites run the same tests as `composer test:unit` and `composer test:feature`. The `wpunit` suite runs WordPress-loaded tests through wp-browser.
+The `unit` and `feature` SLIC suites run the same tests as `composer test:unit` and `composer test:feature`. The `redis` suite runs client interoperability and lease behavior against SLIC's Redis service. The `integration` suite covers multi-provider/container behavior that needs WordPress runtime APIs. The `wpunit` suite runs lower-level WordPress-loaded tests through wp-browser. The `wpcli` suite is shared across the monorepo for WP-CLI command tests and uses wp-browser's WPCLI module without the full wpunit module stack.
 
-Generate the test coverage HTML dashboard (XDEBUG required to be enabled on your machine):
+Generate the test coverage HTML dashboard:
 
 ```bash
 composer test:coverage-html
 ```
+
+Coverage uses SLIC 2.3.0+ PCOV support for faster collection. It runs each SLIC suite separately, writes serialized `.cov` artifacts, and merges them with `phpcov` so multiple WordPress-loaded suites can contribute to one Clover or HTML report.
 
 ### Code Quality
 

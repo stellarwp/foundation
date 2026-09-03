@@ -1,0 +1,367 @@
+---
+title: WP-CLI
+description: Build container-aware WP-CLI commands and register them from feature providers.
+sidebar:
+  order: 8
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Foundation WP-CLI provides a container-aware command base class and a shared provider for registering commands during WP-CLI bootstrap. Application services remain injectable, command prefixes remain configurable, and feature providers can contribute commands without loading WP-CLI classes during normal WordPress requests.
+
+## Installation
+
+### Install the runtime package
+
+Install WP-CLI support as a production dependency when the plugin ships commands:
+
+```shell
+composer require stellarwp/foundation-wpcli
+```
+
+WP-CLI supplies the `WP_CLI` and `WP_CLI_Command` runtime classes. Applications running commands through WP-CLI do not normally need to install `wp-cli/wp-cli` separately.
+
+:::caution[Install WP-CLI support without `--dev`]
+If the plugin ships WP-CLI commands, `stellarwp/foundation-wpcli` must be in Composer's `require` section. A production installation using `--no-dev` omits packages from `require-dev`, leaving the plugin's command classes without their Foundation `Command` base class.
+:::
+
+### Install the generator separately
+
+Install the developer CLI only when the team wants to generate command classes:
+
+```shell
+composer require --dev stellarwp/foundation-cli
+```
+
+The generator is development tooling and does not need to ship in a standalone plugin archive.
+
+### Prepare the application
+
+WP-CLI commands use the same container, configuration, and provider graph as the rest of the application:
+
+<CardGrid>
+  <LinkCard
+    title="Configure the Container"
+    description="Load config.php and make the Foundation container available."
+    href="/start/configure-the-container/"
+  />
+  <LinkCard
+    title="Register Service Providers"
+    description="Compose infrastructure and feature providers in the application."
+    href="/start/register-service-providers/"
+  />
+  <LinkCard
+    title="Scope Foundation"
+    description="Choose a stable prefix for a distributable plugin."
+    href="/start/scope-foundation/"
+  />
+</CardGrid>
+
+## Configuration
+
+### Choose the command prefix
+
+In the root `config.php`, configure a stable application prefix for a distributable plugin:
+
+```php title="config.php"
+<?php declare(strict_types=1);
+
+return [
+	'foundation' => [
+		'prefix' => 'your-plugin',
+	],
+];
+```
+
+Commands will be registered beneath `wp your-plugin`. Complete WordPress applications that own the full installation can keep the zero-configuration `nx` default.
+
+Set `wpcli.command_prefix` in the same root `config.php` only when WP-CLI should intentionally use a different prefix:
+
+```php title="config.php"
+return [
+	'foundation' => [
+		'prefix' => 'your-plugin',
+	],
+	'wpcli' => [
+		'command_prefix' => 'your-plugin-tools',
+	],
+];
+```
+
+### Register the WP-CLI provider
+
+In `src/App.php`, register `WPCliProvider` before feature providers that contribute commands:
+
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\WPCli;
+use YourPlugin\Catalog;
+
+/** @var list<class-string<Providable>> */
+private const array PROVIDERS = [
+	WPCli\WPCliProvider::class,
+	Catalog\Provider::class,
+];
+```
+
+`WPCliProvider` listens to `cli_init` and resolves the command collection only when WP-CLI is active. Feature providers should contribute commands to that collection instead of registering their own `cli_init` hooks.
+
+### Contribute a command from its feature provider
+
+`WPCliProvider` creates the shared `CommandPrefix` from configuration. Feature providers only add their commands to the shared collection.
+
+In `src/Catalog/Provider.php`:
+
+```php title="Provider.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Catalog;
+
+use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\WPCli\WPCliProvider;
+use YourPlugin\Catalog\Cli\Sync_Catalog_Command;
+
+/**
+ * Configures the product catalog feature and its WP-CLI commands.
+ */
+final class Provider extends Service_Provider {
+
+	public function register(): void {
+		$this->register_cli_commands();
+	}
+
+	private function register_cli_commands(): void {
+		$this->container->mergeArrayVar(
+			WPCliProvider::COMMANDS,
+			static fn ( C $c ): array => [
+				$c->get( Sync_Catalog_Command::class ),
+			]
+		);
+	}
+}
+```
+
+:::danger[Do not bind command classes separately]
+Do not call `bind()` or `singleton()` for `Sync_Catalog_Command`. DI52 may autoload its `WP_CLI_Command` parent during normal WordPress bootstrap, before WP-CLI exists. The lazy `mergeArrayVar()` contribution resolves the command during `cli_init` instead.
+:::
+
+Add more commands to the same returned array or contribute them from other feature providers. `WPCliProvider` validates the complete collection before registering any command.
+
+## Usage
+
+### Generate a command
+
+Generate the initial class from the project root:
+
+```shell
+vendor/bin/foundation make:wpcli-command Sync_Catalog \
+  --namespace="YourPlugin\\Catalog\\Cli" \
+  --subcommand="catalog:sync" \
+  --description="Synchronize the product catalog."
+```
+
+The generator uses Composer's PSR-4 mapping to write `src/Catalog/Cli/Sync_Catalog_Command.php`. It creates a Snake_Case class with examples of a positional argument, associative option, and flag.
+
+Projects using Strauss receive the configured namespace prefix on generated Foundation imports. With `update_call_sites=false`, handwritten provider imports may also need the project's Strauss prefix.
+
+Project-specific command stubs can override the default at `foundation/stubs/wpcli/command.stub`.
+
+### Implement the command
+
+Keep the command focused on input, output, and selecting the application operation. Inject the service that owns the business behavior rather than resolving it from the container.
+
+In `src/Catalog/Cli/Sync_Catalog_Command.php`:
+
+```php title="Sync_Catalog_Command.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Catalog\Cli;
+
+use StellarWP\Foundation\Container\Contracts\Container;
+use StellarWP\Foundation\WPCli\Command;
+use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
+use WP_CLI;
+use YourPlugin\Catalog\Catalog_Synchronizer;
+
+use function WP_CLI\Utils\get_flag_value;
+
+/**
+ * Synchronizes the product catalog from a configured source.
+ *
+ * @example wp your-plugin catalog:sync staging
+ * @example wp your-plugin catalog:sync staging --batch-size=50 --dry-run
+ */
+final class Sync_Catalog_Command extends Command {
+
+	private const string ARG_SOURCE         = 'source';
+	private const string OPTION_BATCH_SIZE  = 'batch-size';
+	private const int DEFAULT_BATCH_SIZE    = 100;
+	private const string FLAG_DRY_RUN       = 'dry-run';
+
+	public function __construct(
+		Container $container,
+		CommandPrefix $commandPrefix,
+		private readonly Catalog_Synchronizer $synchronizer
+	) {
+		parent::__construct( $container, $commandPrefix );
+	}
+
+	/**
+	 * @param list<mixed>         $args
+	 * @param array<string, mixed> $assocArgs
+	 *
+	 * @throws \WP_CLI\ExitException When command input is invalid.
+	 */
+	public function runCommand( array $args = [], array $assocArgs = [] ): int {
+		$source    = (string) ( $args[0] ?? '' );
+		$batchSize = absint( get_flag_value(
+			$assocArgs,
+			self::OPTION_BATCH_SIZE,
+			self::DEFAULT_BATCH_SIZE
+		) );
+		$dryRun = (bool) get_flag_value( $assocArgs, self::FLAG_DRY_RUN, false );
+
+		if ( $batchSize < 1 ) {
+			WP_CLI::error( __( 'The batch size must be greater than zero.', 'your-plugin' ) );
+		}
+
+		$count = $this->synchronizer->sync( $source, $batchSize, $dryRun );
+
+		if ( $dryRun ) {
+			WP_CLI::success( sprintf(
+				/* translators: 1: Product count, 2: Catalog source. */
+				__( 'Dry run found %1$d products to synchronize from %2$s.', 'your-plugin' ),
+				$count,
+				$source
+			) );
+
+			return self::SUCCESS;
+		}
+
+		WP_CLI::success( sprintf(
+			/* translators: 1: Product count, 2: Catalog source. */
+			__( 'Synchronized %1$d products from %2$s.', 'your-plugin' ),
+			$count,
+			$source
+		) );
+
+		return self::SUCCESS;
+	}
+
+	protected function subcommand(): string {
+		return 'catalog:sync';
+	}
+
+	protected function description(): string {
+		return __( 'Synchronize the product catalog.', 'your-plugin' );
+	}
+
+	protected function arguments(): array {
+		return [
+			[
+				'type'        => self::POSITIONAL,
+				'name'        => self::ARG_SOURCE,
+				'description' => __( 'The catalog source to synchronize.', 'your-plugin' ),
+				'optional'    => false,
+			],
+			[
+				'type'        => self::ASSOCIATIVE,
+				'name'        => self::OPTION_BATCH_SIZE,
+				'description' => __( 'The number of products processed per batch.', 'your-plugin' ),
+				'optional'    => true,
+				'default'     => self::DEFAULT_BATCH_SIZE,
+			],
+			[
+				'type'        => self::FLAG,
+				'name'        => self::FLAG_DRY_RUN,
+				'description' => __( 'Preview the synchronization without writing changes.', 'your-plugin' ),
+				'optional'    => true,
+			],
+		];
+	}
+}
+```
+
+The three synopsis types map to WP-CLI input as follows:
+
+| Type | Declaration | Invocation |
+| --- | --- | --- |
+| Positional | `source` | `staging` |
+| Associative | `batch-size` | `--batch-size=50` |
+| Flag | `dry-run` | `--dry-run` |
+
+### Run the command
+
+With the `your-plugin` application prefix, run:
+
+```shell
+wp your-plugin catalog:sync staging --batch-size=50 --dry-run
+```
+
+Inspect the generated synopsis and description with:
+
+```shell
+wp help your-plugin catalog:sync
+```
+
+:::note[Choose the correct failure signal]
+Use `WP_CLI::error()` for invalid input or an operation that cannot continue; it stops the command with a failing exit code. Use `WP_CLI::warning()` when execution can continue. Returning any nonzero status from `runCommand()` also causes the Foundation command wrapper to halt with that status.
+:::
+
+## Testing
+
+### Test business behavior outside the command
+
+Keep most tests on `Catalog_Synchronizer` and its collaborators. The command should contain only input normalization, application service invocation, and WP-CLI output behavior.
+
+### Execute the registered command
+
+Use the Codeception `wpcli` suite for one end-to-end test that proves the provider contribution, command prefix, arguments, output, and exit code work together.
+
+In `tests/wpcli/Catalog/SyncCatalogCest.php`:
+
+```php title="SyncCatalogCest.php"
+<?php declare(strict_types=1);
+
+use PHPUnit\Framework\Assert;
+
+final class SyncCatalogCest {
+
+	public function test_it_previews_the_catalog_sync( WPCLITester $I ): void {
+		$I->cli( [
+			'your-plugin',
+			'catalog:sync',
+			'staging',
+			'--batch-size=50',
+			'--dry-run',
+		] );
+
+		$I->seeResultCodeIs( 0 );
+		$I->seeInShellOutput( 'Dry run found' );
+	}
+
+	public function test_it_rejects_an_invalid_batch_size( WPCLITester $I ): void {
+		$I->cli( [
+			'your-plugin',
+			'catalog:sync',
+			'staging',
+			'--batch-size=0',
+		] );
+
+		$I->seeResultCodeIs( 1 );
+		Assert::assertStringContainsString(
+			'The batch size must be greater than zero.',
+			$I->grabLastShellErrorOutput()
+		);
+	}
+}
+```
+
+Run the suite through SLIC:
+
+```shell
+slic run wpcli
+```
+
+One real command test is more valuable than duplicating the Foundation command wrapper's generic registration tests throughout the application.

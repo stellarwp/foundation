@@ -1,0 +1,180 @@
+---
+title: Database
+description: WordPress-backed migrations, queries, and distributed locks built on wpdb and dbDelta.
+sidebar:
+  order: 2
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Foundation Database provides three focused capabilities for WordPress applications: versioned schema migrations, a small inspectable query API, and a database-backed implementation of the Foundation Lock contract. It intentionally builds on `wpdb`, `dbDelta()`, and WordPress table prefixes instead of acting as a generic database abstraction.
+
+## Installation
+
+Install the runtime package in the application:
+
+```shell
+composer require stellarwp/foundation-database
+```
+
+Foundation Database installs its Container, Lock, and WP-CLI runtime dependencies automatically. Install `stellarwp/foundation-cli` separately with `--dev` only when the project uses its migration and table generators.
+
+:::note[Runtime requirements]
+Foundation Database requires WordPress 6.2 or newer because prepared identifier placeholders use `%i`. Database locks require MySQL 5.6.4 or newer, or MariaDB 5.3 or newer, for fractional-second timestamps.
+:::
+
+### Prepare the application
+
+Database services use the application's existing container, provider graph, Foundation prefix, and WP-CLI command prefix:
+
+<CardGrid>
+  <LinkCard
+    title="Configure the Container"
+    description="Load config.php and construct the shared application container."
+    href="/start/configure-the-container/"
+  />
+  <LinkCard
+    title="Register Service Providers"
+    description="Compose infrastructure and feature providers in dependency order."
+    href="/start/register-service-providers/"
+  />
+  <LinkCard
+    title="Scope Foundation"
+    description="Give a distributable plugin stable, application-specific resources."
+    href="/start/scope-foundation/"
+  />
+  <LinkCard
+    title="WP-CLI"
+    description="Understand command registration and prefix configuration."
+    href="/components/wp-cli/"
+  />
+</CardGrid>
+
+## Configuration
+
+### Scope database resources
+
+Set a stable application prefix in the root `config.php` for a standalone plugin:
+
+```php title="config.php"
+<?php declare(strict_types=1);
+
+return [
+	'foundation' => [
+		'prefix' => 'your-plugin',
+	],
+];
+```
+
+With this prefix, Foundation uses these resources by default:
+
+| Resource | Default |
+| --- | --- |
+| Migration table | `<wp_prefix>your_plugin_foundation_migrations` |
+| Lock table | `<wp_prefix>your_plugin_foundation_locks` |
+| Migration lock | `your-plugin-foundation-database-migrations` |
+| WP-CLI command | `wp your-plugin migrate` |
+
+Complete WordPress applications that own the entire installation can keep the zero-configuration `nx` prefix. Standalone plugins should not share the default because another Foundation consumer could otherwise read the same migration ledger or contend for the same lock.
+
+Keep the prefix stable after migrations have run. Changing it points the application at a different ledger and lock table, making every configured migration appear pending.
+
+### Override individual resources
+
+Package-specific settings in the root `config.php` override values derived from `foundation.prefix`:
+
+```php title="config.php"
+return [
+	'foundation' => [
+		'prefix' => 'your-plugin',
+	],
+	'database' => [
+		'migrations_table' => $_ENV['FOUNDATION_DATABASE_MIGRATIONS_TABLE'] ?? '',
+		'locks_table'      => $_ENV['FOUNDATION_DATABASE_LOCKS_TABLE'] ?? '',
+		'lock_name'        => $_ENV['FOUNDATION_DATABASE_LOCK_NAME'] ?? null,
+		'lock_ttl'         => (int) ( $_ENV['FOUNDATION_DATABASE_LOCK_TTL'] ?? 300 ),
+	],
+];
+```
+
+Leave table names empty to use the scoped defaults. Override values are table names without a WordPress prefix; the active database scope applies the correct site prefix. For example, `your_plugin_migrations` becomes `wp_2_your_plugin_migrations` on site 2 of a typical multisite installation. All resulting prefixed table names must fit MySQL's 64-character identifier limit.
+
+The migration lock settings coordinate migration execution only. Applications selecting `DatabaseLock` for their own work choose each lock name and TTL when calling `acquire()`.
+
+Set `database.lock_ttl` longer than the longest uninterrupted operation between renewals. Foundation renews the migration lock immediately before and after every `up()` and `down()` call, but it cannot renew the lease while a blocking migration method or ledger update is still running. Split unusually long work into separate migrations or increase `FOUNDATION_DATABASE_LOCK_TTL` before deployment.
+
+### Use database services on multisite
+
+Foundation resolves migration and lock table names from the active WordPress site's `$wpdb->prefix` whenever they are used. You can therefore reuse the same container and `Migrator` while iterating over sites, provided each migration operation completes before the blog changes:
+
+```php title="Migrate_Network.php"
+foreach ( $site_ids as $site_id ) {
+	switch_to_blog( $site_id );
+
+	try {
+		$migrator->initialize();
+		$migrator->run();
+	} finally {
+		restore_current_blog();
+	}
+}
+```
+
+Each `initialize()`, `run()`, `rollback()`, `refresh()`, and `dropStore()` operation captures the active blog ID when it starts. Foundation confirms that context before renewing the migration lock, writing to the ledger, and releasing the lock.
+
+:::caution[Do not leave a migration in another blog context]
+A migration may temporarily call `switch_to_blog()` only if it restores the original blog before returning. If the context changes during an operation, Foundation aborts and leaves the original lock to expire instead of risking a write to another site's ledger or lock table.
+:::
+
+WP-CLI can also select each site without an in-process loop:
+
+```shell
+wp --url=https://site.example your-plugin migrate --initialize
+wp --url=https://site.example your-plugin migrate --run
+```
+
+Applications that create sites dynamically can use WordPress's `wp_initialize_site` action to schedule the same initialization and migration workflow. Do not run migrations during every normal request.
+
+:::note[Network-wide migrations]
+Foundation Database currently manages site-specific migration state. It does not provide a network-wide migration ledger for shared global tables.
+:::
+
+### Register the providers
+
+In `src/App.php`, register `WPCliProvider` before `DatabaseProvider`, then register application providers that contribute migrations or select the database lock:
+
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Database;
+use StellarWP\Foundation\WPCli;
+use YourPlugin\Database as ApplicationDatabase;
+
+/** @var list<class-string<Providable>> */
+private const array PROVIDERS = [
+	WPCli\WPCliProvider::class,
+	Database\DatabaseProvider::class,
+	ApplicationDatabase\Provider::class,
+];
+```
+
+`DatabaseProvider` configures `wpdb`, schema services, migration storage, the migration lock, and the `migrate` command. It does not create tables, run migrations, or select `DatabaseLock` as the application's general `Lock` implementation during WordPress bootstrap.
+
+## Choose a feature
+
+<CardGrid>
+  <LinkCard
+    title="Migrations"
+    description="Define tables, register versioned changes, and run them through WP-CLI during deployment."
+    href="/components/database/migrations/"
+  />
+  <LinkCard
+    title="Query Builder"
+    description="Read and write through application table classes, with low-level SQL available when needed."
+    href="/components/database/query-builder/"
+  />
+  <LinkCard
+    title="Database Lock"
+    description="Coordinate WordPress requests through the shared database when Redis is not required."
+    href="/components/database/lock/"
+  />
+</CardGrid>

@@ -28,10 +28,10 @@ else
 fi
 
 # Use jq to generate the JSON array directly without line breaks
-packages_json=$(find "$root/src" -name composer.json -print0 |
+packages_json=$(find "$root/src" -mindepth 2 -maxdepth 2 \( -name composer.json -o -name package.json \) -print0 |
     while IFS= read -r -d $'\0' file; do
         # Extract the package name and directory
-        package_name=$(jq -r '.name' < "$file" | sed 's/stellarwp\///')
+        package_name=$(jq -r '.name' < "$file" | sed -E 's/^@?stellarwp\///')
         relative_directory=$(realpath --relative-to="$root/src" "$(dirname "$file")")
 
         # Build the JSON object for each package

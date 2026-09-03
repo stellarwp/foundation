@@ -1,0 +1,16 @@
+# Codeception Test Suite Configuration
+
+actor: WPCLITester
+path: wpcli
+modules:
+  enabled:
+    - lucatume\WPBrowser\Module\WPCLI
+  config:
+    lucatume\WPBrowser\Module\WPCLI:
+      path: %WP_ROOT_FOLDER%
+      url: %WP_URL%
+      user: %WP_ADMIN_USERNAME%
+      require:
+        - /var/www/html/wp-content/plugins/foundation/tests/Support/Fixtures/Database/register-wpcli-migrate-command.php
+      throw: false
+      allow-root: true
