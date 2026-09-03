@@ -5,7 +5,7 @@ namespace StellarWP\Foundation\Shutdown;
 use lucatume\DI52\Container;
 use StellarWP\Foundation\Container\ContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Provider;
-use StellarWP\Foundation\Shutdown\Contracts\ShutdownRunner as ShutdownRunnerContract;
+use StellarWP\Foundation\Shutdown\Contracts\ShutdownRunner;
 
 /**
  * Registers the default shutdown runner and task contribution point.
@@ -26,13 +26,13 @@ final class ShutdownProvider extends Provider
 
 		$this->registered = true;
 
-		$this->container->when(ShutdownRunner::class)
+		$this->container->when(Runner::class)
 			->needs('$tasks')
 			->give(static fn (Container $container): array => $container->getVar(self::TASKS, []));
 
-		$this->container->singletonDecorators(ShutdownRunnerContract::class, [
+		$this->container->singletonDecorators(ShutdownRunner::class, [
 			ResponseFinishingRunner::class,
-			ShutdownRunner::class,
+			Runner::class,
 		]);
 
 		// Installation and uninstall requests may not have the complete application state expected by shutdown tasks.
@@ -42,7 +42,7 @@ final class ShutdownProvider extends Provider
 
 		add_action(
 			'shutdown',
-			$this->container->callback(ShutdownRunnerContract::class, 'terminate'),
+			$this->container->callback(ShutdownRunner::class, 'terminate'),
 			PHP_INT_MAX
 		);
 	}

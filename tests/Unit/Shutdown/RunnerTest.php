@@ -7,17 +7,17 @@ use InvalidArgumentException;
 use Monolog\Handler\TestHandler;
 use Monolog\Logger;
 use Psr\Log\LoggerInterface;
-use StellarWP\Foundation\Shutdown\ShutdownRunner;
-use StellarWP\Foundation\Shutdown\ShutdownTask;
+use StellarWP\Foundation\Shutdown\Runner;
+use StellarWP\Foundation\Shutdown\Task;
 use StellarWP\Foundation\Tests\Support\Fixtures\Shutdown\CallbackTerminable;
 use StellarWP\Foundation\Tests\TestCase;
 
-final class ShutdownRunnerTest extends TestCase
+final class RunnerTest extends TestCase
 {
 	public function test_it_runs_tasks_by_priority_and_preserves_equal_priority_order(): void {
 		$calls = [];
 
-		$runner = new ShutdownRunner([
+		$runner = new Runner([
 			$this->recordingTask($calls, 'last', 100),
 			$this->recordingTask($calls, 'second', 10),
 			$this->recordingTask($calls, 'third', 10),
@@ -31,7 +31,7 @@ final class ShutdownRunnerTest extends TestCase
 
 	public function test_it_runs_each_task_only_once(): void {
 		$calls  = [];
-		$runner = new ShutdownRunner([$this->recordingTask($calls, 'task')]);
+		$runner = new Runner([$this->recordingTask($calls, 'task')]);
 
 		$runner->terminate();
 		$runner->terminate();
@@ -41,15 +41,15 @@ final class ShutdownRunnerTest extends TestCase
 
 	public function test_it_is_safe_to_invoke_recursively(): void {
 		$calls  = [];
-		$runner = new ShutdownRunner();
+		$runner = new Runner();
 
 		$recursive = new CallbackTerminable(static function () use (&$calls, &$runner): void {
 			$calls[] = 'recursive';
 			$runner->terminate();
 		});
 
-		$runner = new ShutdownRunner([
-			new ShutdownTask($recursive),
+		$runner = new Runner([
+			new Task($recursive),
 			$this->recordingTask($calls, 'next'),
 		]);
 
@@ -67,8 +67,8 @@ final class ShutdownRunnerTest extends TestCase
 			throw new Error('Expected test failure.');
 		});
 
-		$runner = new ShutdownRunner([
-			new ShutdownTask($failing),
+		$runner = new Runner([
+			new Task($failing),
 			$this->recordingTask($calls, 'completed'),
 		]);
 
@@ -85,8 +85,8 @@ final class ShutdownRunnerTest extends TestCase
 			throw $failure;
 		});
 
-		$runner = new ShutdownRunner([
-			new ShutdownTask($failing, 10),
+		$runner = new Runner([
+			new Task($failing, 10),
 		], $logger);
 
 		$runner->terminate();
@@ -115,7 +115,7 @@ final class ShutdownRunnerTest extends TestCase
 
 		$logger->method('log')->willThrowException(new Error('Expected logger failure.'));
 
-		$runner = new ShutdownRunner([
+		$runner = new Runner([
 			$this->recordingTask($calls, 'completed'),
 		], $logger);
 
@@ -125,7 +125,7 @@ final class ShutdownRunnerTest extends TestCase
 	}
 
 	public function test_it_accepts_an_empty_task_list(): void {
-		$runner = new ShutdownRunner();
+		$runner = new Runner();
 
 		$runner->terminate();
 		$runner->terminate();
@@ -135,16 +135,16 @@ final class ShutdownRunnerTest extends TestCase
 
 	public function test_it_rejects_invalid_task_contributions(): void {
 		$this->expectException(InvalidArgumentException::class);
-		$this->expectExceptionMessage('Shutdown tasks must be instances of ShutdownTask.');
+		$this->expectExceptionMessage('Shutdown tasks must be instances of Task.');
 
-		$runner = new ShutdownRunner(['invalid']);
+		$runner = new Runner(['invalid']);
 	}
 
 	/**
 	 * @param list<string> $calls
 	 */
-	private function recordingTask(array &$calls, string $name, int $priority = 0): ShutdownTask {
-		return new ShutdownTask(
+	private function recordingTask(array &$calls, string $name, int $priority = 0): Task {
+		return new Task(
 			new CallbackTerminable(static function () use (&$calls, $name): void {
 				$calls[] = $name;
 			}),

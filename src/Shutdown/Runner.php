@@ -5,15 +5,15 @@ namespace StellarWP\Foundation\Shutdown;
 use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
-use StellarWP\Foundation\Shutdown\Contracts\ShutdownRunner as ShutdownRunnerContract;
+use StellarWP\Foundation\Shutdown\Contracts\ShutdownRunner;
 use Throwable;
 
 /**
  * Runs contributed termination tasks once in deterministic priority order.
  */
-final class ShutdownRunner implements ShutdownRunnerContract
+final class Runner implements ShutdownRunner
 {
-	/** @var list<ShutdownTask> */
+	/** @var list<Task> */
 	private array $tasks;
 
 	private bool $terminated = false;
@@ -26,8 +26,8 @@ final class ShutdownRunner implements ShutdownRunnerContract
 		private readonly ?LoggerInterface $logger = null
 	) {
 		foreach ($tasks as $task) {
-			if (! $task instanceof ShutdownTask) {
-				throw new InvalidArgumentException('Shutdown tasks must be instances of ShutdownTask.');
+			if (! $task instanceof Task) {
+				throw new InvalidArgumentException('Shutdown tasks must be instances of Task.');
 			}
 		}
 
@@ -79,10 +79,10 @@ final class ShutdownRunner implements ShutdownRunnerContract
 	}
 
 	/**
-	 * @return list<ShutdownTask>
+	 * @return list<Task>
 	 */
 	private function orderedTasks(): array {
-		/** @var list<array{index: int, task: ShutdownTask}> $indexedTasks */
+		/** @var list<array{index: int, task: Task}> $indexedTasks */
 		$indexedTasks = [];
 
 		foreach ($this->tasks as $index => $task) {
@@ -99,7 +99,7 @@ final class ShutdownRunner implements ShutdownRunnerContract
 		);
 
 		return array_map(
-			static fn (array $entry): ShutdownTask => $entry['task'],
+			static fn (array $entry): Task => $entry['task'],
 			$indexedTasks
 		);
 	}

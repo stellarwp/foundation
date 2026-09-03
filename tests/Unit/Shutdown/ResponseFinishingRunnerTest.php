@@ -4,8 +4,8 @@ namespace StellarWP\Foundation\Tests\Unit\Shutdown;
 
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use StellarWP\Foundation\Shutdown\ResponseFinishingRunner;
-use StellarWP\Foundation\Shutdown\ShutdownRunner;
-use StellarWP\Foundation\Shutdown\ShutdownTask;
+use StellarWP\Foundation\Shutdown\Runner;
+use StellarWP\Foundation\Shutdown\Task;
 use StellarWP\Foundation\Tests\Support\Fixtures\Shutdown\CallbackTerminable;
 use StellarWP\Foundation\Tests\TestCase;
 
@@ -83,8 +83,8 @@ final class ResponseFinishingRunnerTest extends TestCase
 	}
 
 	private function runner(): ResponseFinishingRunner {
-		return new ResponseFinishingRunner(new ShutdownRunner([
-			new ShutdownTask(new CallbackTerminable(static function (): void {
+		return new ResponseFinishingRunner(new Runner([
+			new Task(new CallbackTerminable(static function (): void {
 				$GLOBALS['foundation_shutdown_calls'][] = 'task';
 			})),
 		]));

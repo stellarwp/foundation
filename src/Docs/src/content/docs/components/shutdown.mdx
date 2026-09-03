@@ -129,7 +129,7 @@ namespace YourPlugin\Product_Cache;
 use lucatume\DI52\Container as C;
 use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
 use StellarWP\Foundation\Shutdown\ShutdownProvider;
-use StellarWP\Foundation\Shutdown\ShutdownTask;
+use StellarWP\Foundation\Shutdown\Task;
 
 /**
  * Configures the product cache and its end-of-request write.
@@ -154,7 +154,7 @@ final class Provider extends Service_Provider {
 		$this->container->mergeArrayVar(
 			ShutdownProvider::TASKS,
 			static fn ( C $c ): array => [
-				new ShutdownTask(
+				new Task(
 					$c->get( Product_Cache_Writer::class ),
 					self::WRITE_PRIORITY
 				),
@@ -166,7 +166,7 @@ final class Provider extends Service_Provider {
 
 The contextual bindings target the task's `$cache_key` and `$ttl` constructor arguments. The container autowires `Product_Cache_Buffer`, applies those configured scalar values when the task collection is resolved, and then constructs the task.
 
-`ShutdownTask` is an immutable value object pairing one `Terminable` service with its priority. Lower values run first. Tasks with the same priority retain provider contribution order.
+`Task` is an immutable value object pairing one `Terminable` service with its priority. Lower values run first. Tasks with the same priority retain provider contribution order.
 
 ### Register the providers
 

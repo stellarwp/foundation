@@ -5,20 +5,20 @@ namespace StellarWP\Foundation\Tests\WPUnit\Shutdown;
 use Monolog\Handler\TestHandler;
 use Monolog\Logger;
 use Psr\Log\LoggerInterface;
-use StellarWP\Foundation\Shutdown\Contracts\ShutdownRunner as ShutdownRunnerContract;
+use StellarWP\Foundation\Shutdown\Contracts\ShutdownRunner;
 use StellarWP\Foundation\Shutdown\ResponseFinishingRunner;
 use StellarWP\Foundation\Shutdown\ShutdownProvider;
-use StellarWP\Foundation\Shutdown\ShutdownTask;
+use StellarWP\Foundation\Shutdown\Task;
 use StellarWP\Foundation\Tests\Support\Fixtures\Shutdown\CallbackTerminable;
 use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
 
 final class ShutdownProviderTest extends WPTestCase
 {
 	protected function tearDown(): void {
-		if ($this->container->has(ShutdownRunnerContract::class)) {
+		if ($this->container->has(ShutdownRunner::class)) {
 			remove_action(
 				'shutdown',
-				$this->container->callback(ShutdownRunnerContract::class, 'terminate'),
+				$this->container->callback(ShutdownRunner::class, 'terminate'),
 				PHP_INT_MAX
 			);
 		}
@@ -31,15 +31,15 @@ final class ShutdownProviderTest extends WPTestCase
 
 		$this->container->register(ShutdownProvider::class);
 		$this->container->mergeArrayVar(ShutdownProvider::TASKS, [
-			new ShutdownTask(new CallbackTerminable(static function () use (&$calls): void {
+			new Task(new CallbackTerminable(static function () use (&$calls): void {
 				$calls[] = 'terminated';
 			})),
 		]);
 
-		$runner = $this->container->get(ShutdownRunnerContract::class);
+		$runner = $this->container->get(ShutdownRunner::class);
 
 		$this->assertInstanceOf(ResponseFinishingRunner::class, $runner);
-		$this->assertSame($runner, $this->container->get(ShutdownRunnerContract::class));
+		$this->assertSame($runner, $this->container->get(ShutdownRunner::class));
 
 		$runner->terminate();
 
@@ -48,11 +48,11 @@ final class ShutdownProviderTest extends WPTestCase
 
 	public function test_duplicate_provider_registration_does_not_replace_the_runner(): void {
 		$this->container->register(ShutdownProvider::class);
-		$runner = $this->container->get(ShutdownRunnerContract::class);
+		$runner = $this->container->get(ShutdownRunner::class);
 
 		$this->container->register(ShutdownProvider::class);
 
-		$this->assertSame($runner, $this->container->get(ShutdownRunnerContract::class));
+		$this->assertSame($runner, $this->container->get(ShutdownRunner::class));
 	}
 
 	public function test_it_injects_a_registered_psr_logger(): void {
@@ -61,7 +61,7 @@ final class ShutdownProviderTest extends WPTestCase
 		$this->container->singleton(LoggerInterface::class, new Logger('shutdown', [$handler]));
 		$this->container->register(ShutdownProvider::class);
 
-		$this->container->get(ShutdownRunnerContract::class)->terminate();
+		$this->container->get(ShutdownRunner::class)->terminate();
 
 		$this->assertTrue($handler->hasDebugThatMatches('/Running shutdown tasks\./'));
 	}
@@ -70,10 +70,10 @@ final class ShutdownProviderTest extends WPTestCase
 		$calls = [];
 
 		$this->container->register(ShutdownProvider::class);
-		$callback = $this->container->callback(ShutdownRunnerContract::class, 'terminate');
+		$callback = $this->container->callback(ShutdownRunner::class, 'terminate');
 
 		$this->container->mergeArrayVar(ShutdownProvider::TASKS, [
-			new ShutdownTask(new CallbackTerminable(static function () use (&$calls): void {
+			new Task(new CallbackTerminable(static function () use (&$calls): void {
 				$calls[] = 'terminated';
 			})),
 		]);
@@ -90,12 +90,12 @@ final class ShutdownProviderTest extends WPTestCase
 
 		try {
 			$this->container->register(ShutdownProvider::class);
-			$callback = $this->container->callback(ShutdownRunnerContract::class, 'terminate');
+			$callback = $this->container->callback(ShutdownRunner::class, 'terminate');
 
 			$this->assertFalse(has_action('shutdown', $callback));
 			$this->assertInstanceOf(
 				ResponseFinishingRunner::class,
-				$this->container->get(ShutdownRunnerContract::class)
+				$this->container->get(ShutdownRunner::class)
 			);
 		} finally {
 			wp_installing($wasInstalling);

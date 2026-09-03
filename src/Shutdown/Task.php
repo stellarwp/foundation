@@ -7,7 +7,7 @@ use StellarWP\Foundation\Shutdown\Contracts\Terminable;
 /**
  * A termination task and its execution priority.
  */
-final readonly class ShutdownTask
+final readonly class Task
 {
 	public function __construct(
 		public Terminable $terminable,
