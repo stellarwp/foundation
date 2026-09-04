@@ -68,20 +68,19 @@ Prefer constructor injection throughout application code. Calling `get()` inside
 
 ### Select an interface implementation
 
-In `src/Catalog/Provider.php`, bind an interface when the container cannot infer which implementation the application wants. Use `bind()` for a new instance on each resolution and `singleton()` when every resolution should return the same instance:
+In `src/Catalog/Catalog_Provider.php`, bind an interface when the container cannot infer which implementation the application wants. Use `bind()` for a new instance on each resolution and `singleton()` when every resolution should return the same instance:
 
-```php title="Provider.php"
+```php title="Catalog_Provider.php"
 <?php declare(strict_types=1);
 
 namespace YourPlugin\Catalog;
 
-use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
-use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use StellarWP\Foundation\Container\Contracts\Provider;
 
 /**
  * Selects the catalog implementation used by the application.
  */
-final class Provider extends Service_Provider {
+final class Catalog_Provider extends Provider {
 
 	public function register(): void {
 		$this->register_catalog();
@@ -104,9 +103,9 @@ Foundation providers register eagerly. Keep expensive services lazy by binding t
 
 ### Supply configuration and scalar values
 
-In the same `src/Catalog/Provider.php`, use a contextual binding when one class needs a scalar or a feature-specific implementation. Target scalar constructor arguments by their `$name`. Import Foundation's `Resolver` as `C` when a factory callback must resolve another service:
+In the same `src/Catalog/Catalog_Provider.php`, use a contextual binding when one class needs a scalar or a feature-specific implementation. Target scalar constructor arguments by their `$name`. Import Foundation's `Resolver` as `C` when a factory callback must resolve another service:
 
-```php title="Provider.php"
+```php title="Catalog_Provider.php"
 private function register_catalog(): void {
 	$this->container->when( Remote_Catalog::class )
 		->needs( '$endpoint' )
@@ -173,9 +172,9 @@ Register every contributing provider before resolving services that consume the 
 
 ### Register lazy WordPress callbacks
 
-In `src/Catalog/Provider.php`, use `callback()` to let WordPress resolve a service only when its hook runs:
+In `src/Catalog/Catalog_Provider.php`, use `callback()` to let WordPress resolve a service only when its hook runs:
 
-```php title="Provider.php"
+```php title="Catalog_Provider.php"
 private function register_catalog_sync(): void {
 	$this->container->singleton( Catalog_Synchronizer::class );
 
@@ -194,9 +193,9 @@ Catch `StellarWP\Foundation\Container\Exceptions\NotFoundException` when a reque
 
 ### Decorate a service
 
-In `src/Catalog/Provider.php`, use a decorator chain when cross-cutting behavior should wrap a service without changing its implementation. List the outermost decorator first and the base implementation last:
+In `src/Catalog/Catalog_Provider.php`, use a decorator chain when cross-cutting behavior should wrap a service without changing its implementation. List the outermost decorator first and the base implementation last:
 
-```php title="Provider.php"
+```php title="Catalog_Provider.php"
 private function register_catalog(): void {
 	$this->container->singletonDecorators(
 		Catalog::class,
