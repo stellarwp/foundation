@@ -1,6 +1,8 @@
 <?php declare(strict_types=1);
 
-namespace StellarWP\Foundation\Database\Exceptions;
+namespace StellarWP\Foundation\Database\Migration\Exceptions;
+
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 
 /**
  * Raised when multiple migration objects share the same identifier.

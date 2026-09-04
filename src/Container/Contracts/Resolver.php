@@ -1,0 +1,28 @@
+<?php declare(strict_types=1);
+
+namespace StellarWP\Foundation\Container\Contracts;
+
+/**
+ * Resolves services inside container factory callbacks without requiring a
+ * dependency on the underlying container implementation or registration API.
+ */
+interface Resolver
+{
+	/**
+	 * Find and return a container entry by its identifier.
+	 *
+	 * @template T of object
+	 *
+	 * @param class-string<T>|string $id
+	 *
+	 * @return ($id is class-string<T> ? T : mixed)
+	 */
+	public function get(string $id);
+
+	/**
+	 * Determine whether the container can resolve an identifier.
+	 *
+	 * @return bool
+	 */
+	public function has(string $id);
+}

@@ -2,7 +2,6 @@
 
 namespace StellarWP\Foundation\Log;
 
-use lucatume\DI52\Container;
 use Monolog\Formatter\LineFormatter;
 use Monolog\Handler\AbstractHandler;
 use Monolog\Handler\ErrorLogHandler;
@@ -12,6 +11,7 @@ use Monolog\Logger;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
 use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Log\Formatters\ColoredLineFormatter;
 use StellarWP\Foundation\Log\Handlers\NullHandler;
 
@@ -61,7 +61,7 @@ final class LogProvider extends Provider
 
 		$this->container->singleton(
 			StreamHandler::class,
-			fn ($c) => new StreamHandler(
+			fn (C $c) => new StreamHandler(
 				$this->config->get("log.channels.$channel.with.stream", 'php://stdout'),
 				$c->get(self::LOG_LEVEL)
 			)
@@ -69,7 +69,7 @@ final class LogProvider extends Provider
 
 		$this->container->bind(
 			LoggerInterface::class,
-			static function (Container $c) use ($channel): LoggerInterface {
+			static function (C $c) use ($channel): LoggerInterface {
 				$handler = self::CHANNELS[$channel] ?? false;
 
 				if (! $handler) {

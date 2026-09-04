@@ -3,8 +3,8 @@
 namespace StellarWP\Foundation\View;
 
 use InvalidArgumentException;
-use lucatume\DI52\Container as C;
 use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\View\Contracts\DirectoryAwareView;
 use StellarWP\Foundation\View\Contracts\View;
 

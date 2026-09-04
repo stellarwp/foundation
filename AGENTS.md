@@ -54,9 +54,11 @@ Design public contracts as the smallest stable capabilities consumers need so ap
 
 Avoid scattered invariant enforcement where multiple methods must remember to call the same validation helper before using a value. Enforce each invariant once at the boundary that owns it, such as construction, parsing, or resolving a domain value, then make that guarantee part of the returned value or public contract so downstream code can rely on it. Repeat validation only at a genuinely independent trust boundary or when mutable external state can invalidate the guarantee.
 
+Do not declare empty constructors when PHP's implicit public constructor provides the same behavior. A private empty constructor is permitted when a constants holder or static utility must explicitly prevent instantiation.
+
 Keep convenience methods and implementation machinery on the concrete class unless they form a genuine reusable capability. Do not expose private helpers as public API speculatively. Prefer composition, and extract a focused collaborator when another real implementation needs to share the same policy or behavior.
 
-Avoid `use ... as ...` import aliases unless they resolve a real class-name collision or ambiguity. Prefer importing the class by its actual short name. The standing exception is `use lucatume\DI52\Container as C;`, which may be used for concise container factory callbacks.
+Avoid `use ... as ...` import aliases unless they resolve a real class-name collision or ambiguity. Prefer importing the class by its actual short name. The standing exception is `use StellarWP\Foundation\Container\Contracts\Resolver as C;`, which may be used for concise container factory callbacks. Factory callbacks registered through Foundation container APIs must type-hint this Foundation resolver; raw `lucatume\DI52\Container` type references belong only in `ContainerAdapter` and composition-root bootstrap code that constructs and wraps DI52.
 
 Exceptions should live in an `Exceptions/` folder. Put shared package exceptions at the package root, for example `src/Database/Exceptions/DatabaseException.php`; put feature-only exceptions under that feature's `Exceptions/` folder only when they are not shared outside that feature.
 
@@ -108,6 +110,8 @@ If local scaffolding assets such as `foundation/stubs/` should not be included i
 
 When writing providers or container registration code, prefer container-driven construction over inline factories with explicit `new` calls. Bind classes and interfaces directly when the container can autowire them.
 
+Container factory closures receive `StellarWP\Foundation\Container\Contracts\Resolver`, not the underlying DI engine. Type-hint that contract whenever a factory must resolve another service so generated and application code remains independent of DI52.
+
 Use contextual bindings with `$this->container->when()->needs()->give()` for scalar constructor arguments, command lists, or feature-specific substitutions. Use a factory closure only when the value must be computed or resolved from the container, and keep that closure focused on supplying the constructor dependency rather than constructing the full object.
 
 Foundation package providers must define their internal container identifiers, including scalar bindings and additive collection contribution points, with `self::class . '.descriptive_suffix'` instead of global literal strings. This allows namespace prefixing tools such as Strauss to scope the identifier to the prefixed provider class. Consuming applications should instead use stable text identifiers prefixed with their application or plugin name, for example `your-plugin.report.exporters`. Do not apply class-derived identifiers to configuration keys, persistent database or cache identifiers, lock names, channel names, WP-CLI command names, or other externally visible values that must remain stable across builds.
@@ -117,6 +121,8 @@ Classes should take the dependencies they need directly. Do not make constructor
 Use the optional `foundation.prefix` configuration key when Foundation-managed resources must be scoped to a consuming application. Its effective zero-configuration value is `nx`; providers should derive their default resource names from that shared value instead of repeating their own fallbacks. Distributable plugins must configure a stable, unique prefix so separate Foundation consumers do not share resources. Documentation and examples should use a generic lowercase kebab-case value such as `your-plugin`, never a developer-specific project name. Package-specific settings must take priority over values derived from the shared prefix.
 
 Classes should receive service collaborators through constructor injection. Direct `new` expressions inside application classes are reserved for immutable value or result objects, exceptions, PHP standard-library objects, and objects deliberately produced by an owning builder or factory. Keep feature-local value objects under that feature's `ValueObjects/` namespace. Value objects should be `final readonly` where possible and must not resolve or construct service dependencies.
+
+Encapsulate closed domain state behind intention-revealing query methods. Do not require consumers to compare a public primitive property with class constants, for example `$status->state === Status::UNAVAILABLE`; keep the representation private and prefer predicates such as `$status->isUnavailable()`. Use named factories to construct valid states, and expose a raw state value only when presentation or serialization genuinely requires it. Apply this rule to objects that own state meaning or invariants, not mechanically to simple transport DTO fields.
 
 Organize provider registration by feature or capability, not by container mechanism. The main `register()` method should call focused private methods such as `registerConfiguration()`, `registerMigrations()`, `registerLocks()`, or `registerCliCommands()`. Keep each feature's contextual bindings beside the classes they configure. Avoid generic methods such as `configureContextualBindings()` that group unrelated bindings only because they use the same container API.
 

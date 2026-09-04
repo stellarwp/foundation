@@ -6,10 +6,12 @@ use Closure;
 use StellarWP\ContainerContract\ContainerInterface;
 
 /**
- * Extend the StellarWP ContainerInterface to include
- * some must have methods.
+ * Registers and resolves Foundation application services.
+ *
+ * Factory closures receive the narrower {@see Resolver} contract so callers
+ * do not depend on the underlying container engine.
  */
-interface Container extends ContainerInterface
+interface Container extends ContainerInterface, Resolver
 {
 	/**
 	 * Register a service provider.
@@ -35,12 +37,21 @@ interface Container extends ContainerInterface
 	 */
 	public function needs(string $id): Container;
 
+	/**
+	 * Complete a contextual binding.
+	 *
+	 * Closure implementations receive a Foundation {@see Resolver}, never the
+	 * underlying container implementation.
+	 */
 	public function give(mixed $implementation): void;
 
 	/**
 	 * Add array values to an existing or future binding without replacing previous values.
 	 *
 	 * @param class-string|string $id
+	 *
+	 * Closure implementations receive a Foundation {@see Resolver}, never the
+	 * underlying container implementation.
 	 *
 	 * @throws \lucatume\DI52\ContainerException
 	 */
@@ -64,6 +75,8 @@ interface Container extends ContainerInterface
 	 * Bind a decorator chain that resolves to the same instance on every request.
 	 *
 	 * The base implementation must be the last decorator.
+	 * Closure decorators receive a Foundation {@see Resolver}, never the
+	 * underlying container implementation.
 	 *
 	 * @param class-string|string                          $id
 	 * @param non-empty-list<class-string|object|callable> $decorators
@@ -82,6 +95,8 @@ interface Container extends ContainerInterface
 	 * Bind a decorator chain that resolves to a new instance on every request.
 	 *
 	 * The base implementation must be the last decorator.
+	 * Closure decorators receive a Foundation {@see Resolver}, never the
+	 * underlying container implementation.
 	 *
 	 * @param class-string|string                          $id
 	 * @param non-empty-list<class-string|object|callable> $decorators

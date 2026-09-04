@@ -238,6 +238,25 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->database->prepare(' ');
 	}
 
+	public function test_database_quotes_identifiers_and_escapes_embedded_backticks(): void {
+		$this->assertSame('`report``status`', $this->database->quoteIdentifier('report`status'));
+	}
+
+	public function test_prepare_failure_does_not_report_an_unrelated_database_error(): void {
+		$previousError               = $GLOBALS['wpdb']->last_error;
+		$GLOBALS['wpdb']->last_error = 'Previous query failed.';
+		$this->setExpectedIncorrectUsage('wpdb::prepare');
+
+		try {
+			$this->database->prepare('SELECT %s, %s', 'first');
+			$this->fail('Expected SQL preparation to fail.');
+		} catch (QueryException $exception) {
+			$this->assertNull($exception->databaseError());
+		} finally {
+			$GLOBALS['wpdb']->last_error = $previousError;
+		}
+	}
+
 	public function test_database_wraps_wordpress_query_failures(): void {
 		$previous = $GLOBALS['wpdb']->suppress_errors(true);
 		$table    = new TestTable('missing_table', 'missing_foundation_table');
@@ -251,9 +270,21 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 			$this->assertQueryFails(fn (): mixed => $this->database->row('SELECT * FROM %i', 'missing_foundation_table'));
 			$this->assertQueryFails(fn (): mixed => $this->database->execute('SELECT * FROM %i', 'missing_foundation_table'));
-			$this->assertQueryFails(fn (): mixed => $this->database->insert($table, ['name' => 'test']));
-			$this->assertQueryFails(fn (): mixed => $this->database->update($table, ['name' => 'updated'], ['id' => 1]));
-			$this->assertQueryFails(fn (): mixed => $this->database->delete($table, ['id' => 1]));
+
+			$tableName = $this->database->tableName($table);
+
+			$this->assertSame(
+				sprintf('INSERT INTO `%s`', $tableName),
+				$this->assertQueryFails(fn (): mixed => $this->database->insert($table, ['name' => 'test']))->sql()
+			);
+			$this->assertSame(
+				sprintf('UPDATE `%s`', $tableName),
+				$this->assertQueryFails(fn (): mixed => $this->database->update($table, ['name' => 'updated'], ['id' => 1]))->sql()
+			);
+			$this->assertSame(
+				sprintf('DELETE FROM `%s`', $tableName),
+				$this->assertQueryFails(fn (): mixed => $this->database->delete($table, ['id' => 1]))->sql()
+			);
 		} finally {
 			$GLOBALS['wpdb']->suppress_errors($previous);
 		}
@@ -544,13 +575,13 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 		$this->assertTrue($schema->hasTable($migrationTable));
 		$this->assertSame($table, $migrationTable->name());
-		$this->assertSame(1, $repository->nextBatch());
+		$this->assertNull($repository->latestBatch());
 
-		$record = $repository->recordRun('2026_06_23_000001_create_example_table', 1);
+		$repository->recordRun('2026_06_23_000001_create_example_table', 1);
+		$record = $repository->all()['2026_06_23_000001_create_example_table'];
 
 		$this->assertGreaterThan(0, $record->id);
 		$this->assertTrue($repository->hasRun('2026_06_23_000001_create_example_table'));
-		$this->assertSame(2, $repository->nextBatch());
 		$this->assertSame(1, $repository->latestBatch());
 		$this->assertArrayHasKey('2026_06_23_000001_create_example_table', $repository->all());
 		$this->assertCount(1, $repository->recordsForBatch(1));

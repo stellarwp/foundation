@@ -3,8 +3,8 @@
 namespace StellarWP\Foundation\LockRedis;
 
 use InvalidArgumentException;
-use lucatume\DI52\Container as C;
 use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Lock\Contracts\Clock;
 use StellarWP\Foundation\Lock\SystemClock;
 

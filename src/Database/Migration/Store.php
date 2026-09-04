@@ -6,7 +6,7 @@ use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\DatabaseScope;
 use StellarWP\Foundation\Database\Contracts\Schema;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
-use StellarWP\Foundation\Database\Exceptions\MigrationLockFailed;
+use StellarWP\Foundation\Database\Migration\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Database\Migration\Exceptions\UninitializedStore;
 use StellarWP\Foundation\Database\Migration\Factories\LeaseFactory;
 use StellarWP\Foundation\Database\Migration\Factories\SessionFactory;
@@ -36,8 +36,8 @@ final readonly class Store
 		private Lock $lock,
 		private MigrationTable $migrationTable,
 		private LockTable $lockTable,
-		private string $lockName = 'nx-foundation-database-migrations',
-		private int $lockTtl = 300
+		private string $lockName,
+		private int $lockTtl
 	) {
 		if (trim($this->lockName) === '') {
 			throw new InvalidArgumentException('The migration lock name cannot be empty.');
@@ -131,8 +131,12 @@ final readonly class Store
 
 		try {
 			// The ledger may have changed before this process acquired the lock.
-			$this->assertInitialized();
+			$hasLedger = $this->hasLedger();
 			$this->scope->assertCurrent($scopeId);
+
+			if (! $hasLedger) {
+				throw new UninitializedStore();
+			}
 
 			$result = $operation($this->sessionFactory->create($this->schema, $lease));
 		} catch (Throwable $failure) {
@@ -142,18 +146,6 @@ final readonly class Store
 		$lease->release();
 
 		return $result;
-	}
-
-	/**
-	 * Reject migration operations until the internal store has been initialized.
-	 *
-	 * @throws DatabaseException  When migration storage cannot be inspected.
-	 * @throws UninitializedStore When migration storage has not been initialized.
-	 */
-	private function assertInitialized(): void {
-		if (! $this->isInitialized()) {
-			throw new UninitializedStore();
-		}
 	}
 
 	/**

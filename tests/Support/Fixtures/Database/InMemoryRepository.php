@@ -26,7 +26,7 @@ final class InMemoryRepository implements Repository
 		return isset($this->records[$migration]);
 	}
 
-	public function recordRun(string $migration, int $batch): Record {
+	public function recordRun(string $migration, int $batch): void {
 		$record = new Record(
 			id: $this->nextId++,
 			migration: $migration,
@@ -35,8 +35,6 @@ final class InMemoryRepository implements Repository
 		);
 
 		$this->records[$migration] = $record;
-
-		return $record;
 	}
 
 	public function deleteRun(string $migration): bool {
@@ -47,12 +45,6 @@ final class InMemoryRepository implements Repository
 		unset($this->records[$migration]);
 
 		return true;
-	}
-
-	public function nextBatch(): int {
-		$latest = $this->latestBatch();
-
-		return $latest === null ? 1 : $latest + 1;
 	}
 
 	public function latestBatch(): ?int {

@@ -5,6 +5,7 @@ namespace StellarWP\Foundation\Tests\Unit\Container;
 use lucatume\DI52\Container as DI52Container;
 use lucatume\DI52\ContainerException;
 use StellarWP\Foundation\Container\ContainerAdapter;
+use StellarWP\Foundation\Container\Contracts\Resolver;
 use StellarWP\Foundation\Tests\Support\Fixtures\Container\ContainerAdapterSample;
 use StellarWP\Foundation\Tests\TestCase;
 
@@ -28,10 +29,42 @@ final class ContainerAdapterTest extends TestCase
 	public function test_it_merges_array_bindings_on_the_wrapped_container(): void {
 		$adapter = new ContainerAdapter(new DI52Container());
 
+		$adapter->bind('second', static fn (): string => 'second');
 		$adapter->mergeArrayVar('values', ['first']);
-		$adapter->mergeArrayVar('values', static fn (): array => ['second']);
+		$adapter->mergeArrayVar('values', static fn (Resolver $resolver): array => [$resolver->get('second')]);
 
 		$this->assertSame(['first', 'second'], $adapter->get('values'));
+	}
+
+	public function test_it_supplies_the_foundation_resolver_to_binding_factories(): void {
+		$adapter = new ContainerAdapter(new DI52Container());
+
+		$adapter->bind('dependency', static fn (): string => 'resolved');
+		$adapter->bind('service', static fn (Resolver $resolver): mixed => $resolver->has('dependency')
+			? $resolver->get('dependency')
+			: null);
+
+		$this->assertSame('resolved', $adapter->get('service'));
+	}
+
+	public function test_it_supplies_the_foundation_resolver_to_singleton_factories(): void {
+		$adapter = new ContainerAdapter(new DI52Container());
+
+		$adapter->singleton('service', static fn (Resolver $resolver): Resolver => $resolver);
+
+		$this->assertSame($adapter, $adapter->get('service'));
+		$this->assertSame($adapter->get('service'), $adapter->get('service'));
+	}
+
+	public function test_it_supplies_the_foundation_resolver_to_contextual_factories(): void {
+		$adapter = new ContainerAdapter(new DI52Container());
+
+		$adapter->bind('dependency', static fn (): string => 'resolved');
+		$adapter->when(ContainerAdapterSample::class)
+			->needs('$value')
+			->give(static fn (Resolver $resolver): string => $resolver->get('dependency'));
+
+		$this->assertSame('resolved', $adapter->get(ContainerAdapterSample::class)->value);
 	}
 
 	public function test_it_forwards_unknown_method_calls_to_the_wrapped_container(): void {
@@ -69,25 +102,64 @@ final class ContainerAdapterTest extends TestCase
 		$adapter->mergeArrayVar('resolved', ['second']);
 	}
 
+	public function test_it_supplies_the_foundation_resolver_to_decorator_closures(): void {
+		$adapter = new ContainerAdapter(new DI52Container());
+
+		$adapter->bindDecorators('service', [
+			static fn (Resolver $resolver): ContainerAdapterSample => new ContainerAdapterSample(
+				$resolver === $adapter ? 'resolved' : 'unexpected'
+			),
+		]);
+
+		$service = $adapter->get('service');
+
+		$this->assertInstanceOf(ContainerAdapterSample::class, $service);
+		$this->assertSame('resolved', $service->value);
+	}
+
 	public function test_it_forwards_singleton_decorator_bindings(): void {
-		$container  = $this->createMock(DI52Container::class);
-		$decorators = [ContainerAdapterSample::class];
+		$container = $this->createMock(DI52Container::class);
+		$adapter   = new ContainerAdapter($container);
+		$decorator = static fn (Resolver $resolver): Resolver => $resolver;
 
 		$container->expects($this->once())
 			->method('singletonDecorators')
-			->with('service', $decorators, ['read'], true);
+			->with(
+				'service',
+				$this->callback(function (array $decorators) use ($adapter): bool {
+					$this->assertCount(2, $decorators);
+					$this->assertSame($adapter, $decorators[0]());
+					$this->assertSame(ContainerAdapterSample::class, $decorators[1]);
 
-		(new ContainerAdapter($container))->singletonDecorators('service', $decorators, ['read'], true);
+					return true;
+				}),
+				['read'],
+				true
+			);
+
+		$adapter->singletonDecorators('service', [$decorator, ContainerAdapterSample::class], ['read'], true);
 	}
 
 	public function test_it_forwards_decorator_bindings(): void {
-		$container  = $this->createMock(DI52Container::class);
-		$decorators = [ContainerAdapterSample::class];
+		$container = $this->createMock(DI52Container::class);
+		$adapter   = new ContainerAdapter($container);
+		$decorator = static fn (Resolver $resolver): Resolver => $resolver;
 
 		$container->expects($this->once())
 			->method('bindDecorators')
-			->with('service', $decorators, ['read'], true);
+			->with(
+				'service',
+				$this->callback(function (array $decorators) use ($adapter): bool {
+					$this->assertCount(2, $decorators);
+					$this->assertSame($adapter, $decorators[0]());
+					$this->assertSame(ContainerAdapterSample::class, $decorators[1]);
 
-		(new ContainerAdapter($container))->bindDecorators('service', $decorators, ['read'], true);
+					return true;
+				}),
+				['read'],
+				true
+			);
+
+		$adapter->bindDecorators('service', [$decorator, ContainerAdapterSample::class], ['read'], true);
 	}
 }

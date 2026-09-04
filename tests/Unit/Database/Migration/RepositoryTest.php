@@ -41,29 +41,19 @@ final class RepositoryTest extends TestCase
 	}
 
 	public function test_it_records_a_migration_run(): void {
-		$this->database->rowResults[] = [
-			'id'        => 1,
-			'migration' => '2026_01_01_000001_create_users',
-			'batch'     => 2,
-			'ran_at'    => '2026-01-01 00:00:00',
-		];
+		$this->repository->recordRun('2026_01_01_000001_create_users', 2);
 
-		$record = $this->repository->recordRun('2026_01_01_000001_create_users', 2);
-
-		$this->assertSame(2, $record->batch);
 		$this->assertSame('INSERT wp_network_foundation_migrations', $this->database->executed[0]);
-		$this->assertStringContainsString('FROM `wp_network_foundation_migrations`', $this->database->rowQueries[0]);
+		$this->assertSame([], $this->database->rowQueries);
 	}
 
-	public function test_it_fails_when_an_inserted_migration_cannot_be_read_back(): void {
-		$this->expectException(LedgerFailure::class);
-		$this->expectExceptionMessage('was inserted but could not be read from the ledger');
+	public function test_it_rejects_an_unconfirmed_migration_run(): void {
+		$this->database->insertResult = 0;
 
-		try {
-			$this->repository->recordRun('2026_01_01_000001_create_users', 2);
-		} finally {
-			$this->assertSame('INSERT wp_network_foundation_migrations', $this->database->executed[0]);
-		}
+		$this->expectException(LedgerFailure::class);
+		$this->expectExceptionMessage('ran but its ledger record was not inserted');
+
+		$this->repository->recordRun('2026_01_01_000001_create_users', 2);
 	}
 
 	public function test_it_rejects_invalid_migration_ids_before_writing_to_the_ledger(): void {
@@ -96,12 +86,6 @@ final class RepositoryTest extends TestCase
 		$this->database->executeResults[] = 0;
 
 		$this->assertFalse($this->repository->deleteRun('2026_01_01_000001_create_users'));
-	}
-
-	public function test_it_calculates_the_next_batch(): void {
-		$this->database->rowResults[] = ['batch' => 4];
-
-		$this->assertSame(5, $this->repository->nextBatch());
 	}
 
 	public function test_it_returns_records_for_a_batch(): void {

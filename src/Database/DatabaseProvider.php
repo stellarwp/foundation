@@ -3,8 +3,8 @@
 namespace StellarWP\Foundation\Database;
 
 use InvalidArgumentException;
-use lucatume\DI52\Container as C;
 use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Container\Traits\ResolvesFoundationPrefix;
 use StellarWP\Foundation\Database\Cli\Migrate;
 use StellarWP\Foundation\Database\Contracts\Database as DatabaseContract;

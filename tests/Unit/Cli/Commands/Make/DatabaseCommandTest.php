@@ -245,7 +245,7 @@ final class DatabaseCommandTest extends TestCase
 
 		$this->assertSame(Command::SUCCESS, $statusCode);
 		$this->assertStringContainsString('final readonly class Bump_Version implements Migration {', $contents);
-		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Exceptions\\IrreversibleMigration;', $contents);
+		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration;', $contents);
 		$this->assertStringContainsString("public const string ID = '2026_06_26_000003_bump_version';", $contents);
 		$this->assertStringContainsString('throw IrreversibleMigration::forMigration( self::ID );', $contents);
 		$this->assertStringNotContainsString('CreateTable', $contents);
@@ -266,7 +266,7 @@ final class DatabaseCommandTest extends TestCase
 
 		$this->assertSame(Command::SUCCESS, $statusCode);
 		$this->assertStringContainsString('use Acme\\Plugin\\Database\\Tables\\Reports_Table;', $contents);
-		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Exceptions\\IrreversibleMigration;', $contents);
+		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration;', $contents);
 		$this->assertStringContainsString('private Reports_Table $table', $contents);
 		$this->assertStringContainsString('$schema->createOrUpdate( $this->table );', $contents);
 		$this->assertStringContainsString('throw IrreversibleMigration::forMigration( self::ID );', $contents);
@@ -461,7 +461,7 @@ final class DatabaseCommandTest extends TestCase
 		$contents = (string) file_get_contents($path);
 
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Database;', $contents);
-		$this->assertStringContainsString('use lucatume\\DI52\\Container as C;', $contents);
+		$this->assertStringContainsString('use StellarWP\\Foundation\\Container\\Contracts\\Resolver as C;', $contents);
 		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\DatabaseProvider;', $contents);
 		$this->assertStringContainsString('use StellarWP\\Foundation\\Container\\Contracts\\Provider as Service_Provider;', $contents);
 		$this->assertStringContainsString('final class Provider extends Service_Provider {', $contents);
@@ -969,7 +969,7 @@ PHP);
 
 namespace Acme\Plugin\Database;
 
-use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Database\DatabaseProvider;
 
 final class Provider
@@ -990,7 +990,7 @@ PHP);
 
 		$contents = (string) file_get_contents($providerPath);
 
-		$this->assertSame(ProviderRegistrationEditor::UPDATED, $status);
+		$this->assertTrue($status->wasUpdated());
 		$this->assertStringContainsString('use Acme\\Plugin\\Database\\Migrations\\Create_Reports_Table;', $contents);
 		$this->assertStringContainsString("\t\t\t\$c->get(Create_Reports_Table::class),\n\t\t\t// foundation:database-migrations", $contents);
 	}
@@ -1025,7 +1025,7 @@ PHP);
 
 		$contents = (string) file_get_contents($providerPath);
 
-		$this->assertSame(ProviderRegistrationEditor::UPDATED, $status);
+		$this->assertTrue($status->wasUpdated());
 		$this->assertStringContainsString('$this->container->get(Create_Reports_Table::class),', $contents);
 	}
 
@@ -1049,17 +1049,17 @@ PHP);
 			migrationNamespace: 'Acme\\Plugin\\Database\\Migrations'
 		);
 
-		$this->assertSame(ProviderRegistrationEditor::MISSING_ANCHOR, $status);
+		$this->assertSame('file does not contain a generated database provider registration point', $status->failureReason());
 		$this->assertSame($original, (string) file_get_contents($providerPath));
 		$this->assertSame(
-			ProviderRegistrationEditor::MISSING_ANCHOR,
+			'file does not contain a generated database provider registration point',
 			$this->providerUpdater()->checkTableAndMigration(
 				providerPath: $providerPath,
 				tableClass: 'Reports_Table',
 				tableNamespace: 'Acme\\Plugin\\Database\\Tables',
 				migrationClass: 'Create_Reports_Table',
 				migrationNamespace: 'Acme\\Plugin\\Database\\Migrations'
-			)
+			)->failureReason()
 		);
 	}
 
@@ -1078,13 +1078,62 @@ PHP);
 			'migrationNamespace' => 'Acme\\Plugin\\Database\\Migrations',
 		];
 
-		$this->assertSame(ProviderRegistrationEditor::UPDATED, $updater->addTableAndMigration(...$arguments));
+		$this->assertTrue($updater->addTableAndMigration(...$arguments)->wasUpdated());
 
 		$updated = (string) file_get_contents($providerPath);
 
-		$this->assertSame(ProviderRegistrationEditor::ALREADY_REGISTERED, $updater->addTableAndMigration(...$arguments));
-		$this->assertSame(ProviderRegistrationEditor::ALREADY_REGISTERED, $updater->checkTableAndMigration(...$arguments));
+		$this->assertTrue($updater->addTableAndMigration(...$arguments)->wasAlreadyRegistered());
+		$this->assertTrue($updater->checkTableAndMigration(...$arguments)->wasAlreadyRegistered());
 		$this->assertSame($updated, (string) file_get_contents($providerPath));
+	}
+
+	public function test_provider_registration_checks_report_ready_without_changing_the_provider(): void {
+		$root = $this->temporaryProject();
+
+		(new CommandTester($this->providerCommand($root)))->execute([]);
+
+		$providerPath = $root . '/src/Database/Provider.php';
+		$updater      = $this->providerUpdater();
+		$original     = (string) file_get_contents($providerPath);
+
+		$tableResult = $updater->checkTable(
+			$providerPath,
+			'Reports_Table',
+			'Acme\\Plugin\\Database\\Tables'
+		);
+		$migrationResult = $updater->checkMigration(
+			$providerPath,
+			'Create_Reports_Table',
+			'Acme\\Plugin\\Database\\Migrations'
+		);
+
+		$this->assertTrue($tableResult->succeeded());
+		$this->assertFalse($tableResult->wasUpdated());
+		$this->assertFalse($tableResult->wasAlreadyRegistered());
+		$this->assertTrue($migrationResult->succeeded());
+		$this->assertFalse($migrationResult->wasUpdated());
+		$this->assertFalse($migrationResult->wasAlreadyRegistered());
+		$this->assertSame($original, (string) file_get_contents($providerPath));
+
+		$this->assertTrue($updater->addTable(
+			$providerPath,
+			'Reports_Table',
+			'Acme\\Plugin\\Database\\Tables'
+		)->wasUpdated());
+
+		$partiallyRegistered = (string) file_get_contents($providerPath);
+		$combinedResult      = $updater->checkTableAndMigration(
+			providerPath: $providerPath,
+			tableClass: 'Reports_Table',
+			tableNamespace: 'Acme\\Plugin\\Database\\Tables',
+			migrationClass: 'Create_Reports_Table',
+			migrationNamespace: 'Acme\\Plugin\\Database\\Migrations'
+		);
+
+		$this->assertTrue($combinedResult->succeeded());
+		$this->assertFalse($combinedResult->wasUpdated());
+		$this->assertFalse($combinedResult->wasAlreadyRegistered());
+		$this->assertSame($partiallyRegistered, (string) file_get_contents($providerPath));
 	}
 
 	public function test_provider_updates_preserve_symbolic_links(): void {
@@ -1096,13 +1145,12 @@ PHP);
 		$linkPath     = $root . '/DatabaseProvider.php';
 
 		$this->assertTrue(symlink($providerPath, $linkPath));
-		$this->assertSame(
-			ProviderRegistrationEditor::UPDATED,
+		$this->assertTrue(
 			$this->providerUpdater()->addTable(
 				$linkPath,
 				'Reports_Table',
 				'Acme\\Plugin\\Database\\Tables'
-			)
+			)->wasUpdated()
 		);
 
 		$this->assertTrue(is_link($linkPath));
@@ -1131,22 +1179,22 @@ PHP);
 		$updater = $this->providerUpdater();
 
 		$this->assertSame(
-			ProviderRegistrationEditor::READ_FAILED,
-			$updater->checkTable($providerPath, 'Reports_Table', 'Acme\\Plugin\\Database\\Tables')
+			'file could not be read',
+			$updater->checkTable($providerPath, 'Reports_Table', 'Acme\\Plugin\\Database\\Tables')->failureReason()
 		);
 		$this->assertSame(
-			ProviderRegistrationEditor::READ_FAILED,
-			$updater->checkMigration($providerPath, 'Create_Reports_Table', 'Acme\\Plugin\\Database\\Migrations')
+			'file could not be read',
+			$updater->checkMigration($providerPath, 'Create_Reports_Table', 'Acme\\Plugin\\Database\\Migrations')->failureReason()
 		);
 		$this->assertSame(
-			ProviderRegistrationEditor::READ_FAILED,
+			'file could not be read',
 			$updater->addTableAndMigration(
 				providerPath: $providerPath,
 				tableClass: 'Reports_Table',
 				tableNamespace: 'Acme\\Plugin\\Database\\Tables',
 				migrationClass: 'Create_Reports_Table',
 				migrationNamespace: 'Acme\\Plugin\\Database\\Migrations'
-			)
+			)->failureReason()
 		);
 	}
 
@@ -1155,22 +1203,22 @@ PHP);
 		$updater      = $this->providerUpdater();
 
 		$this->assertSame(
-			ProviderRegistrationEditor::NOT_FOUND,
-			$updater->checkTable($providerPath, 'Reports_Table', 'Acme\\Plugin\\Database\\Tables')
+			'file does not exist or is not readable',
+			$updater->checkTable($providerPath, 'Reports_Table', 'Acme\\Plugin\\Database\\Tables')->failureReason()
 		);
 		$this->assertSame(
-			ProviderRegistrationEditor::NOT_FOUND,
-			$updater->checkMigration($providerPath, 'Create_Reports_Table', 'Acme\\Plugin\\Database\\Migrations')
+			'file does not exist or is not readable',
+			$updater->checkMigration($providerPath, 'Create_Reports_Table', 'Acme\\Plugin\\Database\\Migrations')->failureReason()
 		);
 		$this->assertSame(
-			ProviderRegistrationEditor::NOT_FOUND,
+			'file does not exist or is not readable',
 			$updater->addTableAndMigration(
 				providerPath: $providerPath,
 				tableClass: 'Reports_Table',
 				tableNamespace: 'Acme\\Plugin\\Database\\Tables',
 				migrationClass: 'Create_Reports_Table',
 				migrationNamespace: 'Acme\\Plugin\\Database\\Migrations'
-			)
+			)->failureReason()
 		);
 	}
 
@@ -1185,7 +1233,7 @@ PHP);
 
 namespace Acme\Plugin\Database;
 
-use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Database\DatabaseProvider;
 
 final class Provider
@@ -1207,7 +1255,7 @@ PHP);
 
 		$contents = (string) file_get_contents($providerPath);
 
-		$this->assertSame(ProviderRegistrationEditor::UPDATED, $status);
+		$this->assertTrue($status->wasUpdated());
 		$this->assertStringContainsString('use Acme\\Plugin\\Database\\Migrations\\Create_Reports_Table;', $contents);
 		$this->assertStringContainsString("\t\t\t\t\$c->get(Create_Reports_Table::class),\n\t\t\t];", $contents);
 	}
@@ -1223,7 +1271,7 @@ PHP);
 
 namespace Acme\Plugin\Database;
 
-use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Database\DatabaseProvider;
 
 final class Provider
@@ -1243,7 +1291,7 @@ PHP);
 
 		$contents = (string) file_get_contents($providerPath);
 
-		$this->assertSame(ProviderRegistrationEditor::UPDATED, $status);
+		$this->assertTrue($status->wasUpdated());
 		$this->assertStringContainsString('$container->get(Create_Reports_Table::class),', $contents);
 	}
 
@@ -1260,7 +1308,7 @@ PHP);
 
 namespace Acme\Plugin\Database;
 
-use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Database\DatabaseProvider;
 
 final class Provider
@@ -1333,7 +1381,7 @@ PHP);
 namespace Acme\Plugin\Database;
 
 use Acme\Other\DatabaseProvider;
-use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 
 final class Provider
 {
@@ -1350,7 +1398,7 @@ PHP);
 			classNamespace: 'Acme\\Plugin\\Database\\Migrations'
 		);
 
-		$this->assertSame(ProviderRegistrationEditor::MISSING_ANCHOR, $status);
+		$this->assertSame('file does not contain a generated database provider registration point', $status->failureReason());
 		$this->assertStringNotContainsString('Create_Reports_Table', (string) file_get_contents($providerPath));
 	}
 
@@ -1430,7 +1478,7 @@ PHP);
 
 		$contents = (string) file_get_contents($providerPath);
 
-		$this->assertSame(ProviderRegistrationEditor::UPDATED, $status);
+		$this->assertTrue($status->wasUpdated());
 		$this->assertStringContainsString("namespace Acme\\Plugin\\Database;\n\nuse Acme\\Plugin\\Database\\Tables\\Reports_Table;\n\nfinal class Provider", $contents);
 		$this->assertStringContainsString("\t\t\$this->container->singleton(Reports_Table::class);\n\t\t// foundation:database-tables", $contents);
 		$this->assertStringNotContainsString('Array$this', $contents);
@@ -1465,7 +1513,7 @@ PHP);
 
 		$contents = (string) file_get_contents($providerPath);
 
-		$this->assertSame(ProviderRegistrationEditor::UPDATED, $status);
+		$this->assertTrue($status->wasUpdated());
 		$this->assertStringContainsString('use Acme\\Plugin\\Database\\Tables\\Reports_Table as Existing_Reports_Table;', $contents);
 		$this->assertStringContainsString('use Acme\\Plugin\\Database\\Tables\\Reports_Table;', $contents);
 		$this->assertStringContainsString("\t\t\$this->container->singleton(Reports_Table::class);\n\t\t// foundation:database-tables", $contents);
@@ -1500,7 +1548,7 @@ PHP);
 
 		$contents = (string) file_get_contents($providerPath);
 
-		$this->assertSame(ProviderRegistrationEditor::UPDATED, $status);
+		$this->assertTrue($status->wasUpdated());
 		$this->assertStringContainsString("use Acme\\Plugin\\Database\\Existing_Table; // keep this comment here\nuse Acme\\Plugin\\Database\\Tables\\Reports_Table;", $contents);
 	}
 
@@ -1529,7 +1577,7 @@ PHP);
 			classNamespace: 'Acme\\Plugin\\Database\\Tables'
 		);
 
-		$this->assertSame(ProviderRegistrationEditor::MISSING_MARKER, $status);
+		$this->assertSame('file does not contain the generated database provider markers', $status->failureReason());
 		$this->assertSame(0, substr_count((string) file_get_contents($providerPath), '$this->container->singleton(Reports_Table::class);'));
 	}
 
@@ -1562,7 +1610,7 @@ PHP);
 			classNamespace: 'Acme\\Plugin\\Database\\Tables'
 		);
 
-		$this->assertSame(ProviderRegistrationEditor::ALREADY_REGISTERED, $status);
+		$this->assertTrue($status->wasAlreadyRegistered());
 		$this->assertSame($contents, (string) file_get_contents($providerPath));
 	}
 
@@ -1586,8 +1634,8 @@ PHP);
 			classNamespace: 'Acme\\Plugin\\Database\\Migrations'
 		);
 
-		$this->assertSame(ProviderRegistrationEditor::ALREADY_REGISTERED, $tableStatus);
-		$this->assertSame(ProviderRegistrationEditor::ALREADY_REGISTERED, $migrationStatus);
+		$this->assertTrue($tableStatus->wasAlreadyRegistered());
+		$this->assertTrue($migrationStatus->wasAlreadyRegistered());
 		$this->assertSame($contents, (string) file_get_contents($providerPath));
 	}
 
@@ -1611,8 +1659,8 @@ PHP);
 			classNamespace: 'Acme\\Plugin\\Database\\Migrations'
 		);
 
-		$this->assertSame(ProviderRegistrationEditor::ALREADY_REGISTERED, $tableStatus);
-		$this->assertSame(ProviderRegistrationEditor::ALREADY_REGISTERED, $migrationStatus);
+		$this->assertTrue($tableStatus->wasAlreadyRegistered());
+		$this->assertTrue($migrationStatus->wasAlreadyRegistered());
 		$this->assertSame($contents, (string) file_get_contents($providerPath));
 	}
 
@@ -1775,10 +1823,10 @@ PHP);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Table\\TableDefinition;', $tableContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Migration;', $migrationContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Schema;', $migrationContents);
-		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Exceptions\\IrreversibleMigration;', $reconcileContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration;', $reconcileContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Migration;', $reconcileContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Schema;', $reconcileContents);
-		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Exceptions\\IrreversibleMigration;', $genericContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration;', $genericContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Migration;', $genericContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Schema;', $genericContents);
 		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\Contracts\\Database;', $tableContents);
@@ -1801,8 +1849,10 @@ PHP);
 		$contents = (string) file_get_contents($root . '/src/Database/Provider.php');
 
 		$this->assertSame(Command::SUCCESS, $statusCode);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Container\\Contracts\\Resolver as C;', $contents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\DatabaseProvider;', $contents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Container\\Contracts\\Provider as Service_Provider;', $contents);
+		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Container\\Contracts\\Resolver as C;', $contents);
 		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\DatabaseProvider;', $contents);
 	}
 

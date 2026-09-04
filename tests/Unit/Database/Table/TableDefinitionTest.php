@@ -39,6 +39,18 @@ final class TableDefinitionTest extends TestCase
 		$this->assertSame([], $definition->validationErrors());
 	}
 
+	public function test_it_quotes_index_names_and_columns_and_escapes_embedded_backticks(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->string('report`status');
+		$definition->index('report`lookup', 'report`status');
+
+		$this->assertSame(
+			'KEY `report``lookup` (`report``status`)',
+			$definition->indexes()[0]->sql()
+		);
+	}
+
 	public function test_it_defines_queue_style_columns_with_modifiers(): void {
 		$definition = TableDefinition::for(new TestTable('queue_table', 'queue'));
 
@@ -267,6 +279,22 @@ final class TableDefinitionTest extends TestCase
 		$definition->index('status_lookup', 'type');
 
 		$this->assertContains('Index Status_Lookup is defined more than once.', $definition->validationErrors());
+	}
+
+	public function test_it_reports_every_duplicate_index_name(): void {
+		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+
+		$definition->string('status');
+		$definition->string('type');
+		$definition->index('status_lookup', 'status');
+		$definition->index('status_lookup', 'type');
+		$definition->index('type_lookup', 'type');
+		$definition->index('TYPE_LOOKUP', 'status');
+
+		$this->assertSame([
+			'Index status_lookup is defined more than once.',
+			'Index type_lookup is defined more than once.',
+		], $definition->validationErrors());
 	}
 
 	public function test_it_rejects_primary_as_a_secondary_index_name(): void {

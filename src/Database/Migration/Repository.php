@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\Database\Migration;
 
 use DateTimeImmutable;
 use DateTimeZone;
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Migration\Contracts\Repository as RepositoryContract;
 use StellarWP\Foundation\Database\Migration\Exceptions\InvalidMigrationId;
 use StellarWP\Foundation\Database\Migration\Exceptions\LedgerFailure;
@@ -27,6 +28,7 @@ final readonly class Repository implements RepositoryContract
 	/**
 	 * Return every ledger record keyed by its byte-exact migration identifier.
 	 *
+	 * @throws DatabaseException  When the migration ledger cannot be read.
 	 * @throws InvalidMigrationId When a stored migration identifier is invalid.
 	 *
 	 * @return array<string, Record>
@@ -49,6 +51,7 @@ final readonly class Repository implements RepositoryContract
 	/**
 	 * Determine whether a migration identifier has been recorded.
 	 *
+	 * @throws DatabaseException  When the migration ledger cannot be read.
 	 * @throws InvalidMigrationId When the migration identifier is invalid.
 	 */
 	public function hasRun(string $migration): bool {
@@ -61,36 +64,31 @@ final readonly class Repository implements RepositoryContract
 	}
 
 	/**
-	 * Insert and return a ledger record for a successful migration.
+	 * Insert a ledger record for a successful migration.
 	 *
+	 * @throws DatabaseException  When the migration ledger cannot be written.
 	 * @throws InvalidMigrationId When the migration identifier is invalid.
-	 * @throws LedgerFailure      When the inserted ledger record cannot be read back.
+	 * @throws LedgerFailure      When the insert does not record exactly one migration.
 	 */
-	public function recordRun(string $migration, int $batch): Record {
+	public function recordRun(string $migration, int $batch): void {
 		$migration = (new Id($migration))->value;
 		$ranAt     = new DateTimeImmutable('now', new DateTimeZone('UTC'));
 
-		$this->table->insert([
+		$inserted = $this->table->insert([
 			'migration' => $migration,
 			'batch'     => $batch,
 			'ran_at'    => $ranAt->format('Y-m-d H:i:s'),
 		]);
 
-		$row = $this->table->query()
-			->select('id', 'migration', 'batch', 'ran_at')
-			->where('migration', '=', $migration)
-			->first();
-
-		if ($row === null) {
-			throw LedgerFailure::missingAfterInsert($migration);
+		if ($inserted !== 1) {
+			throw LedgerFailure::notInsertedAfterRun($migration);
 		}
-
-		return $this->recordFromRow($row);
 	}
 
 	/**
 	 * Delete a ledger record and report whether a row was removed.
 	 *
+	 * @throws DatabaseException  When the migration ledger cannot be written.
 	 * @throws InvalidMigrationId When the migration identifier is invalid.
 	 */
 	public function deleteRun(string $migration): bool {
@@ -100,16 +98,9 @@ final readonly class Repository implements RepositoryContract
 	}
 
 	/**
-	 * Return the next batch number after the latest recorded run.
-	 */
-	public function nextBatch(): int {
-		$latest = $this->latestBatch();
-
-		return $latest === null ? 1 : $latest + 1;
-	}
-
-	/**
 	 * Return the latest recorded batch, or null when the ledger is empty.
+	 *
+	 * @throws DatabaseException When the migration ledger cannot be read.
 	 */
 	public function latestBatch(): ?int {
 		$batch = $this->table->query()->max('batch');
@@ -124,6 +115,7 @@ final readonly class Repository implements RepositoryContract
 	/**
 	 * Return ledger records belonging to one batch in stored order.
 	 *
+	 * @throws DatabaseException  When the migration ledger cannot be read.
 	 * @throws InvalidMigrationId When a stored migration identifier is invalid.
 	 *
 	 * @return list<Record>

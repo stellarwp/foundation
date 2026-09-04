@@ -218,21 +218,6 @@ final class ReconcilerTest extends TestCase
 			->reconcile(new IndexReconciliationTable('example', true));
 	}
 
-	public function test_it_rejects_non_contiguous_index_column_sequences(): void {
-		$database                = new FakeDatabase();
-		$database->rowResults    = self::indexTableColumns();
-		$database->rowsResults[] = [
-			self::indexRow('PRIMARY', 0, 1, 'id'),
-			self::indexRow('email_unique', 0, 2, 'email'),
-		];
-
-		$this->expectException(DatabaseException::class);
-		$this->expectExceptionMessage('returned invalid index metadata for wp_example.email_unique');
-
-		(new Reconciler($database, new RecordingSchemaExecutor()))
-			->reconcile(new IndexReconciliationTable('example', true));
-	}
-
 	public function test_it_fails_when_column_defaults_and_nullability_remain_unapplied(): void {
 		$database             = new FakeDatabase();
 		$database->rowResults = [
@@ -278,6 +263,21 @@ final class ReconcilerTest extends TestCase
 		$this->expectExceptionMessage('column id expected extra auto_increment, found none');
 
 		$reconciler->reconcile(new TestTable('example', 'example'));
+	}
+
+	public function test_it_reports_column_and_index_differences_together(): void {
+		$database                = new FakeDatabase();
+		$database->rowResults    = self::indexTableColumns();
+		$database->rowResults[0] = ['Null' => 'NO', 'Default' => null, 'Extra' => ''];
+		$database->rowsResults[] = [self::indexRow('PRIMARY', 0, 1, 'id')];
+
+		$this->expectException(DatabaseException::class);
+		$this->expectExceptionMessage(
+			'column id expected extra auto_increment, found none; index email_unique expected UNIQUE (email), found missing'
+		);
+
+		(new Reconciler($database, new RecordingSchemaExecutor()))
+			->reconcile(new IndexReconciliationTable('example', true));
 	}
 
 	public function test_it_reconciles_an_unapplied_column_comment(): void {

@@ -24,7 +24,7 @@ final class ContainerAdapter implements Container
 	 * @throws \lucatume\DI52\ContainerException
 	 */
 	public function bind(string $id, mixed $implementation = null, ?array $afterBuildMethods = null): void {
-		$this->container->bind($id, $implementation, $afterBuildMethods);
+		$this->container->bind($id, $this->adaptImplementation($implementation), $afterBuildMethods);
 	}
 
 	/**
@@ -56,7 +56,7 @@ final class ContainerAdapter implements Container
 	 * @throws \lucatume\DI52\ContainerException
 	 */
 	public function singleton(string $id, mixed $implementation = null, ?array $afterBuildMethods = null): void {
-		$this->container->singleton($id, $implementation, $afterBuildMethods);
+		$this->container->singleton($id, $this->adaptImplementation($implementation), $afterBuildMethods);
 	}
 
 	/**
@@ -85,7 +85,7 @@ final class ContainerAdapter implements Container
 	}
 
 	public function give(mixed $implementation): void {
-		$this->container->give($implementation);
+		$this->container->give($this->adaptImplementation($implementation));
 	}
 
 	/**
@@ -94,7 +94,7 @@ final class ContainerAdapter implements Container
 	 * @throws ContainerException
 	 */
 	public function mergeArrayVar(string $id, mixed $implementation): void {
-		$this->container->mergeArrayVar($id, $implementation);
+		$this->container->mergeArrayVar($id, $this->adaptImplementation($implementation));
 	}
 
 	public function instance(mixed $id, array $buildArgs = [], ?array $afterBuildMethods = null): Closure {
@@ -120,7 +120,12 @@ final class ContainerAdapter implements Container
 		?array $afterBuildMethods = null,
 		bool $afterBuildAll = false
 	): void {
-		$this->container->singletonDecorators($id, $decorators, $afterBuildMethods, $afterBuildAll);
+		$this->container->singletonDecorators(
+			$id,
+			array_map($this->adaptImplementation(...), $decorators),
+			$afterBuildMethods,
+			$afterBuildAll
+		);
 	}
 
 	/**
@@ -132,7 +137,25 @@ final class ContainerAdapter implements Container
 		?array $afterBuildMethods = null,
 		bool $afterBuildAll = false
 	): void {
-		$this->container->bindDecorators($id, $decorators, $afterBuildMethods, $afterBuildAll);
+		$this->container->bindDecorators(
+			$id,
+			array_map($this->adaptImplementation(...), $decorators),
+			$afterBuildMethods,
+			$afterBuildAll
+		);
+	}
+
+	/**
+	 * Adapt a factory closure so it receives Foundation's resolver rather than DI52.
+	 */
+	private function adaptImplementation(mixed $implementation): mixed {
+		if (! $implementation instanceof Closure) {
+			return $implementation;
+		}
+
+		$resolver = $this;
+
+		return static fn (): mixed => $implementation($resolver);
 	}
 
 	/**

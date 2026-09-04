@@ -2,8 +2,8 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Database\Migration;
 
-use StellarWP\Foundation\Database\Exceptions\DuplicateMigration;
 use StellarWP\Foundation\Database\Migration\Collection;
+use StellarWP\Foundation\Database\Migration\Exceptions\DuplicateMigration;
 use StellarWP\Foundation\Database\Migration\Exceptions\InvalidMigrationId;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
 use StellarWP\Foundation\Tests\TestCase;

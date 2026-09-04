@@ -2,15 +2,12 @@
 
 namespace StellarWP\Foundation\Shutdown;
 
-use lucatume\DI52\Container;
-use StellarWP\Foundation\Container\ContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Shutdown\Contracts\ShutdownRunner;
 
 /**
  * Registers the default shutdown runner and task contribution point.
- *
- * @property-read ContainerAdapter $container
  */
 final class ShutdownProvider extends Provider
 {
@@ -25,10 +22,11 @@ final class ShutdownProvider extends Provider
 		}
 
 		$this->registered = true;
+		$this->container->mergeArrayVar(self::TASKS, []);
 
 		$this->container->when(Runner::class)
 			->needs('$tasks')
-			->give(static fn (Container $container): array => $container->getVar(self::TASKS, []));
+			->give(static fn (C $c): array => $c->get(self::TASKS));
 
 		$this->container->singletonDecorators(ShutdownRunner::class, [
 			ResponseFinishingRunner::class,
