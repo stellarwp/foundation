@@ -17,6 +17,7 @@ use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Contracts\Repository as MigrationRecordRepositoryContract;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository;
+use StellarWP\Foundation\Database\Migration\ValueObjects\Record;
 use StellarWP\Foundation\Database\Query\QueryBuilder;
 use StellarWP\Foundation\Database\Schema;
 use StellarWP\Foundation\Database\Schema\DbDelta;
@@ -580,7 +581,13 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 		$this->assertTrue($repository->hasRun('CreateReports'));
 		$this->assertTrue($repository->hasRun('createreports'));
-		$this->assertCount(2, $repository->recordsForBatch(2));
+		$this->assertSame(
+			['CreateReports', 'createreports'],
+			array_map(
+				static fn (Record $record): string => $record->migration,
+				$repository->recordsForBatch(2)
+			)
+		);
 
 		$schema->drop($migrationTable);
 

@@ -11,7 +11,7 @@ use StellarWP\Foundation\Database\Migration\ValueObjects\Id;
 use Traversable;
 
 /**
- * Ordered collection of migrations registered with the database package.
+ * Collection of migrations ordered by their byte-exact identifiers.
  *
  * @implements IteratorAggregate<string, Migration>
  */
@@ -23,7 +23,7 @@ final class Collection implements IteratorAggregate
 	private array $migrations = [];
 
 	/**
-	 * Create an ordered collection from configured migration contributions.
+	 * Create a globally ordered collection from configured migration contributions.
 	 *
 	 * @param iterable<Migration> $migrations
 	 *
@@ -33,27 +33,48 @@ final class Collection implements IteratorAggregate
 	public function __construct(
 		iterable $migrations = []
 	) {
-		foreach ($migrations as $migration) {
-			$this->add($migration);
-		}
+		$this->addMigrations($migrations);
 	}
 
 	/**
-	 * Add migrations while preserving their registration order.
+	 * Add migrations and retain ascending byte-exact identifier order.
 	 *
 	 * @throws DuplicateMigration When a migration identifier is already registered.
 	 * @throws InvalidMigrationId When a migration identifier cannot be stored safely.
 	 */
 	public function add(Migration ...$migrations): void {
+		$this->addMigrations($migrations);
+	}
+
+	/**
+	 * Validate and atomically merge one migration contribution into the ordered collection.
+	 *
+	 * @param iterable<Migration> $migrations
+	 *
+	 * @throws DuplicateMigration When a migration identifier is already registered.
+	 * @throws InvalidMigrationId When a migration identifier cannot be stored safely.
+	 */
+	private function addMigrations(iterable $migrations): void {
+		$additions = [];
+
 		foreach ($migrations as $migration) {
 			$id = (new Id($migration->id()))->value;
 
-			if (isset($this->migrations[$id])) {
+			if (isset($this->migrations[$id]) || isset($additions[$id])) {
 				throw DuplicateMigration::forMigration($id);
 			}
 
+			$additions[$id] = $migration;
+		}
+
+		foreach ($additions as $id => $migration) {
 			$this->migrations[$id] = $migration;
 		}
+
+		uksort(
+			$this->migrations,
+			static fn (string $left, string $right): int => strcmp($left, $right)
+		);
 	}
 
 	/**

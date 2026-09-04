@@ -110,10 +110,10 @@ final class MigratorExecutionTest extends TestCase
 		);
 	}
 
-	public function test_it_runs_pending_migrations_in_order(): void {
+	public function test_it_runs_pending_migrations_in_ascending_id_order(): void {
 		$result = $this->configured(
-			new TestMigration('2026_01_01_000001_create_users'),
 			new TestMigration('2026_01_01_000002_create_posts'),
+			new TestMigration('2026_01_01_000001_create_users'),
 		)->run();
 
 		$this->assertSame([
@@ -295,15 +295,25 @@ final class MigratorExecutionTest extends TestCase
 		$this->configured(
 			new TestMigration('2026_01_01_000001_create_users'),
 		)->run();
+		$this->schema->statements = [];
 
 		$result = $this->configured(
-			new TestMigration('2026_01_01_000001_create_users'),
+			new TestMigration('2026_01_01_000003_create_comments'),
 			new TestMigration('2026_01_01_000002_create_posts'),
+			new TestMigration('2026_01_01_000001_create_users'),
 		)->run();
 
-		$this->assertSame(['2026_01_01_000002_create_posts'], $result->ran);
+		$this->assertSame([
+			'2026_01_01_000002_create_posts',
+			'2026_01_01_000003_create_comments',
+		], $result->ran);
 		$this->assertSame(['2026_01_01_000001_create_users'], $result->skipped);
+		$this->assertSame([
+			'up:2026_01_01_000002_create_posts',
+			'up:2026_01_01_000003_create_comments',
+		], $this->schema->statements);
 		$this->assertSame(2, $this->repository->all()['2026_01_01_000002_create_posts']->batch);
+		$this->assertSame(2, $this->repository->all()['2026_01_01_000003_create_comments']->batch);
 	}
 
 	public function test_it_rolls_back_the_latest_batch_in_reverse_order(): void {
@@ -333,6 +343,36 @@ final class MigratorExecutionTest extends TestCase
 		], $this->schema->statements);
 		$this->assertTrue($this->repository->hasRun('2026_01_01_000001_create_users'));
 		$this->assertFalse($this->repository->hasRun('2026_01_01_000002_create_posts'));
+	}
+
+	public function test_it_rolls_back_in_reverse_execution_order_instead_of_reverse_id_order(): void {
+		$executedFirst = new TestMigration('2026_01_01_000003_executed_first');
+		$executedLast  = new TestMigration('2026_01_01_000001_executed_last');
+		$ranAt         = new DateTimeImmutable('2026-01-01 00:00:00');
+		$repository    = $this->createMock(Repository::class);
+
+		$repository->method('latestBatch')->willReturn(1);
+		$repository->method('recordsForBatch')->willReturn([
+			new Record(200, $executedFirst->id(), 1, $ranAt),
+			new Record(100, $executedLast->id(), 1, $ranAt),
+		]);
+		$repository->expects($this->exactly(2))
+			->method('deleteRun')
+			->willReturn(true);
+
+		$result = $this->migrator(
+			$this->collection($executedFirst, $executedLast),
+			repository: $repository
+		)->rollback();
+
+		$this->assertSame([
+			$executedLast->id(),
+			$executedFirst->id(),
+		], $result->rolledBack);
+		$this->assertSame([
+			'down:' . $executedLast->id(),
+			'down:' . $executedFirst->id(),
+		], $this->schema->statements);
 	}
 
 	public function test_it_renews_the_lock_around_each_rollback(): void {

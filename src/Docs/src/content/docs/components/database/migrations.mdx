@@ -61,7 +61,7 @@ Constructor injection is available for application tables and other services. Fo
 
 ### Customize generated output
 
-The conventional generator paths and names require no extra options. When a project uses a different structure, the table generator's `--namespace` and `--path` options customize the table class; its migration remains in the conventional `Database\\Migrations` namespace and path. Pass `--migration-id=<id>` only when the generated timestamp identifier must be replaced.
+The conventional generator paths and names require no extra options. When a project uses a different structure, the table generator's `--namespace` and `--path` options customize the table class; its migration remains in the conventional `Database\\Migrations` namespace and path. Pass an explicit identifier such as `--migration-id=2026_09_04_143200_create_reports_table` only when the generated timestamp identifier must be replaced.
 
 The table generator derives the unprefixed WordPress table name from the class name. Pass `--table-name=report_entries` when that unprefixed name should differ from the default; Foundation applies the active WordPress prefix at runtime, producing a physical name such as `wp_report_entries`. Do not include `wp_` or another site prefix in this option, because `--table-name=wp_report_entries` could produce `wp_wp_report_entries`. The migration generator's `--table` option has a separate, class-oriented meaning: it selects the existing table class whose schema should be reconciled.
 
@@ -240,7 +240,9 @@ vendor/bin/foundation make:database-migration Create_Reports_Table \
 
 Foundation never infers table ownership from the migration name. Only `--create` selects the destructive create-table rollback, so a migration named `Create_Reports_Table` without that option remains a generic, irreversible migration.
 
-Migration IDs are permanent, byte-exact identifiers. The generator prefixes them with a sortable timestamp so migration history is easy to inspect, but execution follows provider contribution order rather than sorting by ID. Register providers and migrations in dependency order, and do not change an ID after the migration has been deployed.
+Migration IDs are permanent, byte-exact identifiers that determine forward execution order. Foundation sorts every configured migration globally from the lowest ID to the highest ID, regardless of which provider contributed it. The generator prefixes IDs with a sortable timestamp so migrations normally follow creation time. IDs generated within the same second use their class-name suffix to determine their exact order. Do not change an ID after the migration has been deployed.
+
+An explicit ID such as `--id=2026_09_04_143200_create_reports_table` remains supported when a project needs to preserve an established identifier. Custom IDs participate in the same bytewise lexical ordering, so use a consistently sortable convention. A migration introduced with an ID lower than an already-applied migration still runs as the next pending migration on an existing installation; Foundation never inserts work into previously completed history.
 
 ### Reconcile a later table change
 
@@ -334,7 +336,7 @@ Choose the raw SQL API based on the statement. `Database::execute()` accepts Wor
 
 ## Register migrations
 
-The generators update an existing database provider automatically. When registering classes by hand, bind table services and contribute migrations in dependency order from `src/Database/Provider.php`:
+The generators update an existing database provider automatically. When registering classes by hand, bind table services and contribute them from `src/Database/Provider.php`:
 
 ```php title="Provider.php"
 <?php declare(strict_types=1);
@@ -373,7 +375,7 @@ final class Provider extends Service_Provider {
 }
 ```
 
-Foundation executes migrations in contribution order, so list schema prerequisites before data migrations that depend on them. If several feature providers contribute migrations, register those providers in the order their migrations must run.
+Foundation combines migrations contributed by every provider and executes pending migrations in ascending byte-exact ID order. Provider registration order does not control migration execution. Give schema prerequisites lower IDs than data migrations that depend on them.
 
 ## Run migrations
 
@@ -414,7 +416,18 @@ Running the command without an operation displays migration status:
 wp your-plugin migrate
 ```
 
-The runner acquires the configured migration lock, executes pending migrations in provider contribution order, and records each successful migration in one batch.
+The `migration` column lists every configured or recorded identifier with its current status, batch, and run time:
+
+```text
++-------------------------------------------------+---------+-------+---------------------+
+| migration                                       | status  | batch | ran_at              |
++-------------------------------------------------+---------+-------+---------------------+
+| 2026_09_04_143200_create_reports_table          | applied | 1     | 2026-09-04 20:32:10 |
+| 2026_09_04_151500_add_status_to_reports         | pending |       |                     |
++-------------------------------------------------+---------+-------+---------------------+
+```
+
+The runner acquires the configured migration lock, executes pending migrations in ascending byte-exact ID order, and records each successful migration in one batch. Rollback follows the reverse of the ledger's actual execution order, including when a newly introduced migration has an ID lower than migrations that were already applied.
 
 ### Run during deployment
 

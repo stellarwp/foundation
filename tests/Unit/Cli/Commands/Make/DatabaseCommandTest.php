@@ -438,6 +438,20 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertFalse($command->getDefinition()->hasOption('table-namespace'));
 		$this->assertStringContainsString('mutually exclusive', $command->getHelp());
 		$this->assertStringContainsString('fully qualified class names', $command->getHelp());
+
+		foreach ([
+			'namespace' => 'Plugin\Database\Migrations',
+			'path'      => 'src/Database/Migrations',
+			'provider'  => 'src/Database/Provider.php',
+			'id'        => '2026_09_04_143200_create_reports_table',
+			'create'    => 'Reports_Table',
+			'table'     => 'Reports_Table',
+		] as $option => $example) {
+			$this->assertStringContainsString(
+				$example,
+				$command->getDefinition()->getOption($option)->getDescription()
+			);
+		}
 	}
 
 	public function test_database_table_command_distinguishes_the_physical_table_name_from_a_migration_table_class(): void {
@@ -445,6 +459,32 @@ final class DatabaseCommandTest extends TestCase
 
 		$this->assertTrue($command->getDefinition()->hasOption('table-name'));
 		$this->assertFalse($command->getDefinition()->hasOption('table'));
+
+		foreach ([
+			'namespace'    => 'Plugin\Database\Tables',
+			'path'         => 'src/Database/Tables',
+			'provider'     => 'src/Database/Provider.php',
+			'table-name'   => 'report_entries',
+			'migration-id' => '2026_09_04_143200_create_reports_table',
+		] as $option => $example) {
+			$this->assertStringContainsString(
+				$example,
+				$command->getDefinition()->getOption($option)->getDescription()
+			);
+		}
+	}
+
+	public function test_database_provider_command_describes_customization_options_with_examples(): void {
+		$command = $this->providerCommand($this->temporaryProject());
+
+		$this->assertStringContainsString(
+			'Plugin\Database',
+			$command->getDefinition()->getOption('namespace')->getDescription()
+		);
+		$this->assertStringContainsString(
+			'src/Database',
+			$command->getDefinition()->getOption('path')->getDescription()
+		);
 	}
 
 	public function test_it_generates_a_database_provider_from_project_autoload_defaults(): void {

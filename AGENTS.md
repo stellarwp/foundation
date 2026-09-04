@@ -84,6 +84,8 @@ Generator stubs should use context-aware placeholders for PHP literals, such as 
 
 Migration generators must not offer a force-overwrite option. Existing migrations are identity-bearing history: edit a migration only before it has been applied anywhere, or create a new migration for a new schema change.
 
+Migration IDs determine forward execution order. Collect all provider contributions into one migration collection, sort them globally in ascending byte-exact ID order, and then run only pending migrations. Provider registration and contribution order must not affect forward execution. Rollbacks must use the reverse of actual ledger execution order rather than reverse migration-ID order. Generated timestamp IDs provide the normal sortable convention; explicit custom IDs remain valid and assume responsibility for their lexical position.
+
 Database migration generators must distinguish table ownership from a table dependency through explicit options. Only `make:database-migration <name> --create=<table-class>` may use the create-table stub whose rollback drops the complete table. `make:database-migration <name> --table=<table-class>` selects a schema reconciliation migration: inject the existing table, reconcile its current definition in `up()`, and default `down()` to `IrreversibleMigration` until the developer supplies a safe inverse. The options are mutually exclusive and accept either a short class from the default table namespace or a fully qualified class. Never infer destructive behavior from a migration name. `make:database-table <name> --migration` must reuse the same create-migration factory so combined and standalone generation remain consistent.
 
 ## CLI Tooling Boundary

@@ -46,12 +46,12 @@ final class MigrationCommand extends Command
 		$this->setDescription('Create a new Foundation database migration.')
 			->setHelp('Use --create for a table owned by this migration, --table to reconcile an existing table, or neither for a generic migration. The table options are mutually exclusive and accept short or fully qualified class names.')
 			->addArgument('name', InputArgument::REQUIRED, 'Migration class name, e.g. Create_Reports_Table, Bump_Version, or create-reports-table.')
-			->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the generated migration class.')
-			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Directory where the migration class should be written.')
-			->addOption('provider', null, InputOption::VALUE_REQUIRED, 'Database provider file to update when it exists.')
-			->addOption('id', null, InputOption::VALUE_REQUIRED, 'Stable migration identifier: nonblank, unpadded, non-integer-like, and at most 191 bytes.')
-			->addOption('create', null, InputOption::VALUE_REQUIRED, 'Short or fully qualified table class created and dropped by this migration.')
-			->addOption('table', null, InputOption::VALUE_REQUIRED, 'Short or fully qualified existing table class reconciled by this migration.');
+			->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the generated migration, e.g. Plugin\Database\Migrations.')
+			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Output directory for the generated migration, e.g. src/Database/Migrations.')
+			->addOption('provider', null, InputOption::VALUE_REQUIRED, 'Database provider file to update, e.g. src/Database/Provider.php.')
+			->addOption('id', null, InputOption::VALUE_REQUIRED, 'Stable identifier that determines execution order, e.g. 2026_09_04_143200_create_reports_table.')
+			->addOption('create', null, InputOption::VALUE_REQUIRED, 'Table class created and dropped by this migration, e.g. Reports_Table or Plugin\Database\Tables\Reports_Table.')
+			->addOption('table', null, InputOption::VALUE_REQUIRED, 'Existing table class reconciled by this migration, e.g. Reports_Table or Plugin\Database\Tables\Reports_Table.');
 	}
 
 	/**

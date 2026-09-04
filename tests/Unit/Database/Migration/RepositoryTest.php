@@ -38,6 +38,7 @@ final class RepositoryTest extends TestCase
 
 		$this->assertArrayHasKey('2026_01_01_000001_create_users', $records);
 		$this->assertSame(1, $records['2026_01_01_000001_create_users']->id);
+		$this->assertStringEndsWith('ORDER BY `id` ASC', $this->database->rowsQueries[0]);
 	}
 
 	public function test_it_records_a_migration_run(): void {
@@ -102,5 +103,6 @@ final class RepositoryTest extends TestCase
 
 		$this->assertCount(1, $records);
 		$this->assertSame('2026_01_01_000002_create_posts', $records[0]->migration);
+		$this->assertStringEndsWith('ORDER BY `id` ASC', $this->database->rowsQueries[0]);
 	}
 }

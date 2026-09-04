@@ -258,16 +258,21 @@ final class DatabaseProviderTest extends WPTestCase
 	}
 
 	public function test_it_preserves_preconfigured_migrations(): void {
-		$migration = new TestMigration('2026_06_23_000001_create_example');
+		$later     = new TestMigration('2026_06_23_000002_add_example_status');
+		$earlier   = new TestMigration('2026_06_23_000001_create_example');
 		$container = $this->newContainer();
-		$container->mergeArrayVar(DatabaseProvider::MIGRATIONS, [$migration]);
+		$container->mergeArrayVar(DatabaseProvider::MIGRATIONS, [$later]);
+		$container->mergeArrayVar(DatabaseProvider::MIGRATIONS, [$earlier]);
 
 		$container->register(WPCliProvider::class);
 		$container->register(DatabaseProvider::class);
 
-		$this->assertSame([$migration], $container->get(DatabaseProvider::MIGRATIONS));
-		$this->assertSame([$migration->id() => $migration], $container->get(Collection::class)->all());
-		$this->assertSame([$migration], $container->get(Collection::class)->values());
+		$this->assertSame([$later, $earlier], $container->get(DatabaseProvider::MIGRATIONS));
+		$this->assertSame([
+			$earlier->id() => $earlier,
+			$later->id()   => $later,
+		], $container->get(Collection::class)->all());
+		$this->assertSame([$earlier, $later], $container->get(Collection::class)->values());
 	}
 
 	public function test_it_collects_migrations_added_after_provider_registration(): void {

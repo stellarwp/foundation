@@ -55,12 +55,12 @@ final class TableCommand extends Command
 	protected function configure(): void {
 		$this->setDescription('Generate a Foundation database table class.')
 			->addArgument('name', InputArgument::REQUIRED, 'Table class name, e.g. Reports_Table, Reports, or reports.')
-			->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the generated table class.')
-			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Directory where the table class should be written.')
-			->addOption('provider', null, InputOption::VALUE_REQUIRED, 'Database provider file to update when it exists.')
-			->addOption('table-name', null, InputOption::VALUE_REQUIRED, 'Unprefixed WordPress table name.')
+			->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the generated table, e.g. Plugin\Database\Tables.')
+			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Output directory for the generated table, e.g. src/Database/Tables.')
+			->addOption('provider', null, InputOption::VALUE_REQUIRED, 'Database provider file to update, e.g. src/Database/Provider.php.')
+			->addOption('table-name', null, InputOption::VALUE_REQUIRED, 'Unprefixed WordPress table name, e.g. report_entries.')
 			->addOption('migration', 'm', InputOption::VALUE_NONE, 'Also create the table\'s initial migration.')
-			->addOption('migration-id', null, InputOption::VALUE_REQUIRED, 'Stable identifier for the initial migration. Requires --migration.');
+			->addOption('migration-id', null, InputOption::VALUE_REQUIRED, 'Stable identifier that determines execution order, e.g. 2026_09_04_143200_create_reports_table. Requires --migration.');
 	}
 
 	/**
