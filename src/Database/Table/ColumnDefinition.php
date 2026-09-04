@@ -28,6 +28,8 @@ final class ColumnDefinition
 
 	private ?ColumnComment $comment;
 
+	private bool $changesExistingColumn = false;
+
 	/**
 	 * Begin configuring a column from an immutable seed declaration.
 	 */
@@ -96,6 +98,25 @@ final class ColumnDefinition
 		$this->comment = new ColumnComment($comment);
 
 		return $this;
+	}
+
+	/**
+	 * Mark this declaration as a modification of an existing column.
+	 *
+	 * Without this marker, a declaration in an alteration adds the column when
+	 * it is missing and must already match when it exists during a retry.
+	 */
+	public function change(): self {
+		$this->changesExistingColumn = true;
+
+		return $this;
+	}
+
+	/**
+	 * Determine whether an alteration should modify the existing column.
+	 */
+	public function changesExistingColumn(): bool {
+		return $this->changesExistingColumn;
 	}
 
 	/**

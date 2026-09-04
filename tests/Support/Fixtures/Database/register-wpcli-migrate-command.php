@@ -13,10 +13,13 @@ use StellarWP\Foundation\Database\Migration\Factories\SessionFactory;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository;
 use StellarWP\Foundation\Database\Migration\Store;
+use StellarWP\Foundation\Database\Migration\StoreSchema;
 use StellarWP\Foundation\Database\Schema;
 use StellarWP\Foundation\Database\Schema\DbDelta;
+use StellarWP\Foundation\Database\Schema\Editor;
 use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Database\Scope\SiteScope;
+use StellarWP\Foundation\Database\Table\Blueprint;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestTable;
@@ -44,7 +47,8 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 
 	$scope              = new SiteScope($wpdb);
 	$database           = new Database($wpdb, $scope);
-	$schema             = new Schema($database, new Reconciler($database, new DbDelta()));
+	$reconciler         = new Reconciler($database, new DbDelta());
+	$schema             = new Schema($database, $reconciler, new Editor($database, $reconciler));
 	$migrationTableName = 'foundation_cli_migrations';
 	$lockTableName      = 'foundation_cli_locks';
 	$exampleTable       = 'foundation_cli_example';
@@ -52,7 +56,8 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 	$lockTable          = new LockTable($lockTableName, $database);
 	$repository         = new Repository($migrationTable);
 	$lock               = new DatabaseLock($database, $lockTable);
-	$store              = new Store($schema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, $lockTable, 'nx-foundation-database-migrations', 300);
+	$storeSchema        = new StoreSchema($schema, $reconciler, $migrationTable, $lockTable);
+	$store              = new Store($storeSchema, new LeaseFactory(), new SessionFactory($schema), $scope, $lock, 'nx-foundation-database-migrations', 300);
 
 	$migration = new class(new TestTable($exampleTable)) implements Migration {
 		public function __construct(
@@ -65,7 +70,10 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 		}
 
 		public function up(SchemaContract $schema): void {
-			$schema->createOrUpdate($this->table);
+			$blueprint = Blueprint::for($this->table);
+			$blueprint->bigIncrements('id');
+
+			$schema->create($blueprint);
 		}
 
 		public function down(SchemaContract $schema): void {

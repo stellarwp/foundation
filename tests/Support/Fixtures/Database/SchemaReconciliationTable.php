@@ -2,11 +2,11 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database;
 
-use StellarWP\Foundation\Database\Contracts\ManagedTable;
+use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Table\Blueprint;
 use StellarWP\Foundation\Database\Table\Column;
-use StellarWP\Foundation\Database\Table\TableDefinition;
 
-final readonly class SchemaReconciliationTable implements ManagedTable
+final readonly class SchemaReconciliationTable implements Table
 {
 	public function __construct(
 		private string $unprefixedName,
@@ -19,8 +19,8 @@ final readonly class SchemaReconciliationTable implements ManagedTable
 		return $this->unprefixedName;
 	}
 
-	public function definition(): TableDefinition {
-		$table = TableDefinition::for($this);
+	public function blueprint(): Blueprint {
+		$table = Blueprint::for($this);
 
 		$table->bigIncrements('id');
 		$table->integer('attempts')->default($this->attemptsDefault);

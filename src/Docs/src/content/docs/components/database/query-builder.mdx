@@ -32,7 +32,7 @@ final readonly class Import_Log_Table extends Table {
 }
 ```
 
-Implement `ManagedTable` as well only when Foundation migrations own the table definition and lifecycle.
+The same table shape works whether Foundation migrations, another plugin, or an external system owns its schema.
 
 ## Read rows
 

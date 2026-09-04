@@ -2,17 +2,16 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database;
 
-use StellarWP\Foundation\Database\Contracts\ManagedTable;
 use StellarWP\Foundation\Database\Contracts\TableGateway;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\QueryException;
+use StellarWP\Foundation\Database\Table\Blueprint;
 use StellarWP\Foundation\Database\Table\Table;
-use StellarWP\Foundation\Database\Table\TableDefinition;
 
 /**
  * Provides a concrete table gateway for database table tests.
  */
-final readonly class TestDatabaseTable extends Table implements ManagedTable
+final readonly class TestDatabaseTable extends Table
 {
 	public function __construct(
 		private string $unprefixedTableName,
@@ -25,8 +24,8 @@ final readonly class TestDatabaseTable extends Table implements ManagedTable
 		return $this->unprefixedTableName;
 	}
 
-	public function definition(): TableDefinition {
-		$table = TableDefinition::for($this);
+	public function blueprint(): Blueprint {
+		$table = Blueprint::for($this);
 		$table->bigIncrements('id');
 
 		return $table;

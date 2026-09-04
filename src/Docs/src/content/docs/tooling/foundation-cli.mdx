@@ -80,7 +80,7 @@ vendor/bin/foundation make:database-table Reports_Table --migration
 
 The `--migration` flag creates and registers the table's initial migration in the same operation. Table `--namespace` and `--path` options affect only the table class; the migration uses its conventional namespace and path. Use an explicit identifier such as `--migration-id=2026_09_04_143200_create_reports_table` only when the generated timestamp identifier must be replaced. The explicit ID determines that migration's position in Foundation's ascending execution order.
 
-Use `--table-name=<name>` when the table's unprefixed WordPress name should differ from the name derived from its class. On `make:database-migration`, `--table=<class>` instead selects the existing table class whose schema should be reconciled.
+Use `--table-name=<name>` when the table's unprefixed WordPress name should differ from the name derived from its class. On `make:database-migration`, `--table=<class>` instead selects the existing table class that an alteration migration changes.
 
 Generated database classes require the runtime package:
 
@@ -95,7 +95,7 @@ The migration generator selects one of three modes:
 | Invocation | Generated behavior | Override stub |
 | --- | --- | --- |
 | `make:database-migration Create_Reports_Table --create=Reports_Table` | Creates the explicitly selected table; `down()` drops the table | `create-table-migration.stub` |
-| `make:database-migration Add_Status_To_Reports --table=Reports_Table` | Reconciles the table's current definition; `down()` throws `IrreversibleMigration` until replaced | `reconcile-table-migration.stub` |
+| `make:database-migration Add_Status_To_Reports --table=Reports_Table` | Starts an explicit alteration blueprint; `down()` throws `IrreversibleMigration` until replaced | `alter-table-migration.stub` |
 | `make:database-migration Backfill_Report_Status` | Generates a generic migration; add service or table dependencies manually | `migration.stub` |
 
 The `--create` and `--table` options are mutually exclusive. Each accepts a class from the default `Database\\Tables` namespace or a fully qualified table class. Migration names never select destructive behavior by themselves.
@@ -133,7 +133,7 @@ foundation/stubs/
     provider.stub
     table.stub
     create-table-migration.stub
-    reconcile-table-migration.stub
+    alter-table-migration.stub
     migration.stub
 ```
 

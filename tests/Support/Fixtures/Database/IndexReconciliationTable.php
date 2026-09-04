@@ -2,11 +2,11 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database;
 
-use StellarWP\Foundation\Database\Contracts\ManagedTable;
+use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Table\Blueprint;
 use StellarWP\Foundation\Database\Table\IndexType;
-use StellarWP\Foundation\Database\Table\TableDefinition;
 
-final readonly class IndexReconciliationTable implements ManagedTable
+final readonly class IndexReconciliationTable implements Table
 {
 	/**
 	 * @param non-empty-list<string> $indexColumns
@@ -23,8 +23,8 @@ final readonly class IndexReconciliationTable implements ManagedTable
 		return $this->unprefixedName;
 	}
 
-	public function definition(): TableDefinition {
-		$definition = TableDefinition::for($this);
+	public function blueprint(): Blueprint {
+		$definition = Blueprint::for($this);
 
 		$definition->bigIncrements('id');
 		$definition->string('email');

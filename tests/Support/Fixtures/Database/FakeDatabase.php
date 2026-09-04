@@ -43,6 +43,11 @@ final class FakeDatabase implements Database
 
 	public int $insertResult = 1;
 
+	/**
+	 * @var array<string, mixed>|null
+	 */
+	public ?array $tableStatus = ['Collation' => 'utf8mb4_general_ci'];
+
 	public function tableName(Table $table): string {
 		return $this->prefix . $table->unprefixedName();
 	}
@@ -71,6 +76,10 @@ final class FakeDatabase implements Database
 	public function row(string $sql, mixed ...$bindings): ?array {
 		$query              = $this->prepare($sql, ...$bindings);
 		$this->rowQueries[] = $query;
+
+		if (str_starts_with($sql, 'SHOW TABLE STATUS ')) {
+			return $this->tableStatus;
+		}
 
 		$result = array_shift($this->rowResults);
 

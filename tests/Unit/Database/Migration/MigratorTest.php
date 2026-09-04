@@ -10,6 +10,8 @@ use StellarWP\Foundation\Database\Migration\Factories\LeaseFactory;
 use StellarWP\Foundation\Database\Migration\Factories\SessionFactory;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Store;
+use StellarWP\Foundation\Database\Migration\StoreSchema;
+use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
@@ -19,6 +21,7 @@ use StellarWP\Foundation\Lock\SystemClock;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\InMemoryRepository;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchema;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchemaExecutor;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestDatabaseScope;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
 use StellarWP\Foundation\Tests\Support\Fixtures\Lock\MutableClock;
@@ -217,7 +220,20 @@ final class MigratorTest extends TestCase
 		$migrator = new Migrator(
 			new Collection([new TestMigration('2026_06_23_000001_create_example')]),
 			new InMemoryRepository(),
-			new Store($schema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, $lockTable, 'nx-foundation-database-migrations', 300)
+			new Store(
+				new StoreSchema(
+					$schema,
+					new Reconciler($database, new RecordingSchemaExecutor()),
+					$migrationTable,
+					$lockTable
+				),
+				new LeaseFactory(),
+				new SessionFactory($schema),
+				$scope,
+				$lock,
+				'nx-foundation-database-migrations',
+				300
+			)
 		);
 
 		$this->expectException(UninitializedStore::class);
@@ -237,7 +253,20 @@ final class MigratorTest extends TestCase
 		$database       = new FakeDatabase();
 		$migrationTable = new MigrationTable('nx_foundation_migrations', $database);
 		$lockTable      = new LockTable('nx_foundation_locks', $database);
-		$store          = new Store($schema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, $lockTable, 'nx-foundation-database-migrations', 300);
+		$store          = new Store(
+			new StoreSchema(
+				$schema,
+				new Reconciler($database, new RecordingSchemaExecutor()),
+				$migrationTable,
+				$lockTable
+			),
+			new LeaseFactory(),
+			new SessionFactory($schema),
+			$scope,
+			$lock,
+			'nx-foundation-database-migrations',
+			300
+		);
 
 		$migrator = new Migrator(
 			new Collection([

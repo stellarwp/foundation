@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\Database\Contracts;
 
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
+use StellarWP\Foundation\Database\Table\Blueprint;
 
 /**
  * Applies and inspects WordPress database schema state for migrations.
@@ -11,12 +12,20 @@ use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 interface Schema
 {
 	/**
-	 * Create or update a table.
+	 * Create a missing table or verify an existing table against a historical creation blueprint.
 	 *
-	 * @throws DatabaseException        When WordPress cannot reconcile the table definition.
+	 * @throws DatabaseException        When WordPress cannot create the table or its existing state is incompatible.
 	 * @throws InvalidArgumentException When the table definition is invalid.
 	 */
-	public function createOrUpdate(ManagedTable $table): void;
+	public function create(Blueprint $blueprint): void;
+
+	/**
+	 * Apply the explicit operations in a blueprint to an existing table.
+	 *
+	 * @throws DatabaseException        When the table is missing or a schema change cannot be applied or verified.
+	 * @throws InvalidArgumentException When the alteration blueprint is invalid.
+	 */
+	public function alter(Blueprint $blueprint): void;
 
 	/**
 	 * Execute a complete, trusted schema SQL statement without placeholder binding.
@@ -38,13 +47,6 @@ interface Schema
 	 * @throws DatabaseException When index inspection fails.
 	 */
 	public function hasIndex(Table $table, string $index): bool;
-
-	/**
-	 * Remove a named secondary index from a table.
-	 *
-	 * @throws DatabaseException When the table name is invalid or the statement cannot be executed.
-	 */
-	public function dropIndex(Table $table, string $index): void;
 
 	/**
 	 * Drop a table when it exists.

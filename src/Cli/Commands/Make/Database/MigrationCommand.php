@@ -44,14 +44,14 @@ final class MigrationCommand extends Command
 	 */
 	protected function configure(): void {
 		$this->setDescription('Create a new Foundation database migration.')
-			->setHelp('Use --create for a table owned by this migration, --table to reconcile an existing table, or neither for a generic migration. The table options are mutually exclusive and accept short or fully qualified class names.')
+			->setHelp('Use --create for a new table, --table for explicit changes to an existing table, or neither for a generic migration. The table options are mutually exclusive and accept short or fully qualified class names.')
 			->addArgument('name', InputArgument::REQUIRED, 'Migration class name, e.g. Create_Reports_Table, Bump_Version, or create-reports-table.')
 			->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the generated migration, e.g. Plugin\Database\Migrations.')
 			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Output directory for the generated migration, e.g. src/Database/Migrations.')
 			->addOption('provider', null, InputOption::VALUE_REQUIRED, 'Database provider file to update, e.g. src/Database/Provider.php.')
 			->addOption('id', null, InputOption::VALUE_REQUIRED, 'Stable identifier that determines execution order, e.g. 2026_09_04_143200_create_reports_table.')
 			->addOption('create', null, InputOption::VALUE_REQUIRED, 'Table class created and dropped by this migration, e.g. Reports_Table or Plugin\Database\Tables\Reports_Table.')
-			->addOption('table', null, InputOption::VALUE_REQUIRED, 'Existing table class reconciled by this migration, e.g. Reports_Table or Plugin\Database\Tables\Reports_Table.');
+			->addOption('table', null, InputOption::VALUE_REQUIRED, 'Existing table class altered by this migration, e.g. Reports_Table or Plugin\Database\Tables\Reports_Table.');
 	}
 
 	/**
@@ -100,7 +100,7 @@ final class MigrationCommand extends Command
 	}
 
 	/**
-	 * Build the migration artifact selected by the generic, create, or reconcile mode.
+	 * Build the migration artifact selected by the generic, create, or alter mode.
 	 *
 	 * @throws RuntimeException When options or project metadata are invalid.
 	 */
@@ -122,7 +122,7 @@ final class MigrationCommand extends Command
 		}
 
 		if ($table !== null) {
-			return $this->migrationFactory->reconcileTable($name, $table, $namespace, $path, $id);
+			return $this->migrationFactory->alterTable($name, $table, $namespace, $path, $id);
 		}
 
 		return $this->migrationFactory->generic($name, $namespace, $path, $id);

@@ -90,8 +90,8 @@ final class DatabaseProviderTest extends WPTestCase
 		$table = $this->container->get(GeneratedStyleTable::class);
 
 		$this->assertInstanceOf(GeneratedStyleTable::class, $table);
+		$this->assertSame('generated_style', $table->unprefixedName());
 		$this->assertSame($GLOBALS['wpdb']->prefix . 'generated_style', $table->name());
-		$this->assertCount(1, $table->definition()->columns());
 	}
 
 	public function test_database_capability_contracts_follow_an_application_database_replacement(): void {

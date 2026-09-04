@@ -2,10 +2,10 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database;
 
-use StellarWP\Foundation\Database\Contracts\ManagedTable;
-use StellarWP\Foundation\Database\Table\TableDefinition;
+use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Table\Blueprint;
 
-final class TestTable implements ManagedTable
+final class TestTable implements Table
 {
 	public function __construct(
 		private readonly string $unprefixedName
@@ -16,8 +16,8 @@ final class TestTable implements ManagedTable
 		return $this->unprefixedName;
 	}
 
-	public function definition(): TableDefinition {
-		$table = TableDefinition::for($this);
+	public function blueprint(): Blueprint {
+		$table = Blueprint::for($this);
 		$table->bigIncrements('id');
 
 		return $table;

@@ -13,7 +13,7 @@ use StellarWP\Foundation\Database\Table\IndexType;
 final readonly class IndexState
 {
 	/**
-	 * Index types reported by physical inspection but not declared by TableDefinition.
+	 * Index types reported by physical inspection but not declared by Blueprint.
 	 */
 	public const string FULLTEXT = 'fulltext';
 

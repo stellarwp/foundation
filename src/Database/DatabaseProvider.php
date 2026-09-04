@@ -28,8 +28,10 @@ use StellarWP\Foundation\Database\Migration\Factories\SessionFactory;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository as MigrationRecordRepository;
 use StellarWP\Foundation\Database\Migration\Store;
+use StellarWP\Foundation\Database\Migration\StoreSchema;
 use StellarWP\Foundation\Database\Schema\Contracts\SchemaExecutor;
 use StellarWP\Foundation\Database\Schema\DbDelta;
+use StellarWP\Foundation\Database\Schema\Editor;
 use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Database\Scope\SiteScope;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
@@ -130,6 +132,7 @@ final class DatabaseProvider extends Provider
 		$this->container->singleton(DbDelta::class);
 		$this->container->singleton(SchemaExecutor::class, static fn (C $c): DbDelta => $c->get(DbDelta::class));
 		$this->container->singleton(Reconciler::class);
+		$this->container->singleton(Editor::class);
 		$this->container->singleton(Schema::class);
 		$this->container->singleton(SchemaContract::class, static fn (C $c): Schema => $c->get(Schema::class));
 	}
@@ -185,6 +188,8 @@ final class DatabaseProvider extends Provider
 		$this->container->singleton(Repository::class, static fn (C $c): MigrationRecordRepository => $c->get(MigrationRecordRepository::class));
 		$this->container->singleton(LeaseFactory::class);
 		$this->container->singleton(SessionFactory::class);
+		$this->container->singleton(StoreSchema::class);
+		$this->container->singleton(Store::class);
 		$this->container->singleton(Migrator::class);
 	}
 

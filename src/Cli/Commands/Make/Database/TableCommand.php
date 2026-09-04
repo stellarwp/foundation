@@ -26,8 +26,8 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * Generates a WordPress-style table class for Foundation Database migrations.
  *
- * Use this from a consuming WordPress project when a feature needs a table
- * definition that can be applied by a Foundation migration.
+ * Use this from a consuming WordPress project when a feature needs a stable
+ * table identity for migrations and table-scoped database operations.
  */
 final class TableCommand extends Command
 {
@@ -58,8 +58,8 @@ final class TableCommand extends Command
 			->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the generated table, e.g. Plugin\Database\Tables.')
 			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Output directory for the generated table, e.g. src/Database/Tables.')
 			->addOption('provider', null, InputOption::VALUE_REQUIRED, 'Database provider file to update, e.g. src/Database/Provider.php.')
-			->addOption('table-name', null, InputOption::VALUE_REQUIRED, 'Unprefixed WordPress table name, e.g. report_entries.')
-			->addOption('migration', 'm', InputOption::VALUE_NONE, 'Also create the table\'s initial migration.')
+			->addOption('table-name', null, InputOption::VALUE_REQUIRED, 'Unprefixed WordPress table name using letters, numbers, and underscores, e.g. report_entries.')
+			->addOption('migration', 'm', InputOption::VALUE_NONE, 'Also create the table\'s initial migration. Rolling it back drops the complete table and its data.')
 			->addOption('migration-id', null, InputOption::VALUE_REQUIRED, 'Stable identifier that determines execution order, e.g. 2026_09_04_143200_create_reports_table. Requires --migration.');
 	}
 
@@ -104,7 +104,7 @@ final class TableCommand extends Command
 		$output->writeln('');
 
 		if ($migration === null) {
-			$output->writeln('<comment>Add this table to a migration with Schema::createOrUpdate() and Schema::drop().</comment>');
+			$output->writeln('<comment>Create a migration that defines this table with Blueprint and Schema::create().</comment>');
 		} elseif ($providerPath === null && ! $this->providerExists($input)) {
 			$output->writeln(sprintf(
 				'<comment>Register %s and %s with your database provider.</comment>',
@@ -201,12 +201,10 @@ final class TableCommand extends Command
 			path: $path . '/' . $className . '.php',
 			relativePath: $relative,
 			contents: $this->stubRenderer->render($stub, [
-				'namespace'                            => $namespace,
-				'class'                                => $className,
-				'table_php'                            => $this->stubRenderer->phpStringLiteral($table),
-				'foundation_database_managed_table'    => $project->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\ManagedTable'),
-				'foundation_database_table'            => $project->foundationClass('StellarWP\\Foundation\\Database\\Table\\Table'),
-				'foundation_database_table_definition' => $project->foundationClass('StellarWP\\Foundation\\Database\\Table\\TableDefinition'),
+				'namespace'                 => $namespace,
+				'class'                     => $className,
+				'table_php'                 => $this->stubRenderer->phpStringLiteral($table),
+				'foundation_database_table' => $project->foundationClass('StellarWP\\Foundation\\Database\\Table\\Table'),
 			])
 		);
 	}
@@ -328,7 +326,7 @@ final class TableCommand extends Command
 	/**
 	 * Resolve the stable unprefixed table name stored in generated source.
 	 *
-	 * @throws RuntimeException When --table-name is explicitly blank.
+	 * @throws RuntimeException When --table-name cannot be used as an unprefixed WordPress table name.
 	 */
 	private function tableName(InputInterface $input, string $className): string {
 		$value = $input->getOption('table-name');
@@ -337,11 +335,15 @@ final class TableCommand extends Command
 			return $this->classNameResolver->tableName($className);
 		}
 
-		if (! is_string($value) || trim($value) === '') {
-			throw new RuntimeException('The --table-name option cannot be blank.');
+		if (! is_string($value) || $value === '' || trim($value) !== $value) {
+			throw new RuntimeException('The --table-name option cannot be blank or contain surrounding whitespace.');
 		}
 
-		return trim($value);
+		if (preg_match('/\A[A-Za-z0-9_]+\z/', $value) !== 1) {
+			throw new RuntimeException('The --table-name option may contain only ASCII letters, numbers, and underscores.');
+		}
+
+		return $value;
 	}
 
 	/**
