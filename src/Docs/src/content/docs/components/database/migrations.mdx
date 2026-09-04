@@ -183,7 +183,7 @@ $table->primary( 'site_id', 'external_id' );
 ```
 
 :::note[Custom table implementations]
-If an application implements `StellarWP\Foundation\Database\Contracts\Table` directly, `unprefixedName()` must return a stable name such as `reports`, never `wp_reports`. The table can then be passed to focused database services such as `TableWriter`, `SchemaInspector`, or `TableNameResolver`. Build table-scoped reads with `QueryBuilder` and a `QueryGateway`. Extend the supplied `Table` base class when the table object itself should expose the query and write convenience methods. Implement `ManagedTable` before passing the table to `Schema::createOrUpdate()` so Foundation can read the complete schema it owns.
+Most application tables should extend the supplied `Table` base class. Implement `StellarWP\Foundation\Database\Contracts\Table` directly only for a custom wrapper that does not need Foundation's query and write conveniences. In either case, `unprefixedName()` must return a stable name such as `reports`, never `wp_reports`. Implement `ManagedTable` only when Foundation migrations own and reconcile that table's schema.
 :::
 
 ### Apply an initial table definition

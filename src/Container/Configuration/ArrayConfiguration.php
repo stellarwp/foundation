@@ -14,6 +14,8 @@ final readonly class ArrayConfiguration implements Configuration
 	private Dot $configuration;
 
 	/**
+	 * Create configuration backed by the supplied application values.
+	 *
 	 * @param array<array-key, mixed> $configuration
 	 */
 	public function __construct(array $configuration = []) {

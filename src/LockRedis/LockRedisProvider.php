@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\LockRedis;
 
 use InvalidArgumentException;
-use StellarWP\Foundation\Container\Contracts\ConfiguredProvider;
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Lock\Contracts\Clock;
 use StellarWP\Foundation\Lock\SystemClock;
@@ -11,11 +11,13 @@ use StellarWP\Foundation\Lock\SystemClock;
 /**
  * Registers Redis lock services without choosing a client or global lock strategy.
  */
-final class LockRedisProvider extends ConfiguredProvider
+final class LockRedisProvider extends Provider
 {
 	private const string PREFIX = self::class . '.prefix';
 
 	/**
+	 * Register the Redis lock policy and its shared implementation services.
+	 *
 	 * @throws InvalidArgumentException When the required Redis lock prefix is not configured.
 	 */
 	public function register(): void {
@@ -25,6 +27,8 @@ final class LockRedisProvider extends ConfiguredProvider
 	}
 
 	/**
+	 * Validate and register the prefix used to isolate this application's locks.
+	 *
 	 * @throws InvalidArgumentException When the required Redis lock prefix is not configured.
 	 */
 	private function registerConfiguration(): void {
@@ -37,10 +41,16 @@ final class LockRedisProvider extends ConfiguredProvider
 		$this->container->singleton(self::PREFIX, $prefix);
 	}
 
+	/**
+	 * Register the system clock used to calculate lock expirations.
+	 */
 	private function registerClock(): void {
 		$this->container->singleton(SystemClock::class);
 	}
 
+	/**
+	 * Register the Redis lock while leaving its connection to the application.
+	 */
 	private function registerLock(): void {
 		$this->container->when(RedisLock::class)
 			->needs(Clock::class)

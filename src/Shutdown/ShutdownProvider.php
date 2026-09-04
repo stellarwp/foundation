@@ -15,6 +15,9 @@ final class ShutdownProvider extends Provider
 
 	private bool $registered = false;
 
+	/**
+	 * Register contributed shutdown tasks and connect the shared runner to WordPress.
+	 */
 	public function register(): void {
 		// Repeated provider registration must not duplicate definitions or the WordPress hook.
 		if ($this->registered) {

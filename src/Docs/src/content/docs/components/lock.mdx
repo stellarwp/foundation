@@ -117,7 +117,7 @@ namespace YourPlugin\Lock;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use Predis\Client;
 use Predis\ClientInterface;
-use StellarWP\Foundation\Container\Contracts\ConfiguredProvider as Service_Provider;
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\LockRedis\Connections\PredisConnection;
 use StellarWP\Foundation\LockRedis\Contracts\Connection;
@@ -166,11 +166,11 @@ final class Provider extends Service_Provider {
 Register the Foundation Redis provider and the application lock provider directly in `src/App.php`, in that order:
 
 ```php title="App.php"
-use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\LockRedis\LockRedisProvider;
 use YourPlugin\Lock;
 
-/** @var list<class-string<Providable>> */
+/** @var list<class-string<Provider>> */
 private const array PROVIDERS = [
 	LockRedisProvider::class,
 	Lock\Provider::class,

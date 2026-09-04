@@ -75,7 +75,7 @@ In `src/Catalog/Provider.php`, bind an interface when the container cannot infer
 
 namespace YourPlugin\Catalog;
 
-use StellarWP\Foundation\Container\Contracts\ConfiguredProvider as Service_Provider;
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 
 /**
@@ -98,7 +98,7 @@ final class Provider extends Service_Provider {
 
 Bindings are lazy. Registering `Remote_Catalog` does not construct it; the container builds it when another service first requests `Catalog`.
 
-Extend `ConfiguredProvider` when a provider reads `$this->config`. Extend the narrower `Provider` when it needs only the container. Both use the same `register()` lifecycle, but providers that do not consume configuration are not forced to depend on it.
+Every provider receives the shared container and read-only configuration snapshot. Use `$this->config` when a feature needs configuration; providers that do not need it can simply ignore it. This keeps one provider shape throughout the application instead of requiring developers to choose a base class.
 
 Foundation providers register eagerly. Keep expensive services lazy by binding them in `register()` and letting the container construct them on first use; do not add provider-level deferred or boot phases.
 
@@ -234,22 +234,21 @@ Test application services through their public behavior. Reserve container integ
 
 Replace application bindings for `Adbar\Dot` with the Foundation `Configuration` contract. Construct the supplied `ArrayConfiguration` from the array returned by `config.php`, then pass it to `ContainerFactory::create()`. The factory creates the default backend and registers Foundation's `Container`, `Resolver`, and `Configuration` contracts.
 
-Providers that read configuration should extend `ConfiguredProvider`; providers that do not should extend `Provider`. Update explicit provider constructors to match the selected base class:
+Prefer `ContainerFactory` over constructing `ContainerAdapter` directly. A custom composition root that wraps its own DI52 container must register the `Container`, `Resolver`, and `Configuration` contracts before registering any provider; every `Provider` resolves that configuration during construction.
+
+The `Provider` constructor now resolves Foundation's `Configuration` contract from the container and is final. Remove application provider constructors that accepted or forwarded the container and `Adbar\Dot`; providers can read the same configuration through `$this->config` during `register()`:
 
 ```php
-public function __construct( Container $container ) {
-	parent::__construct( $container );
+public function register(): void {
+	$endpoint = (string) $this->config->get( 'catalog.endpoint' );
+
+	// Register this feature using the configured endpoint.
 }
 ```
 
-```php
-public function __construct(
-	Container $container,
-	Configuration $configuration
-) {
-	parent::__construct( $container, $configuration );
-}
-```
+Applications that implemented the removed `Providable` interface directly should extend `Provider` instead. Update provider lists and `class-string` annotations to reference `Provider` as well.
+
+Provider subclasses can no longer declare their own constructors. Move scalar provider settings into `config.php` and read them through `$this->config`. Inject runtime collaborators into the application services configured by the provider rather than into the provider itself; use the inherited `$this->container` only to register those definitions and hooks.
 
 Container factory callbacks should import `StellarWP\Foundation\Container\Contracts\Resolver as C` instead of `lucatume\DI52\Container`. Callback bodies can continue calling `$c->get()` and `$c->has()`.
 

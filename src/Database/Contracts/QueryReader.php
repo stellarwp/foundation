@@ -10,10 +10,16 @@ use StellarWP\Foundation\Database\Exceptions\QueryException;
  */
 interface QueryReader
 {
-	/** @throws QueryException When the template is invalid or cannot be prepared. */
+	/**
+	 * Prepare a SQL template using WordPress placeholder bindings.
+	 *
+	 * @throws QueryException When the template is invalid or cannot be prepared.
+	 */
 	public function prepare(string $sql, mixed ...$bindings): string;
 
 	/**
+	 * Execute a query and return its first row when one is available.
+	 *
 	 * @throws DatabaseException When the database returns a row in an invalid shape.
 	 * @throws QueryException    When preparation or execution fails.
 	 *
@@ -22,6 +28,8 @@ interface QueryReader
 	public function row(string $sql, mixed ...$bindings): ?array;
 
 	/**
+	 * Execute a query and return every matching row.
+	 *
 	 * @throws DatabaseException When the database returns a row in an invalid shape.
 	 * @throws QueryException    When preparation or execution fails.
 	 *
@@ -29,6 +37,10 @@ interface QueryReader
 	 */
 	public function rows(string $sql, mixed ...$bindings): array;
 
-	/** @throws QueryException When preparation or execution fails. */
+	/**
+	 * Execute a query and return the first column from its first row.
+	 *
+	 * @throws QueryException When preparation or execution fails.
+	 */
 	public function value(string $sql, mixed ...$bindings): mixed;
 }

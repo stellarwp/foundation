@@ -7,9 +7,13 @@ namespace StellarWP\Foundation\Database\Contracts;
  */
 interface SqlDialect
 {
-	/** Quote one trusted SQL identifier. */
+	/**
+	 * Quote one trusted identifier for use in a generated SQL statement.
+	 */
 	public function quoteIdentifier(string $identifier): string;
 
-	/** Escape SQL LIKE wildcard characters without adding a surrounding pattern. */
+	/**
+	 * Escape SQL LIKE wildcards without adding a surrounding match pattern.
+	 */
 	public function escLike(string $value): string;
 }

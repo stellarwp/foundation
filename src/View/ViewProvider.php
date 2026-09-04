@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\View;
 
 use InvalidArgumentException;
-use StellarWP\Foundation\Container\Contracts\ConfiguredProvider;
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\View\Contracts\DirectoryAwareView;
 use StellarWP\Foundation\View\Contracts\View;
@@ -11,9 +11,11 @@ use StellarWP\Foundation\View\Contracts\View;
 /**
  * Registers a shared PHP view renderer rooted at the configured view directory.
  */
-final class ViewProvider extends ConfiguredProvider
+final class ViewProvider extends Provider
 {
 	/**
+	 * Register the configured PHP renderer under each supported view contract.
+	 *
 	 * @throws InvalidArgumentException When view.directory is not a non-empty string.
 	 */
 	public function register(): void {
@@ -21,6 +23,8 @@ final class ViewProvider extends ConfiguredProvider
 	}
 
 	/**
+	 * Validate the view directory and register the shared renderer instance.
+	 *
 	 * @throws InvalidArgumentException When view.directory is not a non-empty string.
 	 */
 	private function registerView(): void {

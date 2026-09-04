@@ -7,22 +7,34 @@ use lucatume\DI52\Container as DI52Container;
 use lucatume\DI52\ContainerException as DI52ContainerException;
 use lucatume\DI52\NotFoundException as DI52NotFoundException;
 use StellarWP\Foundation\Container\Contracts\Container;
-use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Exceptions\ContainerException;
 use StellarWP\Foundation\Container\Exceptions\NotFoundException;
 use Throwable;
 
+/**
+ * Adapts DI52 to Foundation's stable container and resolver contracts.
+ *
+ * Prefer {@see ContainerFactory} for application setup. A custom composition
+ * root that constructs this adapter directly must register Foundation's core
+ * contracts, including Configuration, before it registers any Provider.
+ */
 final class ContainerAdapter implements Container
 {
 	/** @var array<string, Closure> */
 	private array $callbacks = [];
 
+	/**
+	 * Wrap the underlying DI52 container without exposing it to application services.
+	 */
 	public function __construct(
 		private readonly DI52Container $container
 	) {
 	}
 
 	/**
+	 * Register a transient service binding with the underlying container.
+	 *
 	 * @param string[]|null $afterBuildMethods
 	 *
 	 * @throws ContainerException When the binding cannot be registered.
@@ -48,6 +60,8 @@ final class ContainerAdapter implements Container
 	}
 
 	/**
+	 * Register a shared service binding with the underlying container.
+	 *
 	 * @param string[]|null $afterBuildMethods
 	 *
 	 * @throws ContainerException When the singleton cannot be registered.
@@ -57,19 +71,22 @@ final class ContainerAdapter implements Container
 	}
 
 	/**
-	 * {@inheritDoc}
+	 * Validate, resolve, and register a Foundation provider with optional aliases.
+	 *
+	 * @param class-string $serviceProviderClass
+	 *
+	 * @throws ContainerException When the class is not a Foundation provider or cannot be registered.
 	 */
 	public function register(string $serviceProviderClass, ...$alias): void {
-		$provider = $this->get($serviceProviderClass);
-
-		if (! $provider instanceof Providable) {
+		if (! is_a($serviceProviderClass, Provider::class, true)) {
 			throw new ContainerException(sprintf(
-				'%s must implement %s to be registered as a provider.',
+				'%s must extend %s to be registered as a provider.',
 				$serviceProviderClass,
-				Providable::class
+				Provider::class
 			));
 		}
 
+		$provider = $this->get($serviceProviderClass);
 		$provider->register();
 		$this->singleton($serviceProviderClass, $provider);
 
@@ -96,6 +113,9 @@ final class ContainerAdapter implements Container
 		return $this;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
 	public function give(mixed $implementation): void {
 		$this->call(fn () => $this->container->give($this->adaptImplementation($implementation)));
 	}
@@ -109,6 +129,9 @@ final class ContainerAdapter implements Container
 		$this->call(fn () => $this->container->mergeArrayVar($id, $this->adaptImplementation($implementation)));
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
 	public function instance(mixed $id, array $buildArgs = [], ?array $afterBuildMethods = null): Closure {
 		/** @var Closure $factory */
 		$factory = $this->call(
@@ -120,6 +143,8 @@ final class ContainerAdapter implements Container
 	}
 
 	/**
+	 * Create a stable callable that resolves its target service when invoked.
+	 *
 	 * @param class-string|string|object $id
 	 *
 	 * @throws ContainerException

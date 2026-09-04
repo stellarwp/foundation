@@ -3,18 +3,20 @@
 namespace StellarWP\Foundation\Container\Traits;
 
 use InvalidArgumentException;
-use StellarWP\Foundation\Container\Contracts\ConfiguredProvider;
+use StellarWP\Foundation\Container\Contracts\Provider;
 
 /**
  * Resolves the application prefix used to scope Foundation resources.
  *
- * @mixin ConfiguredProvider
+ * @mixin Provider
  *
- * @phpstan-require-extends ConfiguredProvider
+ * @phpstan-require-extends Provider
  */
 trait ResolvesFoundationPrefix
 {
 	/**
+	 * Return the configured application prefix or Foundation's default prefix.
+	 *
 	 * @throws InvalidArgumentException When the configured prefix is not lowercase kebab-case.
 	 */
 	private function foundationPrefix(): string {

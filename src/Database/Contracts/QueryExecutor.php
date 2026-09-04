@@ -9,6 +9,10 @@ use StellarWP\Foundation\Database\Exceptions\QueryException;
  */
 interface QueryExecutor extends QueryReader
 {
-	/** @throws QueryException When preparation or execution fails. */
+	/**
+	 * Execute a write or schema statement and return its affected-row count.
+	 *
+	 * @throws QueryException When preparation or execution fails.
+	 */
 	public function execute(string $sql, mixed ...$bindings): int;
 }

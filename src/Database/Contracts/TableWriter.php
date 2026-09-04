@@ -11,6 +11,8 @@ use StellarWP\Foundation\Database\Exceptions\QueryException;
 interface TableWriter
 {
 	/**
+	 * Insert one row into the supplied table.
+	 *
 	 * @param array<string, mixed> $data
 	 *
 	 * @throws DatabaseException When table-name resolution fails.
@@ -19,6 +21,8 @@ interface TableWriter
 	public function insert(Table $table, array $data): int;
 
 	/**
+	 * Insert one row and return its generated auto-increment identifier.
+	 *
 	 * @param array<string, mixed> $data
 	 *
 	 * @throws DatabaseException When table-name resolution fails.
@@ -27,6 +31,8 @@ interface TableWriter
 	public function insertGetId(Table $table, array $data): int;
 
 	/**
+	 * Update rows matching the supplied equality-based conditions.
+	 *
 	 * @param array<string, mixed> $data
 	 * @param array<string, mixed> $where
 	 *
@@ -36,6 +42,8 @@ interface TableWriter
 	public function update(Table $table, array $data, array $where): int;
 
 	/**
+	 * Delete rows matching the supplied equality-based conditions.
+	 *
 	 * @param array<string, mixed> $where
 	 *
 	 * @throws DatabaseException When table-name resolution fails.

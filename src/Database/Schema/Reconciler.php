@@ -5,14 +5,16 @@ namespace StellarWP\Foundation\Database\Schema;
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\ManagedTable;
-use StellarWP\Foundation\Database\Contracts\SchemaExecutor;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
+use StellarWP\Foundation\Database\Schema\Contracts\SchemaExecutor;
 use StellarWP\Foundation\Database\Schema\ValueObjects\IndexState;
 use StellarWP\Foundation\Database\Table\Column;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 
 /**
  * Reconciles a physical WordPress database table with its declared definition.
+ *
+ * @internal Use the public Schema contract for application schema operations.
  */
 final readonly class Reconciler
 {

@@ -17,14 +17,23 @@ final readonly class CreateTable implements Migration
 	) {
 	}
 
+	/**
+	 * Return the stable identifier recorded for this table-creation migration.
+	 */
 	public function id(): string {
 		return $this->migrationId;
 	}
 
+	/**
+	 * Create or reconcile the complete managed table definition.
+	 */
 	public function up(Schema $schema): void {
 		$schema->createOrUpdate($this->table);
 	}
 
+	/**
+	 * Drop the complete managed table when this creation migration is reversed.
+	 */
 	public function down(Schema $schema): void {
 		$schema->drop($this->table);
 	}

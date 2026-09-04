@@ -10,7 +10,7 @@ use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
-use StellarWP\Foundation\Container\Contracts\ConfiguredProvider;
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Log\Formatters\ColoredLineFormatter;
 use StellarWP\Foundation\Log\Handlers\NullHandler;
@@ -22,7 +22,7 @@ use StellarWP\Foundation\Log\Handlers\NullHandler;
  * unavailable, the application should keep running. Consumers that need different
  * channels, handlers, or failure behavior can register their own provider instead.
  */
-final class LogProvider extends ConfiguredProvider
+final class LogProvider extends Provider
 {
 	private const string LOG_LEVEL        = self::class . '.log_level';
 	private const string CHANNEL_ERRORLOG = 'errorlog';

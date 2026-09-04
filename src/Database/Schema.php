@@ -12,6 +12,8 @@ use StellarWP\Foundation\Database\Schema\Reconciler;
 
 /**
  * WordPress schema operations backed by wpdb and dbDelta.
+ *
+ * @internal Depend on {@see SchemaContract}; the provider owns this implementation.
  */
 final readonly class Schema implements SchemaContract
 {

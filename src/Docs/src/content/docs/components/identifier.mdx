@@ -48,11 +48,11 @@ Identifier services are registered through the shared application provider list:
 In `src/App.php`, add the Foundation provider before features that generate or validate ULIDs:
 
 ```php title="App.php"
-use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Identifier\IdentifierProvider;
 use YourPlugin\Job;
 
-/** @var list<class-string<Providable>> */
+/** @var list<class-string<Provider>> */
 private const array PROVIDERS = [
 	IdentifierProvider::class,
 	Job\Provider::class,
@@ -105,11 +105,11 @@ final class Provider extends Service_Provider {
 Register both providers in `src/App.php`, in that order:
 
 ```php title="App.php"
-use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Identifier\IdentifierProvider;
 use YourPlugin\Identifier;
 
-/** @var list<class-string<Providable>> */
+/** @var list<class-string<Provider>> */
 private const array PROVIDERS = [
 	IdentifierProvider::class,
 	Identifier\Provider::class,

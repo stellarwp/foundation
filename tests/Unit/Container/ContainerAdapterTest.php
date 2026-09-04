@@ -4,7 +4,9 @@ namespace StellarWP\Foundation\Tests\Unit\Container;
 
 use lucatume\DI52\Container as DI52Container;
 use RuntimeException;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
 use StellarWP\Foundation\Container\ContainerAdapter;
+use StellarWP\Foundation\Container\Contracts\Configuration;
 use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Container\Contracts\Resolver;
 use StellarWP\Foundation\Container\Exceptions\ContainerException;
@@ -68,6 +70,7 @@ final class ContainerAdapterTest extends TestCase
 		$adapter                         = new ContainerAdapter(new DI52Container());
 		TestProvider::$registrationCount = 0;
 		$adapter->bind(Container::class, $adapter);
+		$adapter->bind(Configuration::class, new ArrayConfiguration());
 
 		$adapter->register(TestProvider::class, 'test-provider');
 
@@ -75,11 +78,11 @@ final class ContainerAdapterTest extends TestCase
 		$this->assertSame($adapter->get(TestProvider::class), $adapter->get('test-provider'));
 	}
 
-	public function test_it_rejects_classes_that_do_not_implement_the_provider_contract(): void {
+	public function test_it_rejects_classes_that_do_not_extend_the_provider_base_class(): void {
 		$adapter = new ContainerAdapter(new DI52Container());
 
 		$this->expectException(ContainerException::class);
-		$this->expectExceptionMessage('must implement');
+		$this->expectExceptionMessage('must extend');
 
 		$adapter->register(CallbackListener::class);
 	}

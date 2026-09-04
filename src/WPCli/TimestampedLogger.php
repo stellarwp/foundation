@@ -22,6 +22,8 @@ final readonly class TimestampedLogger
 	}
 
 	/**
+	 * Write a timestamped WP-CLI debug message.
+	 *
 	 * @param bool|string $group Organize debug messages into a specific group. Use false for no group.
 	 */
 	public function debug(string $message, bool|string $group = false): void {
@@ -41,6 +43,8 @@ final readonly class TimestampedLogger
 	}
 
 	/**
+	 * Write each error line with its own timestamp.
+	 *
 	 * @param list<string> $messageLines Messages to write.
 	 */
 	public function error_multi_line(array $messageLines): void {

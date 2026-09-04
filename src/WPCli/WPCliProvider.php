@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\WPCli;
 
 use InvalidArgumentException;
-use StellarWP\Foundation\Container\Contracts\ConfiguredProvider;
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Traits\ResolvesFoundationPrefix;
 use StellarWP\Foundation\WPCli\Contracts\RegistrableCommand;
 use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
@@ -16,7 +16,7 @@ use UnexpectedValueException;
  * {@see self::COMMANDS} with the container's additive array binding to
  * contribute command classes from feature-specific providers.
  */
-final class WPCliProvider extends ConfiguredProvider
+final class WPCliProvider extends Provider
 {
 	use ResolvesFoundationPrefix;
 
@@ -25,6 +25,8 @@ final class WPCliProvider extends ConfiguredProvider
 	private bool $registered = false;
 
 	/**
+	 * Register command configuration and defer command resolution until WP-CLI initializes.
+	 *
 	 * @throws InvalidArgumentException When the configured Foundation prefix is invalid.
 	 */
 	public function register(): void {
@@ -51,6 +53,8 @@ final class WPCliProvider extends ConfiguredProvider
 	}
 
 	/**
+	 * Validate and register every command contributed through the shared collection.
+	 *
 	 * @throws UnexpectedValueException When the configured command list contains an invalid value.
 	 */
 	private function registerCommands(): void {

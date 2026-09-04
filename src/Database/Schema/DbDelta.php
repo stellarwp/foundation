@@ -2,12 +2,14 @@
 
 namespace StellarWP\Foundation\Database\Schema;
 
-use StellarWP\Foundation\Database\Contracts\SchemaExecutor;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\QueryException;
+use StellarWP\Foundation\Database\Schema\Contracts\SchemaExecutor;
 
 /**
  * Loads and invokes WordPress dbDelta while translating database failures.
+ *
+ * @internal Use the public Schema contract for application schema operations.
  */
 final class DbDelta implements SchemaExecutor
 {

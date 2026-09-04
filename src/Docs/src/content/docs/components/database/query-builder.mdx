@@ -162,19 +162,19 @@ Prefer `toSql()` plus `bindings()` for structured diagnostics. A fully prepared 
 `toQuery()` captures SQL for the active WordPress database scope. If code calls `switch_to_blog()`, build a new query before executing it so the table name uses the new site's prefix. Calling `get()`, `first()`, or `value()` directly on the table query builder resolves the active scope as part of that operation.
 :::
 
-Inject `QueryExecutor` in addition to the table when specialized SQL belongs to a repository workflow rather than one table, or when a query spans multiple tables. Add it explicitly to that repository's constructor:
+Inject `QueryReader` in addition to the table when specialized read SQL belongs to a repository workflow rather than one table, or when a query spans multiple tables. Add it explicitly to that repository's constructor:
 
 ```php
-use StellarWP\Foundation\Database\Contracts\QueryExecutor;
+use StellarWP\Foundation\Database\Contracts\QueryReader;
 
 public function __construct(
 	private Reports_Table $table,
-	private QueryExecutor $database
+	private QueryReader $database
 ) {
 }
 ```
 
-The contract exposes prepared low-level operations for specialized SQL:
+The contract exposes prepared low-level read operations:
 
 ```php
 $row = $this->database->row(
@@ -188,6 +188,18 @@ $count = $this->database->value(
 	$this->table->name(),
 	'published'
 );
+```
+
+Use `QueryExecutor` instead when the same repository must also execute raw writes:
+
+```php
+use StellarWP\Foundation\Database\Contracts\QueryExecutor;
+
+public function __construct(
+	private Reports_Table $table,
+	private QueryExecutor $database
+) {
+}
 
 $affected = $this->database->execute(
 	'UPDATE %i SET status = %s WHERE status = %s',
@@ -199,24 +211,13 @@ $affected = $this->database->execute(
 
 Use `prepare()` when another WordPress API requires the prepared SQL string. Keep values in placeholders instead of concatenating untrusted input.
 
-### Choose the smallest database capability
+For normal application code, follow one of these paths:
 
-Type-hint the smallest contract that supports the operation. This keeps repositories, decorators, and test doubles independent of unrelated database behavior:
+1. Inject the concrete table for queries and writes scoped to that table.
+2. Inject `QueryReader` for specialized raw or cross-table reads.
+3. Inject `QueryExecutor` when the same raw workflow also executes writes.
 
-| Contract | Use it for |
-| --- | --- |
-| `QueryReader` | Prepared raw reads that return rows or values |
-| `QueryExecutor` | Raw writes and schema statements in addition to reads |
-| `QueryGateway` | Building and executing table-scoped read queries |
-| `TableWriter` | Table-scoped insert, update, and delete operations |
-| `SchemaInspector` | Checking physical tables, columns, and indexes |
-| `TableNameResolver` | Resolving a table name for the active WordPress site |
-| `SqlDialect` | Quoting identifiers and escaping `LIKE` values |
-| `CharsetCollationProvider` | Supplying charset and collation for managed schemas |
-| `TableGateway` | Supplying the complete query and write API exposed to concrete `Table` subclasses |
-| `Database` | A convenient aggregate when one collaborator genuinely needs several capabilities |
-
-Foundation binds every default capability through the aggregate `Database` contract. Replacing that aggregate therefore keeps the narrower capability bindings coherent. New optional capabilities can be added as separate contracts without forcing existing database implementations to change.
+The aggregate `Database` contract is available when one infrastructure collaborator genuinely needs the complete API. The narrower contracts are public extension capabilities for specialized raw-SQL repositories, adapters, and decorators. They are not setup choices every application must make: routine table-scoped repositories should continue injecting their concrete table.
 
 ## Handle query failures
 

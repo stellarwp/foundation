@@ -19,6 +19,8 @@ final class Runner implements ShutdownRunner
 	private bool $terminated = false;
 
 	/**
+	 * Validate and retain the contributed shutdown tasks and optional logger.
+	 *
 	 * @param array<array-key, mixed> $tasks
 	 */
 	public function __construct(
@@ -34,6 +36,9 @@ final class Runner implements ShutdownRunner
 		$this->tasks = array_values($tasks);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
 	public function terminate(): void {
 		if ($this->terminated) {
 			return;
@@ -79,6 +84,8 @@ final class Runner implements ShutdownRunner
 	}
 
 	/**
+	 * Return tasks in stable priority order.
+	 *
 	 * @return list<Task>
 	 */
 	private function orderedTasks(): array {

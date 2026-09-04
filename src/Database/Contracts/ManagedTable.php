@@ -9,6 +9,8 @@ use StellarWP\Foundation\Database\Table\TableDefinition;
  */
 interface ManagedTable extends Table
 {
-	/** Return the table's complete managed schema definition. */
+	/**
+	 * Return the complete schema that Foundation should reconcile for this table.
+	 */
 	public function definition(): TableDefinition;
 }

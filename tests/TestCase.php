@@ -7,7 +7,7 @@ use ReflectionObject;
 use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
 use StellarWP\Foundation\Container\ContainerFactory;
 use StellarWP\Foundation\Container\Contracts\Container;
-use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Log\LogProvider;
 use StellarWP\Foundation\Tests\Support\Traits\WithDataDir;
 
@@ -23,7 +23,7 @@ class TestCase extends \PHPUnit\Framework\TestCase
 	protected Container $container;
 
 	/**
-	 * @var array<class-string<Providable>>
+	 * @var array<class-string<Provider>>
 	 */
 	private array $providers = [
 		LogProvider::class,

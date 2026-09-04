@@ -27,6 +27,8 @@ final class Migrate extends Command
 	}
 
 	/**
+	 * Dispatch the selected migration operation or display migration status.
+	 *
 	 * @param list<mixed>         $args
 	 * @param array<string,mixed> $assocArgs
 	 */
@@ -159,6 +161,8 @@ final class Migrate extends Command
 	}
 
 	/**
+	 * Confirm and remove only the migration ledger.
+	 *
 	 * @param array<string, mixed> $assocArgs
 	 */
 	private function dropStore(array $assocArgs): void {
@@ -168,6 +172,8 @@ final class Migrate extends Command
 	}
 
 	/**
+	 * Confirm, roll back, and rerun all configured migrations.
+	 *
 	 * @param array<string, mixed> $assocArgs
 	 */
 	private function refreshMigrations(array $assocArgs): void {

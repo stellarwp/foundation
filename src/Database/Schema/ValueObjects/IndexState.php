@@ -12,13 +12,17 @@ use StellarWP\Foundation\Database\Table\IndexType;
  */
 final readonly class IndexState
 {
-	/** Index types reported by physical inspection but not declared by TableDefinition. */
+	/**
+	 * Index types reported by physical inspection but not declared by TableDefinition.
+	 */
 	public const string FULLTEXT = 'fulltext';
 
 	public const string SPATIAL = 'spatial';
 	public const string RTREE   = 'rtree';
 
 	/**
+	 * Capture a normalized physical or declared index definition.
+	 *
 	 * @param list<string> $columns
 	 */
 	public function __construct(

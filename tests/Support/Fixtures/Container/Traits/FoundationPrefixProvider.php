@@ -2,10 +2,10 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Container\Traits;
 
-use StellarWP\Foundation\Container\Contracts\ConfiguredProvider;
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Traits\ResolvesFoundationPrefix;
 
-final class FoundationPrefixProvider extends ConfiguredProvider
+final class FoundationPrefixProvider extends Provider
 {
 	use ResolvesFoundationPrefix;
 

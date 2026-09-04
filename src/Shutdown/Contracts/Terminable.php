@@ -7,5 +7,8 @@ namespace StellarWP\Foundation\Shutdown\Contracts;
  */
 interface Terminable
 {
+	/**
+	 * Perform this service's bounded end-of-request work during application shutdown.
+	 */
 	public function terminate(): void;
 }

@@ -9,6 +9,9 @@ use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
  */
 final readonly class CommandContext
 {
+	/**
+	 * Create a registration context for one application's command namespace.
+	 */
 	public function __construct(
 		private CommandPrefix $prefix
 	) {

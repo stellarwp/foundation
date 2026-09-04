@@ -7,5 +7,8 @@ namespace StellarWP\Foundation\Identifier\Ulid\Contracts;
  */
 interface MillisecondClock
 {
+	/**
+	 * Return the current Unix timestamp in milliseconds.
+	 */
 	public function milliseconds(): int;
 }

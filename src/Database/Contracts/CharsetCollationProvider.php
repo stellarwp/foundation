@@ -7,6 +7,8 @@ namespace StellarWP\Foundation\Database\Contracts;
  */
 interface CharsetCollationProvider
 {
-	/** Return the database charset and collation clause. */
+	/**
+	 * Return the database charset and collation clause used for managed tables.
+	 */
 	public function charsetCollate(): string;
 }

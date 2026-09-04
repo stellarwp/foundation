@@ -26,6 +26,8 @@ final readonly class UlidGenerator implements UlidGeneratorContract
 	}
 
 	/**
+	 * Generate a canonical uppercase ULID from the current time and secure entropy.
+	 *
 	 * @throws OutOfRangeException When the current timestamp is outside the ULID range.
 	 * @throws RandomException     When secure random bytes cannot be generated.
 	 * @throws RuntimeException    When the entropy source returns an invalid byte count.

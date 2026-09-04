@@ -23,6 +23,8 @@ final class Collection implements IteratorAggregate
 	private array $migrations = [];
 
 	/**
+	 * Create an ordered collection from configured migration contributions.
+	 *
 	 * @param iterable<Migration> $migrations
 	 *
 	 * @throws DuplicateMigration When a migration identifier is already registered.
@@ -37,6 +39,8 @@ final class Collection implements IteratorAggregate
 	}
 
 	/**
+	 * Add migrations while preserving their registration order.
+	 *
 	 * @throws DuplicateMigration When a migration identifier is already registered.
 	 * @throws InvalidMigrationId When a migration identifier cannot be stored safely.
 	 */
@@ -71,6 +75,8 @@ final class Collection implements IteratorAggregate
 	}
 
 	/**
+	 * Iterate over migrations keyed by their byte-exact identifier.
+	 *
 	 * @return Traversable<string, Migration>
 	 */
 	public function getIterator(): Traversable {

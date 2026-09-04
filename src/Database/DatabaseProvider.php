@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\Database;
 
 use InvalidArgumentException;
-use StellarWP\Foundation\Container\Contracts\ConfiguredProvider;
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Container\Traits\ResolvesFoundationPrefix;
 use StellarWP\Foundation\Database\Cli\Migrate;
@@ -14,7 +14,6 @@ use StellarWP\Foundation\Database\Contracts\QueryExecutor;
 use StellarWP\Foundation\Database\Contracts\QueryGateway;
 use StellarWP\Foundation\Database\Contracts\QueryReader;
 use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
-use StellarWP\Foundation\Database\Contracts\SchemaExecutor;
 use StellarWP\Foundation\Database\Contracts\SchemaInspector;
 use StellarWP\Foundation\Database\Contracts\SqlDialect;
 use StellarWP\Foundation\Database\Contracts\TableGateway;
@@ -29,6 +28,7 @@ use StellarWP\Foundation\Database\Migration\Factories\SessionFactory;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository as MigrationRecordRepository;
 use StellarWP\Foundation\Database\Migration\Store;
+use StellarWP\Foundation\Database\Schema\Contracts\SchemaExecutor;
 use StellarWP\Foundation\Database\Schema\DbDelta;
 use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Database\Scope\SiteScope;
@@ -40,7 +40,7 @@ use StellarWP\Foundation\WPCli\WPCliProvider;
 /**
  * Registers Foundation database services for WordPress environments.
  */
-final class DatabaseProvider extends ConfiguredProvider
+final class DatabaseProvider extends Provider
 {
 	use ResolvesFoundationPrefix;
 

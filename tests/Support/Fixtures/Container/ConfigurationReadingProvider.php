@@ -2,9 +2,9 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Container;
 
-use StellarWP\Foundation\Container\Contracts\ConfiguredProvider;
+use StellarWP\Foundation\Container\Contracts\Provider;
 
-final class ConfiguredTestProvider extends ConfiguredProvider
+final class ConfigurationReadingProvider extends Provider
 {
 	public const string VALUE = self::class . '.value';
 

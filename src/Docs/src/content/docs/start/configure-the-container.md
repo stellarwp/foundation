@@ -21,7 +21,7 @@ $config    = new ArrayConfiguration( require __DIR__ . '/config.php' );
 $container = ( new ContainerFactory() )->create( $config );
 ```
 
-The `Container` contract allows providers to register services through the shared container. The narrower `Resolver` contract is used by services that only need to resolve class-based collaborators, such as Pipeline. `Configuration` makes the same read-only configuration snapshot available to every configured Foundation provider without exposing the underlying configuration library.
+The `Container` contract allows providers to register services through the shared container. The narrower `Resolver` contract is used by services that only need to resolve class-based collaborators, such as Pipeline. `Configuration` makes the same read-only configuration snapshot available to every Foundation provider without exposing the underlying configuration library.
 
 ## Map environment values in config.php
 
@@ -41,7 +41,7 @@ return [
 ];
 ```
 
-Providers that extend `ConfiguredProvider` read nested values through their inherited `$this->config` property:
+Every provider can read nested values through its inherited `$this->config` property:
 
 ```php
 $channel = $this->config->get( 'log.channel' );

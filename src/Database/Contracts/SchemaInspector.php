@@ -9,12 +9,24 @@ use StellarWP\Foundation\Database\Exceptions\DatabaseException;
  */
 interface SchemaInspector
 {
-	/** @throws DatabaseException When table inspection fails. */
+	/**
+	 * Determine whether a table exists in the active database scope.
+	 *
+	 * @throws DatabaseException When table inspection fails.
+	 */
 	public function tableExists(Table $table): bool;
 
-	/** @throws DatabaseException When column inspection fails. */
+	/**
+	 * Determine whether a table contains the named column.
+	 *
+	 * @throws DatabaseException When column inspection fails.
+	 */
 	public function columnExists(Table $table, string $column): bool;
 
-	/** @throws DatabaseException When index inspection fails. */
+	/**
+	 * Determine whether a table contains the named index.
+	 *
+	 * @throws DatabaseException When index inspection fails.
+	 */
 	public function indexExists(Table $table, string $index): bool;
 }

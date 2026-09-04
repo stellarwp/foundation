@@ -31,14 +31,14 @@ Create `src/App.php`. The application object binds shared values before register
 namespace YourPlugin;
 
 use StellarWP\Foundation\Container\Contracts\Container;
-use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Container\Contracts\Provider;
 
 final class App {
 
 	public const string PLUGIN_FILE = 'your_plugin.plugin_file';
 	public const string PLUGIN_DIR  = 'your_plugin.plugin_dir';
 
-	/** @var list<class-string<Providable>> */
+	/** @var list<class-string<Provider>> */
 	private const array PROVIDERS = [];
 
 	private static self $instance;

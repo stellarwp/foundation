@@ -17,6 +17,8 @@ final readonly class RandomizerEntropy implements Entropy
 	}
 
 	/**
+	 * Return the requested number of cryptographically secure random bytes.
+	 *
 	 * @throws RandomException When secure random bytes cannot be generated.
 	 */
 	public function bytes(int $length): string {

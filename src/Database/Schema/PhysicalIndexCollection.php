@@ -14,6 +14,8 @@ use StellarWP\Foundation\Database\Table\IndexType;
 final readonly class PhysicalIndexCollection
 {
 	/**
+	 * Retain normalized indexes keyed by their lowercase physical name.
+	 *
 	 * @param array<string, IndexState> $indexes
 	 */
 	private function __construct(

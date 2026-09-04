@@ -95,7 +95,7 @@ In `src/Admin_Notice/Provider.php`, alias the Foundation base provider because i
 
 namespace YourPlugin\Admin_Notice;
 
-use StellarWP\Foundation\Container\Contracts\ConfiguredProvider as Service_Provider;
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
 
 /**
  * Configures the admin notice and connects it to WordPress.
@@ -130,10 +130,10 @@ As a provider grows, add methods named for the feature or capability they config
 Register the feature in the ordered provider list in `src/App.php`:
 
 ```php title="App.php"
-use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Container\Contracts\Provider;
 use YourPlugin\Admin_Notice;
 
-/** @var list<class-string<Providable>> */
+/** @var list<class-string<Provider>> */
 private const array PROVIDERS = [
 	Admin_Notice\Provider::class,
 ];

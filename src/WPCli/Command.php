@@ -24,6 +24,8 @@ abstract class Command extends WP_CLI_Command implements RegistrableCommand
 	private ?CommandContext $context = null;
 
 	/**
+	 * Execute the command using normalized positional and associative arguments.
+	 *
 	 * @param list<mixed>         $args
 	 * @param array<string,mixed> $assocArgs
 	 *
@@ -85,6 +87,9 @@ abstract class Command extends WP_CLI_Command implements RegistrableCommand
 		}
 	}
 
+	/**
+	 * Build the complete WP-CLI command name for the supplied context.
+	 */
 	protected function command(CommandContext $context): string {
 		return $context->name($this->subcommand());
 	}
@@ -106,6 +111,8 @@ abstract class Command extends WP_CLI_Command implements RegistrableCommand
 	}
 
 	/**
+	 * Return the stream used to read interactive command input.
+	 *
 	 * @return resource
 	 */
 	protected function input(): mixed {
@@ -113,6 +120,8 @@ abstract class Command extends WP_CLI_Command implements RegistrableCommand
 	}
 
 	/**
+	 * Return the stream used to write interactive command output.
+	 *
 	 * @return resource
 	 */
 	protected function output(): mixed {

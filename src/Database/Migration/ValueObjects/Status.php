@@ -14,6 +14,8 @@ final readonly class Status
 	private const string UNAVAILABLE = 'unavailable';
 
 	/**
+	 * Capture one migration's relationship to the current ledger.
+	 *
 	 * @param self::PENDING|self::APPLIED|self::UNAVAILABLE $state
 	 */
 	private function __construct(

@@ -17,14 +17,16 @@ interface Container extends ContainerInterface, Resolver
 	/**
 	 * Register a service provider.
 	 *
-	 * @param class-string $serviceProviderClass
-	 * @param string       ...$alias
+	 * @param class-string<Provider> $serviceProviderClass
+	 * @param string                 ...$alias
 	 *
 	 * @throws ContainerException When the provider cannot be registered.
 	 */
 	public function register(string $serviceProviderClass, ...$alias): void;
 
 	/**
+	 * Begin a contextual binding for one consuming class.
+	 *
 	 * @param class-string|string $class
 	 *
 	 * @return $this
@@ -32,6 +34,8 @@ interface Container extends ContainerInterface, Resolver
 	public function when(string $class): Container;
 
 	/**
+	 * Select the constructor dependency supplied by the current contextual binding.
+	 *
 	 * @param class-string|string $id
 	 *
 	 * @return $this
@@ -70,6 +74,8 @@ interface Container extends ContainerInterface, Resolver
 	public function instance(mixed $id, array $buildArgs = [], ?array $afterBuildMethods = null): Closure;
 
 	/**
+	 * Create a stable callable that resolves its service when invoked.
+	 *
 	 * @param class-string|string|object $id
 	 *
 	 * @throws ContainerException When the callback cannot be created or its service cannot be resolved.
