@@ -25,6 +25,7 @@ export default defineConfig({
             { slug: 'start/bootstrap-wordpress-plugin' },
             { slug: 'start/register-service-providers' },
             { slug: 'start/scope-foundation' },
+            { slug: 'start/test-the-application' },
           ],
         },
         {

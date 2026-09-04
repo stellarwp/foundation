@@ -70,4 +70,4 @@ New applications and plugins should normally configure only `foundation.prefix` 
 
 ## Continue
 
-[Configure application locks](/components/lock/) when work must not overlap across requests, workers, or servers.
+[Test the application](/start/test-the-application/) with isolated provider and WordPress bootstrap scenarios.
