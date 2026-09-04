@@ -66,7 +66,7 @@ In `src/App.php`, add `ViewProvider` before feature providers that consume the `
 ```php title="App.php"
 use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\View\ViewProvider;
-use YourPlugin\Admin;
+use Plugin\Admin;
 
 /** @var list<class-string<Provider>> */
 private const array PROVIDERS = [
@@ -115,7 +115,7 @@ In `src/Admin/Product_Summary_Notice.php`, inject the `View` contract and return
 ```php title="Product_Summary_Notice.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Admin;
+namespace Plugin\Admin;
 
 use StellarWP\Foundation\View\Contracts\View;
 
@@ -156,7 +156,7 @@ Register the WordPress callback from `src/Admin/Provider.php`:
 ```php title="Provider.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Admin;
+namespace Plugin\Admin;
 
 use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
 
@@ -181,7 +181,7 @@ Inject `DirectoryAwareView` instead of the base `View` contract when a service m
 ```php title="Receipt_Renderer.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Receipt;
+namespace Plugin\Receipt;
 
 use StellarWP\Foundation\View\Contracts\DirectoryAwareView;
 
@@ -216,7 +216,7 @@ The base `View` contract requires only named rendering. A renderer that does not
 ```php title="Json_View.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\View;
+namespace Plugin\View;
 
 use JsonException;
 use StellarWP\Foundation\View\Contracts\View;

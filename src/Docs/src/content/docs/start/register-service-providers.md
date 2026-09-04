@@ -46,7 +46,7 @@ Create `src/Admin_Notice/Notice.php`. The notice receives the capability supplie
 ```php title="Notice.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Admin_Notice;
+namespace Plugin\Admin_Notice;
 
 use InvalidArgumentException;
 
@@ -93,7 +93,7 @@ In `src/Admin_Notice/Provider.php`, alias the Foundation base provider because i
 ```php title="Provider.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Admin_Notice;
+namespace Plugin\Admin_Notice;
 
 use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
 
@@ -131,7 +131,7 @@ Register the feature in the ordered provider list in `src/App.php`:
 
 ```php title="App.php"
 use StellarWP\Foundation\Container\Contracts\Provider;
-use YourPlugin\Admin_Notice;
+use Plugin\Admin_Notice;
 
 /** @var list<class-string<Provider>> */
 private const array PROVIDERS = [

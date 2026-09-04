@@ -147,7 +147,7 @@ In `src/App.php`, register `WPCliProvider` before `DatabaseProvider`, then regis
 use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Database;
 use StellarWP\Foundation\WPCli;
-use YourPlugin\Database as ApplicationDatabase;
+use Plugin\Database as ApplicationDatabase;
 
 /** @var list<class-string<Provider>> */
 private const array PROVIDERS = [

@@ -31,7 +31,7 @@ import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 ```php title="Provider.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Lock;
+namespace Plugin\Lock;
 
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
@@ -64,7 +64,7 @@ Register providers in dependency order in `src/App.php`:
 use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Database\DatabaseProvider;
 use StellarWP\Foundation\WPCli\WPCliProvider;
-use YourPlugin\Lock;
+use Plugin\Lock;
 
 /** @var list<class-string<Provider>> */
 private const array PROVIDERS = [

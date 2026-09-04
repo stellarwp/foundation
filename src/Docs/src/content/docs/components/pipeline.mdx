@@ -52,7 +52,7 @@ In `src/Catalog/Provider.php`:
 ```php title="Provider.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Catalog;
+namespace Plugin\Catalog;
 
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
@@ -93,7 +93,7 @@ In `src/Catalog/Product_Importer.php`, the consumer uses the pipeline it receive
 ```php title="Product_Importer.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Catalog;
+namespace Plugin\Catalog;
 
 use InvalidArgumentException;
 use StellarWP\Foundation\Pipeline\Contracts\Pipeline;
@@ -144,7 +144,7 @@ Create `src/Catalog/Normalize_Product.php` for the first pipe. A pipe receives t
 ```php title="Normalize_Product.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Catalog;
+namespace Plugin\Catalog;
 
 use Closure;
 
@@ -176,7 +176,7 @@ Create `src/Catalog/Require_Product_Sku.php` for the validation pipe. Throw when
 ```php title="Require_Product_Sku.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Catalog;
+namespace Plugin\Catalog;
 
 use Closure;
 use InvalidArgumentException;

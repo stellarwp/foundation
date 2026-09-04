@@ -141,7 +141,7 @@ Copy the package's default stub before customizing it so required placeholders r
 
 ### Generate Strauss-compatible imports
 
-When the consuming project's `composer.json` defines `extra.strauss.namespace_prefix`, generators apply that prefix to Foundation imports. For example, a configured `YourPlugin\\` prefix changes:
+When the consuming project's `composer.json` defines `extra.strauss.namespace_prefix`, generators apply that prefix to Foundation imports. For example, a configured `Plugin\\` prefix changes:
 
 ```php
 use StellarWP\Foundation\WPCli\Command;
@@ -150,7 +150,7 @@ use StellarWP\Foundation\WPCli\Command;
 to:
 
 ```php
-use YourPlugin\StellarWP\Foundation\WPCli\Command;
+use Plugin\StellarWP\Foundation\WPCli\Command;
 ```
 
 This keeps generated classes compatible when Strauss prefixes dependencies without updating project call sites. Handwritten imports remain the application's responsibility.
@@ -164,7 +164,7 @@ In `src/Cli/Cache_Clear_Command.php`:
 ```php title="Cache_Clear_Command.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Cli;
+namespace Plugin\Cli;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -189,7 +189,7 @@ In `src/Cli/Command_Provider.php`:
 ```php title="Command_Provider.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Cli;
+namespace Plugin\Cli;
 
 use StellarWP\Foundation\Cli\Contracts\CommandProvider;
 
@@ -213,8 +213,8 @@ Then create the project's executable, for example `bin/your-plugin`:
 <?php declare(strict_types=1);
 
 use StellarWP\Foundation\Cli\Application;
-use YourPlugin\Cli\Cache_Clear_Command;
-use YourPlugin\Cli\Command_Provider;
+use Plugin\Cli\Cache_Clear_Command;
+use Plugin\Cli\Command_Provider;
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 

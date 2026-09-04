@@ -84,7 +84,7 @@ The generated `src/Database/Tables/Reports_Table.php` owns its stable, unprefixe
 ```php title="Reports_Table.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Database\Tables;
+namespace Plugin\Database\Tables;
 
 use StellarWP\Foundation\Database\Contracts\ManagedTable;
 use StellarWP\Foundation\Database\Table\Table;
@@ -193,11 +193,11 @@ The generated `src/Database/Migrations/Create_Reports_Table.php` passes the tabl
 ```php title="Create_Reports_Table.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Database\Migrations;
+namespace Plugin\Database\Migrations;
 
 use StellarWP\Foundation\Database\Contracts\Migration;
 use StellarWP\Foundation\Database\Contracts\Schema;
-use YourPlugin\Database\Tables\Reports_Table;
+use Plugin\Database\Tables\Reports_Table;
 
 final readonly class Create_Reports_Table implements Migration {
 
@@ -235,7 +235,7 @@ Pass a fully qualified class when the table is outside the default `Database\\Ta
 
 ```shell
 vendor/bin/foundation make:database-migration Create_Reports_Table \
-	--create=YourPlugin\\Reporting\\Tables\\Reports_Table
+	--create=Plugin\\Reporting\\Tables\\Reports_Table
 ```
 
 Foundation never infers table ownership from the migration name. Only `--create` selects the destructive create-table rollback, so a migration named `Create_Reports_Table` without that option remains a generic, irreversible migration.
@@ -294,12 +294,12 @@ Generate a generic migration without `--create` or `--table`, then add the table
 ```php title="Backfill_Report_Status.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Database\Migrations;
+namespace Plugin\Database\Migrations;
 
 use StellarWP\Foundation\Database\Contracts\Migration;
 use StellarWP\Foundation\Database\Contracts\Schema;
 use StellarWP\Foundation\Database\Migration\Exceptions\IrreversibleMigration;
-use YourPlugin\Database\Tables\Reports_Table;
+use Plugin\Database\Tables\Reports_Table;
 
 final readonly class Backfill_Report_Status implements Migration {
 
@@ -339,15 +339,15 @@ The generators update an existing database provider automatically. When register
 ```php title="Provider.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Database;
+namespace Plugin\Database;
 
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
 use StellarWP\Foundation\Database\DatabaseProvider;
-use YourPlugin\Database\Migrations\Backfill_Report_Status;
-use YourPlugin\Database\Migrations\Create_Reports_Table;
-use YourPlugin\Database\Migrations\Update_Reports_Schema;
-use YourPlugin\Database\Tables\Reports_Table;
+use Plugin\Database\Migrations\Backfill_Report_Status;
+use Plugin\Database\Migrations\Create_Reports_Table;
+use Plugin\Database\Migrations\Update_Reports_Schema;
+use Plugin\Database\Tables\Reports_Table;
 
 final class Provider extends Service_Provider {
 
@@ -516,11 +516,11 @@ For example, a project base test case that exposes the application container can
 ```php title="ReportsTableTest.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Tests\WPUnit\Database;
+namespace Plugin\Tests\WPUnit\Database;
 
 use StellarWP\Foundation\Database\Contracts\Schema;
-use YourPlugin\Database\Tables\Reports_Table;
-use YourPlugin\Tests\WPUnitSupport\WPTestCase;
+use Plugin\Database\Tables\Reports_Table;
+use Plugin\Tests\WPUnitSupport\WPTestCase;
 
 final class ReportsTableTest extends WPTestCase {
 

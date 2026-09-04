@@ -28,8 +28,9 @@ Create `src/App.php`. The application object binds shared values before register
 ```php title="App.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin;
+namespace Plugin;
 
+use RuntimeException;
 use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Container\Contracts\Provider;
 
@@ -62,6 +63,30 @@ final class App {
 		return self::$instance;
 	}
 
+	/**
+	 * Prevent cloning the application singleton.
+	 */
+	private function __clone(): void {
+	}
+
+	/**
+	 * Prevent serializing the application singleton.
+	 *
+	 * @throws RuntimeException Always, because the application must be created through instance().
+	 */
+	public function __sleep(): array {
+		throw new RuntimeException( 'The application singleton cannot be serialized.' );
+	}
+
+	/**
+	 * Prevent restoring the application singleton without running its constructor.
+	 *
+	 * @throws RuntimeException Always, because the application must be created through instance().
+	 */
+	public function __wakeup(): void {
+		throw new RuntimeException( 'The application singleton cannot be unserialized.' );
+	}
+
 	public function container(): Container {
 		return $this->container;
 	}
@@ -90,12 +115,12 @@ Create `src/functions.php`. The helper supplies the application dependencies on 
 ```php title="functions.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin;
+namespace Plugin;
 
 use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
 use StellarWP\Foundation\Container\ContainerFactory;
 
-function your_plugin(): App {
+function plugin(): App {
 	static $app;
 
 	if ( isset( $app ) ) {
@@ -114,7 +139,7 @@ function your_plugin(): App {
 }
 ```
 
-Calls elsewhere in the plugin can use `your_plugin()->container()` when WordPress invokes a callback that cannot receive constructor dependencies, such as activation and deactivation hooks. Application services should continue to use constructor injection.
+Calls elsewhere in the plugin can use `plugin()->container()` when WordPress invokes a callback that cannot receive constructor dependencies, such as activation and deactivation hooks. Application services should continue to use constructor injection.
 
 ## Autoload the application with Composer
 
@@ -124,7 +149,7 @@ In the root `composer.json`, map the plugin namespace to `src/` and autoload the
 {
   "autoload": {
     "psr-4": {
-      "YourPlugin\\\\": "src/"
+      "Plugin\\\\": "src/"
     },
     "files": [
       "src/functions.php"
@@ -157,12 +182,12 @@ The root `your-plugin.php` can now load Composer and defer application startup t
 
 defined( 'ABSPATH' ) || exit;
 
-use function YourPlugin\your_plugin;
+use function Plugin\plugin;
 
 require_once __DIR__ . '/vendor/autoload.php';
 
 add_action( 'plugins_loaded', static function (): void {
-	your_plugin();
+	plugin();
 }, 0, 0 );
 ```
 

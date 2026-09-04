@@ -95,7 +95,7 @@ In `src/App.php`, register `WPCliProvider` before feature providers that contrib
 ```php title="App.php"
 use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\WPCli;
-use YourPlugin\Catalog;
+use Plugin\Catalog;
 
 /** @var list<class-string<Provider>> */
 private const array PROVIDERS = [
@@ -115,12 +115,12 @@ In `src/Catalog/Provider.php`:
 ```php title="Provider.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Catalog;
+namespace Plugin\Catalog;
 
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
 use StellarWP\Foundation\WPCli\WPCliProvider;
-use YourPlugin\Catalog\Cli\Sync_Catalog_Command;
+use Plugin\Catalog\Cli\Sync_Catalog_Command;
 
 /**
  * Configures the product catalog feature and its WP-CLI commands.
@@ -156,7 +156,7 @@ Generate the initial class from the project root:
 
 ```shell
 vendor/bin/foundation make:wpcli-command Sync_Catalog \
-  --namespace="YourPlugin\\Catalog\\Cli" \
+  --namespace="Plugin\\Catalog\\Cli" \
   --subcommand="catalog:sync" \
   --description="Synchronize the product catalog."
 ```
@@ -176,11 +176,11 @@ In `src/Catalog/Cli/Sync_Catalog_Command.php`:
 ```php title="Sync_Catalog_Command.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Catalog\Cli;
+namespace Plugin\Catalog\Cli;
 
 use StellarWP\Foundation\WPCli\Command;
 use WP_CLI;
-use YourPlugin\Catalog\Catalog_Synchronizer;
+use Plugin\Catalog\Catalog_Synchronizer;
 
 use function WP_CLI\Utils\get_flag_value;
 

@@ -107,7 +107,7 @@ In `src/App.php`, add `LogProvider` before feature providers that consume `Logge
 ```php title="App.php"
 use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Log\LogProvider;
-use YourPlugin\Catalog;
+use Plugin\Catalog;
 
 /** @var list<class-string<Provider>> */
 private const array PROVIDERS = [
@@ -146,7 +146,7 @@ In `src/Catalog/Catalog_Importer.php`, depend on `Psr\Log\LoggerInterface`, not 
 ```php title="Catalog_Importer.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Catalog;
+namespace Plugin\Catalog;
 
 use Psr\Log\LoggerInterface;
 

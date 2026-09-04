@@ -20,7 +20,7 @@ Tables used for queries do not need to be managed by Foundation migrations. A wr
 ```php title="Import_Log_Table.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Database\Tables;
+namespace Plugin\Database\Tables;
 
 use StellarWP\Foundation\Database\Table\Table;
 
@@ -41,9 +41,9 @@ Inject the table object into the class that owns its queries. The table keeps ph
 ```php title="Report_Repository.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Report;
+namespace Plugin\Report;
 
-use YourPlugin\Database\Tables\Reports_Table;
+use Plugin\Database\Tables\Reports_Table;
 
 final readonly class Report_Repository {
 
