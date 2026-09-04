@@ -9,28 +9,54 @@ Configuration-dependent tests need different setup depending on the boundary und
 
 ## Test provider configuration
 
-Focused provider tests should pass configuration values directly to a new `ArrayConfiguration`. Create a new container for each scenario so registered bindings and resolved singletons cannot retain values from another test:
+Focused provider tests should pass configuration values directly to a new `ArrayConfiguration`. Add a helper to the project's base test case so every call creates a container with an independent configuration snapshot.
+
+Create `tests/TestCase.php`:
+
+```php title="TestCase.php"
+<?php declare(strict_types=1);
+
+namespace Plugin\Tests;
+
+use lucatume\WPBrowser\TestCase\WPTestCase;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
+use StellarWP\Foundation\Container\Contracts\Container;
+
+abstract class TestCase extends WPTestCase {
+
+	/**
+	 * Create a new container using the supplied configuration values.
+	 *
+	 * @param array<string, mixed> $configuration
+	 */
+	protected function create_container( array $configuration = [] ): Container {
+		return ( new ContainerFactory() )->create(
+			new ArrayConfiguration( $configuration )
+		);
+	}
+}
+```
+
+Use the helper to create a fresh container for each scenario so registered bindings and resolved singletons cannot retain values from another test:
 
 ```php title="Catalog_Provider_Test.php"
 <?php declare(strict_types=1);
 
-namespace Plugin\Tests\Feature\Catalog;
+namespace Plugin\Tests\WPUnit\Catalog;
 
-use PHPUnit\Framework\TestCase;
 use Plugin\Catalog\Catalog_Provider;
 use Plugin\Catalog\Catalog_Synchronizer;
-use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
-use StellarWP\Foundation\Container\ContainerFactory;
+use Plugin\Tests\TestCase;
 
 final class Catalog_Provider_Test extends TestCase {
 
 	public function test_it_disables_catalog_synchronization(): void {
-		$config = new ArrayConfiguration( [
+		$container = $this->create_container( [
 			'catalog' => [
 				'sync_enabled' => false,
 			],
 		] );
-		$container = ( new ContainerFactory() )->create( $config );
 		$container->register( Catalog_Provider::class );
 
 		$synchronizer = $container->get( Catalog_Synchronizer::class );
@@ -40,7 +66,7 @@ final class Catalog_Provider_Test extends TestCase {
 }
 ```
 
-This approach tests provider behavior without relying on the application's static `App` singleton or changing process-level environment values. Use a WordPress-loaded test suite when the provider itself registers hooks or otherwise requires WordPress APIs.
+This approach tests provider behavior without relying on the application's static `App` singleton or changing process-level environment values. The shared test case loads WordPress, so providers can register hooks and use WordPress APIs while still receiving an independent container.
 
 ## Test application configuration
 
@@ -65,12 +91,12 @@ namespace Plugin\Tests\WPUnit\Catalog;
 
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use Plugin\Catalog\Catalog_Synchronizer;
-use Plugin\Tests\WPUnitSupport\WPTestCase;
+use Plugin\Tests\TestCase;
 
 use function Plugin\plugin;
 
 #[RunTestsInSeparateProcesses]
-final class Catalog_Application_Test extends WPTestCase {
+final class Catalog_Application_Test extends TestCase {
 
 	private const string ENV_SYNC_ENABLED = 'CATALOG_SYNC_ENABLED';
 
