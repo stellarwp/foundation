@@ -60,19 +60,18 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertSame(Command::SUCCESS, $statusCode);
 		$this->assertFileExists($path);
 		$this->assertStringContainsString('Created: src/Database/Tables/Reports_Table.php', $tester->getDisplay());
-		$this->assertStringContainsString('Add this table to a migration with Schema::createOrUpdate() and Schema::drop().', $tester->getDisplay());
+		$this->assertStringContainsString('Create a migration that defines this table with Blueprint and Schema::create().', $tester->getDisplay());
 
 		$contents = (string) file_get_contents($path);
 
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Database\\Tables;', $contents);
-		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Contracts\\Database;', $contents);
 		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Table\\Table;', $contents);
-		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Table\\TableDefinition;', $contents);
 		$this->assertStringContainsString('final readonly class Reports_Table extends Table {', $contents);
-		$this->assertStringContainsString("public const string ID = 'reports_table';", $contents);
 		$this->assertStringContainsString("private const string UNPREFIXED_TABLE_NAME = 'reports';", $contents);
-		$this->assertStringContainsString('parent::__construct( self::UNPREFIXED_TABLE_NAME, $database );', $contents);
-		$this->assertStringContainsString("->longText( 'payload' )", $contents);
+		$this->assertStringContainsString('return self::UNPREFIXED_TABLE_NAME;', $contents);
+		$this->assertStringNotContainsString('function __construct', $contents);
+		$this->assertFalse($this->tableCommand($root)->getDefinition()->hasOption('id'));
+		$this->assertStringNotContainsString('Blueprint', $contents);
 	}
 
 	public function test_database_table_generator_can_create_and_register_its_initial_migration(): void {
@@ -105,10 +104,13 @@ final class DatabaseCommandTest extends TestCase
 		$provider  = (string) file_get_contents($providerPath);
 
 		$this->assertStringContainsString('use Acme\\Plugin\\Database\\Tables\\Reports_Table;', $migration);
-		$this->assertStringContainsString('$schema->createOrUpdate( $this->table );', $migration);
+		$this->assertStringContainsString('$blueprint = Blueprint::for( $this->table );', $migration);
+		$this->assertStringContainsString("\$blueprint->bigIncrements( 'id' );", $migration);
+		$this->assertStringContainsString('Define the complete initial schema before running this migration.', $migration);
+		$this->assertStringContainsString('$schema->create( $blueprint );', $migration);
 		$this->assertStringContainsString('$schema->drop( $this->table );', $migration);
-		$this->assertStringContainsString('$this->container->singleton(Reports_Table::class);', $provider);
-		$this->assertStringContainsString('$c->get(Create_Reports_Table::class),', $provider);
+		$this->assertStringContainsString('$this->container->singleton( Reports_Table::class );', $provider);
+		$this->assertStringContainsString('$c->get( Create_Reports_Table::class ),', $provider);
 	}
 
 	public function test_database_table_generator_uses_its_custom_namespace_for_the_initial_migration(): void {
@@ -176,8 +178,29 @@ final class DatabaseCommandTest extends TestCase
 		]);
 
 		$this->assertSame(Command::FAILURE, $status);
-		$this->assertStringContainsString('The --table-name option cannot be blank.', $tester->getDisplay());
+		$this->assertStringContainsString('The --table-name option cannot be blank or contain surrounding whitespace.', $tester->getDisplay());
 		$this->assertFileDoesNotExist($root . '/src/Database/Tables/Reports_Table.php');
+	}
+
+	public function test_database_table_generator_rejects_invalid_unprefixed_table_names(): void {
+		$invalidNames = [
+			[' reports', 'cannot be blank or contain surrounding whitespace'],
+			['report-items', 'may contain only ASCII letters, numbers, and underscores'],
+		];
+
+		foreach ($invalidNames as [$tableName, $message]) {
+			$root   = $this->temporaryProject();
+			$tester = new CommandTester($this->tableCommand($root));
+
+			$status = $tester->execute([
+				'name'         => 'reports',
+				'--table-name' => $tableName,
+			]);
+
+			$this->assertSame(Command::FAILURE, $status);
+			$this->assertStringContainsString($message, $tester->getDisplay());
+			$this->assertFileDoesNotExist($root . '/src/Database/Tables/Reports_Table.php');
+		}
 	}
 
 	public function test_database_table_generator_does_not_write_either_file_when_the_initial_migration_exists(): void {
@@ -227,7 +250,9 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertStringContainsString('final readonly class Create_Reports_Table implements Migration {', $contents);
 		$this->assertStringContainsString("public const string ID = '2026_06_26_000001_create_reports_table';", $contents);
 		$this->assertStringContainsString('private Reports_Table $table', $contents);
-		$this->assertStringContainsString('$schema->createOrUpdate( $this->table );', $contents);
+		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Table\\Blueprint;', $contents);
+		$this->assertStringContainsString('$blueprint = Blueprint::for( $this->table );', $contents);
+		$this->assertStringContainsString('$schema->create( $blueprint );', $contents);
 		$this->assertStringContainsString('$schema->drop( $this->table );', $contents);
 		$this->assertStringNotContainsString('CreateTable', $contents);
 	}
@@ -252,7 +277,7 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertStringNotContainsString('Bump_Version_Table', $contents);
 	}
 
-	public function test_it_generates_a_table_reconciliation_migration_without_destructive_rollback(): void {
+	public function test_it_generates_a_table_alteration_migration_without_destructive_rollback(): void {
 		$root   = $this->temporaryProject();
 		$tester = new CommandTester($this->migrationCommand($root));
 
@@ -268,7 +293,8 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertStringContainsString('use Acme\\Plugin\\Database\\Tables\\Reports_Table;', $contents);
 		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration;', $contents);
 		$this->assertStringContainsString('private Reports_Table $table', $contents);
-		$this->assertStringContainsString('$schema->createOrUpdate( $this->table );', $contents);
+		$this->assertStringContainsString('$blueprint = Blueprint::for( $this->table );', $contents);
+		$this->assertStringContainsString('$schema->alter( $blueprint );', $contents);
 		$this->assertStringContainsString('throw IrreversibleMigration::forMigration( self::ID );', $contents);
 		$this->assertStringNotContainsString('$schema->drop( $this->table );', $contents);
 	}
@@ -437,6 +463,20 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertFalse($command->getDefinition()->hasOption('table-namespace'));
 		$this->assertStringContainsString('mutually exclusive', $command->getHelp());
 		$this->assertStringContainsString('fully qualified class names', $command->getHelp());
+
+		foreach ([
+			'namespace' => 'Plugin\Database\Migrations',
+			'path'      => 'src/Database/Migrations',
+			'provider'  => 'src/Database/Provider.php',
+			'id'        => '2026_09_04_143200_create_reports_table',
+			'create'    => 'Reports_Table',
+			'table'     => 'Reports_Table',
+		] as $option => $example) {
+			$this->assertStringContainsString(
+				$example,
+				$command->getDefinition()->getOption($option)->getDescription()
+			);
+		}
 	}
 
 	public function test_database_table_command_distinguishes_the_physical_table_name_from_a_migration_table_class(): void {
@@ -444,6 +484,32 @@ final class DatabaseCommandTest extends TestCase
 
 		$this->assertTrue($command->getDefinition()->hasOption('table-name'));
 		$this->assertFalse($command->getDefinition()->hasOption('table'));
+
+		foreach ([
+			'namespace'    => 'Plugin\Database\Tables',
+			'path'         => 'src/Database/Tables',
+			'provider'     => 'src/Database/Provider.php',
+			'table-name'   => 'report_entries',
+			'migration-id' => '2026_09_04_143200_create_reports_table',
+		] as $option => $example) {
+			$this->assertStringContainsString(
+				$example,
+				$command->getDefinition()->getOption($option)->getDescription()
+			);
+		}
+	}
+
+	public function test_database_provider_command_describes_customization_options_with_examples(): void {
+		$command = $this->providerCommand($this->temporaryProject());
+
+		$this->assertStringContainsString(
+			'Plugin\Database',
+			$command->getDefinition()->getOption('namespace')->getDescription()
+		);
+		$this->assertStringContainsString(
+			'src/Database',
+			$command->getDefinition()->getOption('path')->getDescription()
+		);
 	}
 
 	public function test_it_generates_a_database_provider_from_project_autoload_defaults(): void {
@@ -545,7 +611,6 @@ final class DatabaseCommandTest extends TestCase
 			'name'         => 'Audit_Log',
 			'--namespace'  => 'Acme\\Plugin\\Storage',
 			'--path'       => 'custom/tables',
-			'--id'         => 'audit_log_storage',
 			'--table-name' => 'custom_audit_log',
 		]);
 
@@ -563,7 +628,6 @@ final class DatabaseCommandTest extends TestCase
 
 		$this->assertSame(Command::SUCCESS, $tableStatus);
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Storage;', $tableContents);
-		$this->assertStringContainsString("public const string ID = 'audit_log_storage';", $tableContents);
 		$this->assertStringContainsString("private const string UNPREFIXED_TABLE_NAME = 'custom_audit_log';", $tableContents);
 		$this->assertSame(Command::SUCCESS, $migrationStatus);
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Storage\\Migrations;', $migrationContents);
@@ -571,7 +635,7 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertStringContainsString("public const string ID = '2026_06_26_000002_create_audit_log_table';", $migrationContents);
 	}
 
-	public function test_database_reconciliation_migrations_accept_generation_options(): void {
+	public function test_database_alteration_migrations_accept_generation_options(): void {
 		$root   = $this->temporaryProject();
 		$tester = new CommandTester($this->migrationCommand($root));
 
@@ -588,7 +652,8 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertSame(Command::SUCCESS, $statusCode);
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Storage\\Migrations;', $contents);
 		$this->assertStringContainsString('use Acme\\Plugin\\Storage\\Audit_Log_Table;', $contents);
-		$this->assertStringContainsString('$schema->createOrUpdate( $this->table );', $contents);
+		$this->assertStringContainsString('$blueprint = Blueprint::for( $this->table );', $contents);
+		$this->assertStringContainsString('$schema->alter( $blueprint );', $contents);
 		$this->assertStringNotContainsString('$schema->drop( $this->table );', $contents);
 	}
 
@@ -605,8 +670,26 @@ final class DatabaseCommandTest extends TestCase
 		$contents = (string) file_get_contents($root . '/custom/providers/Database_Provider.php');
 
 		$this->assertSame(Command::SUCCESS, $statusCode);
+		$this->assertFalse($this->providerCommand($root)->getDefinition()->hasOption('force'));
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Storage;', $contents);
 		$this->assertStringContainsString('final class Database_Provider extends Service_Provider {', $contents);
+		$this->assertStringContainsString('private bool $registered = false;', $contents);
+		$this->assertStringContainsString('if ( $this->registered ) {', $contents);
+	}
+
+	public function test_database_provider_generator_refuses_to_replace_an_existing_provider(): void {
+		$root    = $this->temporaryProject();
+		$command = $this->providerCommand($root);
+
+		$this->assertSame(Command::SUCCESS, (new CommandTester($command))->execute([]));
+
+		$path     = $root . '/src/Database/Provider.php';
+		$contents = (string) file_get_contents($path);
+		$tester   = new CommandTester($command);
+
+		$this->assertSame(Command::FAILURE, $tester->execute([]));
+		$this->assertStringContainsString('File already exists: src/Database/Provider.php.', $tester->getDisplay());
+		$this->assertSame($contents, file_get_contents($path));
 	}
 
 	public function test_database_provider_generator_accepts_an_absolute_output_path(): void {
@@ -655,10 +738,10 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertStringNotContainsString('Register this migration', $migrationTester->getDisplay());
 		$this->assertStringContainsString('use Acme\\Plugin\\Database\\Tables\\Reports_Table;', $contents);
 		$this->assertStringContainsString('use Acme\\Plugin\\Database\\Migrations\\Create_Reports_Table;', $contents);
-		$this->assertStringContainsString('$this->container->singleton(Reports_Table::class);', $contents);
-		$this->assertStringContainsString('$c->get(Create_Reports_Table::class),', $contents);
-		$this->assertStringContainsString("\t\t\$this->container->singleton(Reports_Table::class);\n\t\t// foundation:database-tables", $contents);
-		$this->assertStringContainsString("\t\t\t\$c->get(Create_Reports_Table::class),\n\t\t] );", $contents);
+		$this->assertStringContainsString('$this->container->singleton( Reports_Table::class );', $contents);
+		$this->assertStringContainsString('$c->get( Create_Reports_Table::class ),', $contents);
+		$this->assertStringContainsString("\t\t\$this->container->singleton( Reports_Table::class );\n\t\t// foundation:database-tables", $contents);
+		$this->assertStringContainsString("\t\t\t\$c->get( Create_Reports_Table::class ),\n\t\t] );", $contents);
 		$this->assertStringNotContainsString('Array$this', $contents);
 		$this->assertStringNotContainsString('Array$c', $contents);
 	}
@@ -685,8 +768,8 @@ final class DatabaseCommandTest extends TestCase
 
 		$contents = (string) file_get_contents($root . '/src/Database/Provider.php');
 
-		$reportsOffset = strpos($contents, '$c->get(Create_Reports_Table::class),');
-		$ordersOffset  = strpos($contents, '$c->get(Create_Orders_Table::class),');
+		$reportsOffset = strpos($contents, '$c->get( Create_Reports_Table::class ),');
+		$ordersOffset  = strpos($contents, '$c->get( Create_Orders_Table::class ),');
 
 		$this->assertIsInt($reportsOffset);
 		$this->assertIsInt($ordersOffset);
@@ -724,8 +807,8 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertStringContainsString('Updated: custom/providers/Provider.php', $tableTester->getDisplay());
 		$this->assertSame(Command::SUCCESS, $migrationStatus);
 		$this->assertStringContainsString('Updated: custom/providers/Provider.php', $migrationTester->getDisplay());
-		$this->assertStringContainsString('$this->container->singleton(Reports_Table::class);', $contents);
-		$this->assertStringContainsString('$c->get(Create_Reports_Table::class),', $contents);
+		$this->assertStringContainsString('$this->container->singleton( Reports_Table::class );', $contents);
+		$this->assertStringContainsString('$c->get( Create_Reports_Table::class ),', $contents);
 	}
 
 	public function test_explicit_database_provider_update_fails_when_the_provider_has_no_markers(): void {
@@ -992,7 +1075,7 @@ PHP);
 
 		$this->assertTrue($status->wasUpdated());
 		$this->assertStringContainsString('use Acme\\Plugin\\Database\\Migrations\\Create_Reports_Table;', $contents);
-		$this->assertStringContainsString("\t\t\t\$c->get(Create_Reports_Table::class),\n\t\t\t// foundation:database-migrations", $contents);
+		$this->assertStringContainsString("\t\t\t\$c->get( Create_Reports_Table::class ),\n\t\t\t// foundation:database-migrations", $contents);
 	}
 
 	public function test_database_provider_migration_update_supports_direct_array_registrations(): void {
@@ -1026,7 +1109,7 @@ PHP);
 		$contents = (string) file_get_contents($providerPath);
 
 		$this->assertTrue($status->wasUpdated());
-		$this->assertStringContainsString('$this->container->get(Create_Reports_Table::class),', $contents);
+		$this->assertStringContainsString('$this->container->get( Create_Reports_Table::class ),', $contents);
 	}
 
 	public function test_combined_provider_update_does_not_write_the_table_when_the_migration_cannot_be_added(): void {
@@ -1155,7 +1238,7 @@ PHP);
 
 		$this->assertTrue(is_link($linkPath));
 		$this->assertStringContainsString(
-			'$this->container->singleton(Reports_Table::class);',
+			'$this->container->singleton( Reports_Table::class );',
 			(string) file_get_contents($providerPath)
 		);
 	}
@@ -1257,7 +1340,7 @@ PHP);
 
 		$this->assertTrue($status->wasUpdated());
 		$this->assertStringContainsString('use Acme\\Plugin\\Database\\Migrations\\Create_Reports_Table;', $contents);
-		$this->assertStringContainsString("\t\t\t\t\$c->get(Create_Reports_Table::class),\n\t\t\t];", $contents);
+		$this->assertStringContainsString("\t\t\t\t\$c->get( Create_Reports_Table::class ),\n\t\t\t];", $contents);
 	}
 
 	public function test_database_provider_migration_update_uses_the_callback_parameter_name(): void {
@@ -1292,7 +1375,7 @@ PHP);
 		$contents = (string) file_get_contents($providerPath);
 
 		$this->assertTrue($status->wasUpdated());
-		$this->assertStringContainsString('$container->get(Create_Reports_Table::class),', $contents);
+		$this->assertStringContainsString('$container->get( Create_Reports_Table::class ),', $contents);
 	}
 
 	public function test_explicit_database_provider_migration_update_fails_before_writing_when_the_array_cannot_be_safely_edited(): void {
@@ -1447,7 +1530,7 @@ PHP);
 		$contents = (string) file_get_contents($providerPath);
 
 		$this->assertSame(Command::SUCCESS, $statusCode);
-		$this->assertSame(1, substr_count($contents, '$this->container->singleton(Reports_Table::class);'));
+		$this->assertSame(1, substr_count($contents, '$this->container->singleton( Reports_Table::class );'));
 		$this->assertStringContainsString('Example text: // foundation:database-tables', $contents);
 	}
 
@@ -1480,7 +1563,7 @@ PHP);
 
 		$this->assertTrue($status->wasUpdated());
 		$this->assertStringContainsString("namespace Acme\\Plugin\\Database;\n\nuse Acme\\Plugin\\Database\\Tables\\Reports_Table;\n\nfinal class Provider", $contents);
-		$this->assertStringContainsString("\t\t\$this->container->singleton(Reports_Table::class);\n\t\t// foundation:database-tables", $contents);
+		$this->assertStringContainsString("\t\t\$this->container->singleton( Reports_Table::class );\n\t\t// foundation:database-tables", $contents);
 		$this->assertStringNotContainsString('Array$this', $contents);
 	}
 
@@ -1516,7 +1599,7 @@ PHP);
 		$this->assertTrue($status->wasUpdated());
 		$this->assertStringContainsString('use Acme\\Plugin\\Database\\Tables\\Reports_Table as Existing_Reports_Table;', $contents);
 		$this->assertStringContainsString('use Acme\\Plugin\\Database\\Tables\\Reports_Table;', $contents);
-		$this->assertStringContainsString("\t\t\$this->container->singleton(Reports_Table::class);\n\t\t// foundation:database-tables", $contents);
+		$this->assertStringContainsString("\t\t\$this->container->singleton( Reports_Table::class );\n\t\t// foundation:database-tables", $contents);
 	}
 
 	public function test_database_provider_updater_preserves_inline_comments_when_adding_imports(): void {
@@ -1578,7 +1661,7 @@ PHP);
 		);
 
 		$this->assertSame('file does not contain the generated database provider markers', $status->failureReason());
-		$this->assertSame(0, substr_count((string) file_get_contents($providerPath), '$this->container->singleton(Reports_Table::class);'));
+		$this->assertSame(0, substr_count((string) file_get_contents($providerPath), '$this->container->singleton( Reports_Table::class );'));
 	}
 
 	public function test_database_provider_updater_is_idempotent_with_grouped_imports(): void {
@@ -1815,23 +1898,23 @@ PHP);
 
 		$tableContents     = (string) file_get_contents($root . '/src/Database/Tables/Reports_Table.php');
 		$migrationContents = (string) file_get_contents($root . '/src/Database/Migrations/Create_Reports_Table.php');
-		$reconcileContents = (string) file_get_contents($root . '/src/Database/Migrations/Add_Status_To_Reports.php');
+		$alterContents     = (string) file_get_contents($root . '/src/Database/Migrations/Add_Status_To_Reports.php');
 		$genericContents   = (string) file_get_contents($root . '/src/Database/Migrations/Bump_Version.php');
 
-		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Database;', $tableContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Table\\Table;', $tableContents);
-		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Table\\TableDefinition;', $tableContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Migration;', $migrationContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Schema;', $migrationContents);
-		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration;', $reconcileContents);
-		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Migration;', $reconcileContents);
-		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Schema;', $reconcileContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Table\\Blueprint;', $migrationContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration;', $alterContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Migration;', $alterContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Schema;', $alterContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Table\\Blueprint;', $alterContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration;', $genericContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Migration;', $genericContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Schema;', $genericContents);
 		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\Contracts\\Database;', $tableContents);
 		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\Table\\Table;', $tableContents);
-		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\Table\\TableDefinition;', $tableContents);
+		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\Table\\Blueprint;', $tableContents);
 		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\Contracts\\Migration;', $migrationContents);
 	}
 
@@ -1862,7 +1945,7 @@ PHP);
 		mkdir($root . '/foundation/stubs/database', 0777, true);
 		file_put_contents($root . '/foundation/stubs/database/table.stub', '<?php namespace {{ namespace }}; // Generated table {{ class }} in {{ namespace }}' . "\n" . 'final class {{ class }} {}');
 		file_put_contents($root . '/foundation/stubs/database/create-table-migration.stub', '<?php namespace {{ namespace }}; // Generated create migration {{ class }} with {{ table_class }}' . "\n" . 'final class {{ class }} {}');
-		file_put_contents($root . '/foundation/stubs/database/reconcile-table-migration.stub', '<?php namespace {{ namespace }}; // Generated reconciliation migration {{ class }} with {{ table_class }}' . "\n" . 'final class {{ class }} {}');
+		file_put_contents($root . '/foundation/stubs/database/alter-table-migration.stub', '<?php namespace {{ namespace }}; // Generated alteration migration {{ class }} with {{ table_class }}' . "\n" . 'final class {{ class }} {}');
 		file_put_contents($root . '/foundation/stubs/database/migration.stub', '<?php namespace {{ namespace }}; // Generated migration {{ class }}' . "\n" . 'final class {{ class }} {}');
 		file_put_contents($root . '/foundation/stubs/database/provider.stub', '<?php namespace {{ namespace }}; // Generated provider {{ class }} in {{ namespace }}' . "\n" . 'final class {{ class }} {}');
 
@@ -1894,7 +1977,7 @@ PHP);
 			(string) file_get_contents($root . '/src/Database/Migrations/Create_Reports_Table.php')
 		);
 		$this->assertStringContainsString(
-			'Generated reconciliation migration Add_Status_To_Reports with Reports_Table',
+			'Generated alteration migration Add_Status_To_Reports with Reports_Table',
 			(string) file_get_contents($root . '/src/Database/Migrations/Add_Status_To_Reports.php')
 		);
 		$this->assertStringContainsString(
@@ -2093,24 +2176,6 @@ PHP);
 		$this->assertSame(Command::FAILURE, $statusCode);
 		$this->assertStringContainsString($message, $tester->getDisplay());
 		$this->assertFileDoesNotExist($root . '/src/Database/Migrations/Bump_Version.php');
-	}
-
-	/**
-	 * @dataProvider invalidMigrationIdProvider
-	 */
-	#[DataProvider('invalidMigrationIdProvider')]
-	public function test_database_table_generator_rejects_runtime_invalid_ids(string $id, string $message): void {
-		$root   = $this->temporaryProject();
-		$tester = new CommandTester($this->tableCommand($root));
-
-		$statusCode = $tester->execute([
-			'name' => 'reports',
-			'--id' => $id,
-		]);
-
-		$this->assertSame(Command::FAILURE, $statusCode);
-		$this->assertStringContainsString($message, $tester->getDisplay());
-		$this->assertFileDoesNotExist($root . '/src/Database/Tables/Reports_Table.php');
 	}
 
 	/**

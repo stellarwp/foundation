@@ -54,11 +54,9 @@ final readonly class Column
 	 */
 	public function sql(): string {
 		$sql = sprintf(
-			'%s %s%s%s%s',
+			'%s %s%s',
 			$this->quoteSqlIdentifier($this->name),
-			$this->type,
-			$this->length === null ? '' : sprintf('(%d)', $this->length),
-			$this->unsigned ? ' unsigned' : '',
+			$this->typeSql(),
 			$this->nullable ? ' NULL' : ' NOT NULL'
 		);
 
@@ -77,6 +75,18 @@ final readonly class Column
 		}
 
 		return $sql;
+	}
+
+	/**
+	 * Render the database type, optional length, and unsigned attribute.
+	 */
+	public function typeSql(): string {
+		return sprintf(
+			'%s%s%s',
+			$this->canonicalType(),
+			$this->length === null ? '' : sprintf('(%d)', $this->length),
+			$this->unsigned ? ' unsigned' : ''
+		);
 	}
 
 	/**
@@ -152,5 +162,29 @@ final readonly class Column
 		}
 
 		return "'" . $default . "'";
+	}
+
+	/**
+	 * Normalize common MySQL type aliases and numeric type arguments before SQL is emitted.
+	 *
+	 * Literal-bearing types such as ENUM and SET are otherwise preserved byte for
+	 * byte so normalization cannot change their declared values.
+	 */
+	private function canonicalType(): string {
+		$type = trim($this->type);
+
+		if (preg_match('/\Adouble\s+precision\z/i', $type) === 1) {
+			return 'double';
+		}
+
+		if (preg_match('/\A(?:decimal|numeric|dec)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)\z/i', $type, $parts) === 1) {
+			return sprintf('decimal(%d,%d)', (int) $parts[1], (int) $parts[2]);
+		}
+
+		if (preg_match('/\A(?:decimal|numeric|dec)\s*\(\s*(\d+)\s*\)\z/i', $type, $parts) === 1) {
+			return sprintf('decimal(%d)', (int) $parts[1]);
+		}
+
+		return $type;
 	}
 }

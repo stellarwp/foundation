@@ -15,6 +15,8 @@ use StellarWP\Foundation\Container\Contracts\Provider;
 trait ResolvesFoundationPrefix
 {
 	/**
+	 * Return the configured application prefix or Foundation's default prefix.
+	 *
 	 * @throws InvalidArgumentException When the configured prefix is not lowercase kebab-case.
 	 */
 	private function foundationPrefix(): string {

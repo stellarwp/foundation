@@ -7,7 +7,7 @@ sidebar:
 
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-Foundation Container adapts [DI52](https://github.com/lucatume/di52) behind a shared container contract and service provider base class. Use it to describe how application services are constructed while keeping dependency resolution out of the services themselves.
+Foundation Container provides a shared container contract and service provider base class. Use it to describe how application services are constructed while keeping dependency resolution and the underlying container implementation out of the services themselves.
 
 ## Installation
 
@@ -24,9 +24,9 @@ Other Foundation packages install Container automatically when they depend on it
 Create one container in the application composition root and register providers in dependency order. These guides establish that structure:
 
 <CardGrid>
-  <LinkCard
-    title="Configure the Container"
-    description="Construct the shared adapter and make application configuration available."
+	  <LinkCard
+	    title="Configure the Container"
+	    description="Construct the shared container and make application configuration available."
     href="/start/configure-the-container/"
   />
   <LinkCard
@@ -68,20 +68,19 @@ Prefer constructor injection throughout application code. Calling `get()` inside
 
 ### Select an interface implementation
 
-In `src/Catalog/Provider.php`, bind an interface when the container cannot infer which implementation the application wants. Use `bind()` for a new instance on each resolution and `singleton()` when every resolution should return the same instance:
+In `src/Catalog/Catalog_Provider.php`, bind an interface when the container cannot infer which implementation the application wants. Use `bind()` for a new instance on each resolution and `singleton()` when every resolution should return the same instance:
 
-```php title="Provider.php"
+```php title="Catalog_Provider.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Catalog;
+namespace Plugin\Catalog;
 
-use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
-use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use StellarWP\Foundation\Container\Contracts\Provider;
 
 /**
  * Selects the catalog implementation used by the application.
  */
-final class Provider extends Service_Provider {
+final class Catalog_Provider extends Provider {
 
 	public function register(): void {
 		$this->register_catalog();
@@ -98,21 +97,42 @@ final class Provider extends Service_Provider {
 
 Bindings are lazy. Registering `Remote_Catalog` does not construct it; the container builds it when another service first requests `Catalog`.
 
+Every provider receives the shared container and read-only configuration snapshot. Use `$this->config` when a feature needs configuration; providers that do not need it can simply ignore it. This keeps one provider shape throughout the application instead of requiring developers to choose a base class.
+
+Foundation providers register eagerly. Keep expensive services lazy by binding them in `register()` and letting the container construct them on first use; do not add provider-level deferred or boot phases.
+
 ### Supply configuration and scalar values
 
-In the same `src/Catalog/Provider.php`, use a contextual binding when one class needs a scalar or a feature-specific implementation. Target scalar constructor arguments by their `$name`. Import Foundation's `Resolver` as `C` when a factory callback must resolve another service:
+In the same `src/Catalog/Catalog_Provider.php`, use a contextual binding when one class needs a scalar or a feature-specific implementation. Target scalar constructor arguments by their `$name`. Import Foundation's `Resolver` as `C` when a factory callback must resolve another service:
 
-```php title="Provider.php"
-private function register_catalog(): void {
-	$this->container->when( Remote_Catalog::class )
-		->needs( '$endpoint' )
-		->give( (string) $this->config->get( 'catalog.endpoint' ) );
+```php title="Catalog_Provider.php"
+<?php declare(strict_types=1);
 
-	$this->container->singleton( Remote_Catalog::class );
-	$this->container->singleton(
-		Catalog::class,
-		static fn ( C $c ): Remote_Catalog => $c->get( Remote_Catalog::class )
-	);
+namespace Plugin\Catalog;
+
+use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
+
+/**
+ * Configures the remote catalog used by the application.
+ */
+final class Catalog_Provider extends Provider {
+
+	public function register(): void {
+		$this->register_catalog();
+	}
+
+	private function register_catalog(): void {
+		$this->container->when( Remote_Catalog::class )
+			->needs( '$endpoint' )
+			->give( (string) $this->config->get( 'catalog.endpoint' ) );
+
+		$this->container->singleton( Remote_Catalog::class );
+		$this->container->singleton(
+			Catalog::class,
+			static fn ( C $c ): Remote_Catalog => $c->get( Remote_Catalog::class )
+		);
+	}
 }
 ```
 
@@ -128,17 +148,34 @@ Use a factory callback only when the value must be computed or fetched from the 
 
 ### Build a collection across providers
 
-In `src/Report/Provider.php`, use `mergeArrayVar()` when independent providers contribute to one ordered collection. The provider that owns the collection registers its default and supplies it to the consuming class:
+In `src/Report/Report_Provider.php`, use `mergeArrayVar()` when independent providers contribute to one ordered collection. The provider that owns the collection registers its default and supplies it to the consuming class:
 
-```php title="Provider.php"
-public const string EXPORTERS = 'your-plugin.report.exporters';
+```php title="Report_Provider.php"
+<?php declare(strict_types=1);
 
-private function register_exporter_collection(): void {
-	$this->container->mergeArrayVar( self::EXPORTERS, [] );
+namespace Plugin\Report;
 
-	$this->container->when( Exporter_Collection::class )
-		->needs( '$exporters' )
-		->give( static fn ( C $c ): array => $c->get( self::EXPORTERS ) );
+use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
+
+/**
+ * Collects report exporters contributed by application features.
+ */
+final class Report_Provider extends Provider {
+
+	public const string EXPORTERS = 'your-plugin.report.exporters';
+
+	public function register(): void {
+		$this->register_exporter_collection();
+	}
+
+	private function register_exporter_collection(): void {
+		$this->container->mergeArrayVar( self::EXPORTERS, [] );
+
+		$this->container->when( Exporter_Collection::class )
+			->needs( '$exporters' )
+			->give( static fn ( C $c ): array => $c->get( self::EXPORTERS ) );
+	}
 }
 ```
 
@@ -150,16 +187,34 @@ Application-owned text identifiers should start with a stable application or plu
 Text container identifiers are internal application wiring. Do not reuse them as configuration paths, database tables, cache keys, lock names, commands, or other externally visible values.
 :::
 
-Other feature providers append their implementations without replacing earlier contributions. For example, `src/Report/Csv/Provider.php` can contribute the CSV implementation:
+Other feature providers append their implementations without replacing earlier contributions. For example, `src/Report/Csv/Csv_Provider.php` can contribute the CSV implementation:
 
-```php title="Provider.php"
-private function register_csv_exporter(): void {
-	$this->container->mergeArrayVar(
-		Report\Provider::EXPORTERS,
-		static fn ( C $c ): array => [
-			$c->get( Csv_Exporter::class ),
-		]
-	);
+```php title="Csv_Provider.php"
+<?php declare(strict_types=1);
+
+namespace Plugin\Report\Csv;
+
+use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use Plugin\Report\Report_Provider;
+
+/**
+ * Contributes CSV output to the application's report exporters.
+ */
+final class Csv_Provider extends Provider {
+
+	public function register(): void {
+		$this->register_csv_exporter();
+	}
+
+	private function register_csv_exporter(): void {
+		$this->container->mergeArrayVar(
+			Report_Provider::EXPORTERS,
+			static fn ( C $c ): array => [
+				$c->get( Csv_Exporter::class ),
+			]
+		);
+	}
 }
 ```
 
@@ -169,35 +224,71 @@ Register every contributing provider before resolving services that consume the 
 
 ### Register lazy WordPress callbacks
 
-In `src/Catalog/Provider.php`, use `callback()` to let WordPress resolve a service only when its hook runs:
+In `src/Catalog/Catalog_Provider.php`, use `callback()` to let WordPress resolve a service only when its hook runs:
 
-```php title="Provider.php"
-private function register_catalog_sync(): void {
-	$this->container->singleton( Catalog_Synchronizer::class );
+```php title="Catalog_Provider.php"
+<?php declare(strict_types=1);
 
-	add_action(
-		'your_plugin/sync_catalog',
-		$this->container->callback( Catalog_Synchronizer::class, 'synchronize' )
-	);
+namespace Plugin\Catalog;
+
+use StellarWP\Foundation\Container\Contracts\Provider;
+
+/**
+ * Connects catalog synchronization to WordPress.
+ */
+final class Catalog_Provider extends Provider {
+
+	public function register(): void {
+		$this->register_catalog_sync();
+	}
+
+	private function register_catalog_sync(): void {
+		$this->container->singleton( Catalog_Synchronizer::class );
+
+		add_action(
+			'your_plugin/sync_catalog',
+			$this->container->callback( Catalog_Synchronizer::class, 'synchronize' )
+		);
+	}
 }
 ```
 
 This avoids constructing the synchronizer during every request merely to register its callback.
 
+### Handle container failures
+
+Catch `StellarWP\Foundation\Container\Exceptions\NotFoundException` when a requested identifier may be absent. Failures raised by the container while registering or resolving services use `StellarWP\Foundation\Container\Exceptions\ContainerException`. Both implement the corresponding PSR container exception interfaces, and the original application failure remains available through `getPrevious()` when the underlying container wrapped one. Exceptions thrown by a provider's own `register()` method remain that provider's exception and propagate unchanged.
+
 ### Decorate a service
 
-In `src/Catalog/Provider.php`, use a decorator chain when cross-cutting behavior should wrap a service without changing its implementation. List the outermost decorator first and the base implementation last:
+In `src/Catalog/Catalog_Provider.php`, use a decorator chain when cross-cutting behavior should wrap a service without changing its implementation. List the outermost decorator first and the base implementation last:
 
-```php title="Provider.php"
-private function register_catalog(): void {
-	$this->container->singletonDecorators(
-		Catalog::class,
-		[
-			Logging_Catalog::class,
-			Caching_Catalog::class,
-			Remote_Catalog::class,
-		]
-	);
+```php title="Catalog_Provider.php"
+<?php declare(strict_types=1);
+
+namespace Plugin\Catalog;
+
+use StellarWP\Foundation\Container\Contracts\Provider;
+
+/**
+ * Wraps the remote catalog with caching and logging behavior.
+ */
+final class Catalog_Provider extends Provider {
+
+	public function register(): void {
+		$this->register_catalog();
+	}
+
+	private function register_catalog(): void {
+		$this->container->singletonDecorators(
+			Catalog::class,
+			[
+				Logging_Catalog::class,
+				Caching_Catalog::class,
+				Remote_Catalog::class,
+			]
+		);
+	}
 }
 ```
 
@@ -221,3 +312,61 @@ $this->assertTrue( $catalog->was_synchronized() );
 ```
 
 Test application services through their public behavior. Reserve container integration tests for provider graphs where the binding itself is the behavior under test.
+
+## Upgrading to 2.0
+
+Most existing providers need little or no structural change. A provider that already extends `Provider`, declares no constructor, and registers its feature in `register()` keeps the same shape.
+
+First, update the application composition root to create the shared container with `ContainerFactory`. This replaces direct `ContainerAdapter`, DI52, and `Adbar\Dot` setup:
+
+<LinkCard
+  title="Configure the Container"
+  description="Create the 2.0 container and make config.php available to every provider."
+  href="/start/configure-the-container/"
+/>
+
+Then update each application provider:
+
+1. Keep extending `StellarWP\Foundation\Container\Contracts\Provider` and implement `register()`.
+2. Remove custom provider constructors. Read configuration through `$this->config` and let the base provider receive the container.
+3. Type factory callbacks against `StellarWP\Foundation\Container\Contracts\Resolver`, conventionally imported as `C`, instead of DI52's container.
+
+After those changes, `src/Catalog/Catalog_Provider.php` can look like this:
+
+```php title="Catalog_Provider.php"
+<?php declare(strict_types=1);
+
+namespace Plugin\Catalog;
+
+use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
+
+/**
+ * Configures the application's catalog services.
+ */
+final class Catalog_Provider extends Provider {
+
+	public function register(): void {
+		$this->register_catalog();
+	}
+
+	private function register_catalog(): void {
+		$this->container->when( Remote_Catalog::class )
+			->needs( '$endpoint' )
+			->give( (string) $this->config->get( 'catalog.endpoint' ) );
+
+		$this->container->singleton( Remote_Catalog::class );
+		$this->container->singleton(
+			Catalog::class,
+			static fn ( C $c ): Remote_Catalog => $c->get( Remote_Catalog::class )
+		);
+	}
+}
+```
+
+If the application used lower-level container APIs, make these additional replacements:
+
+- Replace direct implementations of the removed `Providable` interface with classes that extend `Provider`.
+- Move provider `boot()`, `provides()`, and deferred-provider behavior into `register()` or an application-owned lifecycle.
+- Replace `ContainerAdapter::getContainer()` and forwarded DI52 methods with operations declared by Foundation's `Container` and `Resolver` contracts.
+- Catch Foundation's `ContainerException` or `NotFoundException` instead of DI52 exceptions.

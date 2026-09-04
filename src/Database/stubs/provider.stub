@@ -7,10 +7,17 @@ use {{ foundation_database_provider }};
 use {{ foundation_service_provider }} as Service_Provider;
 
 final class {{ class }} extends Service_Provider {
+	private bool $registered = false;
 
 	public function register(): void {
+		if ( $this->registered ) {
+			return;
+		}
+
 		$this->register_tables();
 		$this->register_migrations();
+
+		$this->registered = true;
 	}
 
 	private function register_tables(): void {

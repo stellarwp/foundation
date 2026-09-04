@@ -3,8 +3,8 @@
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database;
 
 use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Table\Blueprint;
 use StellarWP\Foundation\Database\Table\ColumnDefinition;
-use StellarWP\Foundation\Database\Table\TableDefinition;
 
 /**
  * Defines commented columns with representative supported attributes for reconciliation tests.
@@ -17,16 +17,12 @@ final readonly class CommentReconciliationTable implements Table
 	) {
 	}
 
-	public function id(): string {
-		return 'comment_reconciliation_table';
-	}
-
 	public function unprefixedName(): string {
 		return $this->unprefixedName;
 	}
 
-	public function definition(): TableDefinition {
-		$table = TableDefinition::for($this);
+	public function blueprint(): Blueprint {
+		$table = Blueprint::for($this);
 
 		$this->comment($table->bigIncrements('id'));
 		$this->comment($table->string('description', 100)->nullable()->default('fallback'));

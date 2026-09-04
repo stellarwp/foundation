@@ -36,7 +36,7 @@ final class ProviderRegistrationEditor
 			class: $class,
 			classNamespace: $classNamespace,
 			marker: self::TABLE_MARKER,
-			registration: sprintf('$this->container->singleton(%s::class);', $class),
+			registration: sprintf('$this->container->singleton( %s::class );', $class),
 			write: true
 		);
 	}
@@ -129,7 +129,7 @@ final class ProviderRegistrationEditor
 			class: $class,
 			classNamespace: $classNamespace,
 			marker: self::TABLE_MARKER,
-			registration: sprintf('$this->container->singleton(%s::class);', $class),
+			registration: sprintf('$this->container->singleton( %s::class );', $class),
 			write: false
 		);
 	}
@@ -257,7 +257,7 @@ final class ProviderRegistrationEditor
 		}
 
 		$fullyQualifiedClass = $classNamespace . '\\' . $class;
-		$registration        = sprintf('%s->get(%s::class),', $containerExpression, $class);
+		$registration        = sprintf('%s->get( %s::class ),', $containerExpression, $class);
 
 		if ($this->sourceEditor->mergeArrayVarContainsClass($contents, self::MIGRATIONS_CLASS, self::MIGRATIONS_CONST, $fullyQualifiedClass)) {
 			return ProviderRegistrationResult::alreadyRegistered();

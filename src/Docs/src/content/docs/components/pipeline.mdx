@@ -7,7 +7,7 @@ sidebar:
 
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-Foundation Pipeline passes a value through an ordered chain of pipes. Each pipe can transform the value, perform a check, stop execution, or call the next pipe. The implementation is based on Laravel's Pipeline pattern and uses the Foundation container to resolve class-based pipes.
+Foundation Pipeline passes a value through an ordered chain of pipes. Each pipe can transform the value, perform a check, stop execution, or call the next pipe. The implementation is based on Laravel's Pipeline pattern and uses the Foundation resolver to resolve class-based pipes.
 
 Pipelines are useful when one operation has several independent steps whose order should remain visible, such as normalizing input, validating business rules, enriching data, and persisting the final result.
 
@@ -52,10 +52,11 @@ In `src/Catalog/Provider.php`:
 ```php title="Provider.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Catalog;
+namespace Plugin\Catalog;
 
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\Pipeline\Contracts\Pipeline as PipelineContract;
 use StellarWP\Foundation\Pipeline\Pipeline;
 
 /**
@@ -79,9 +80,9 @@ final class Provider extends Service_Provider {
 		);
 
 		$this->container->when( Product_Importer::class )
-			->needs( Pipeline::class )
+			->needs( PipelineContract::class )
 			->give(
-				static fn ( C $c ): Pipeline => $c->get( self::PRODUCT_IMPORT_PIPELINE )
+				static fn ( C $c ): PipelineContract => $c->get( self::PRODUCT_IMPORT_PIPELINE )
 			);
 	}
 }
@@ -92,10 +93,10 @@ In `src/Catalog/Product_Importer.php`, the consumer uses the pipeline it receive
 ```php title="Product_Importer.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Catalog;
+namespace Plugin\Catalog;
 
 use InvalidArgumentException;
-use StellarWP\Foundation\Pipeline\Pipeline;
+use StellarWP\Foundation\Pipeline\Contracts\Pipeline;
 
 /**
  * Applies the catalog import workflow to incoming product data.
@@ -130,6 +131,8 @@ final readonly class Product_Importer {
 Use `bind()` for configured pipelines. `send()`, `through()`, `pipe()`, and `via()` change the pipeline instance, so a singleton can leak mutable state between operations in a long-running process.
 :::
 
+Call `send()` before `then()` or `thenReturn()`. Executing a pipeline without a supplied value throws `PipelineNotStarted`; `null` is a valid supplied value.
+
 Register each distinct workflow under its own container identifier and contextually give consumers the one they need. Class-name pipes are resolved through the container, so their own dependencies remain injectable.
 
 ## Usage
@@ -141,7 +144,7 @@ Create `src/Catalog/Normalize_Product.php` for the first pipe. A pipe receives t
 ```php title="Normalize_Product.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Catalog;
+namespace Plugin\Catalog;
 
 use Closure;
 
@@ -173,7 +176,7 @@ Create `src/Catalog/Require_Product_Sku.php` for the validation pipe. Throw when
 ```php title="Require_Product_Sku.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Catalog;
+namespace Plugin\Catalog;
 
 use Closure;
 use InvalidArgumentException;
@@ -323,3 +326,9 @@ $this->assertSame( 'ABC-123', $product->sku() );
 ```
 
 Keep most tests on individual pipes. The pipeline package already owns the generic chaining behavior; application tests need to prove only their transformations, short circuits, and configured order.
+
+## Upgrading to 2.0
+
+Pass the Foundation `Resolver` contract when constructing the concrete pipeline. The nullable constructor, `setContainer()`, and protected `getContainer()` lifecycle no longer exist. Subclasses should receive any additional collaborators through their own constructors instead of replacing the pipeline resolver after construction.
+
+Provider code should configure the concrete `Pipeline`, while consuming services should request `StellarWP\Foundation\Pipeline\Contracts\Pipeline`. Call `send()` before `then()` or `thenReturn()`; the supplied implementation now reports that invalid lifecycle with `PipelineNotStarted` instead of a generic uninitialized-property error.

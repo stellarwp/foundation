@@ -44,15 +44,14 @@ final class ProviderCommand extends Command
 	protected function configure(): void {
 		$this->setDescription('Generate a Foundation database provider class.')
 			->addArgument('name', InputArgument::OPTIONAL, 'Provider class name, e.g. Provider or Database_Provider.', 'Provider')
-			->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the generated provider class.')
-			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Directory where the provider class should be written.')
-			->addOption('force', null, InputOption::VALUE_NONE, 'Overwrite the file if it already exists.');
+			->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the generated provider, e.g. Plugin\Database.')
+			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Output directory for the generated provider, e.g. src/Database.');
 	}
 
 	protected function execute(InputInterface $input, OutputInterface $output): int {
 		try {
 			$file = $this->generatedFile($input);
-			$this->fileWriter->write($file, (bool) $input->getOption('force'));
+			$this->fileWriter->write($file);
 		} catch (RuntimeException $exception) {
 			$output->writeln('<error>' . $exception->getMessage() . '</error>');
 

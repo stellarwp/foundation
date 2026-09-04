@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database;
 
 use StellarWP\Foundation\Database\Contracts\Table;
-use StellarWP\Foundation\Database\Table\TableDefinition;
+use StellarWP\Foundation\Database\Table\Blueprint;
 
 final readonly class DateTimePrecisionTable implements Table
 {
@@ -12,16 +12,12 @@ final readonly class DateTimePrecisionTable implements Table
 	) {
 	}
 
-	public function id(): string {
-		return 'datetime_precision_table';
-	}
-
 	public function unprefixedName(): string {
 		return $this->unprefixedName;
 	}
 
-	public function definition(): TableDefinition {
-		$table = TableDefinition::for($this);
+	public function blueprint(): Blueprint {
+		$table = Blueprint::for($this);
 
 		$table->bigIncrements('id');
 		$table->dateTime('occurred_at', 0);

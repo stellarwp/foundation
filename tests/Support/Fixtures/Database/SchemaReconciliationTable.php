@@ -3,8 +3,8 @@
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database;
 
 use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Table\Blueprint;
 use StellarWP\Foundation\Database\Table\Column;
-use StellarWP\Foundation\Database\Table\TableDefinition;
 
 final readonly class SchemaReconciliationTable implements Table
 {
@@ -15,16 +15,12 @@ final readonly class SchemaReconciliationTable implements Table
 	) {
 	}
 
-	public function id(): string {
-		return 'schema_reconciliation_table';
-	}
-
 	public function unprefixedName(): string {
 		return $this->unprefixedName;
 	}
 
-	public function definition(): TableDefinition {
-		$table = TableDefinition::for($this);
+	public function blueprint(): Blueprint {
+		$table = Blueprint::for($this);
 
 		$table->bigIncrements('id');
 		$table->integer('attempts')->default($this->attemptsDefault);

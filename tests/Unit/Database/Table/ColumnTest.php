@@ -67,6 +67,12 @@ final class ColumnTest extends TestCase
 		);
 	}
 
+	public function test_it_canonicalizes_common_custom_type_spellings(): void {
+		$this->assertSame('double', (new Column('measurement', 'DOUBLE PRECISION'))->typeSql());
+		$this->assertSame('decimal(10,2)', (new Column('amount', 'decimal(10, 2)'))->typeSql());
+		$this->assertSame("enum('a, b','c')", (new Column('state', "enum('a, b','c')"))->typeSql());
+	}
+
 	public function test_it_reports_invalid_final_column_states(): void {
 		$this->assertSame(
 			['Column id cannot be nullable because it uses AUTO_INCREMENT.'],

@@ -9,15 +9,15 @@ use StellarWP\Foundation\Tests\TestCase;
 
 final class CreateTableTest extends TestCase
 {
-	public function test_it_uses_the_table_id_as_the_migration_id(): void {
-		$migration = new CreateTable(new TestTable('foundation_example_table', 'example'));
+	public function test_it_uses_the_explicit_migration_id(): void {
+		$migration = new CreateTable('foundation_example_table', (new TestTable('example'))->blueprint());
 
 		$this->assertSame('foundation_example_table', $migration->id());
 	}
 
 	public function test_it_creates_missing_tables(): void {
-		$table     = new TestTable('foundation_example_table', 'example');
-		$migration = new CreateTable($table);
+		$table     = new TestTable('example');
+		$migration = new CreateTable('foundation_example_table', $table->blueprint());
 		$schema    = new RecordingSchema();
 
 		$migration->up($schema);
@@ -25,21 +25,21 @@ final class CreateTableTest extends TestCase
 		$this->assertTrue($schema->hasTable($table));
 	}
 
-	public function test_it_reconciles_existing_tables(): void {
-		$table     = new TestTable('foundation_example_table', 'example');
-		$migration = new CreateTable($table);
+	public function test_it_delegates_existing_table_verification_to_schema(): void {
+		$table     = new TestTable('example');
+		$migration = new CreateTable('foundation_example_table', $table->blueprint());
 		$schema    = new RecordingSchema();
 
 		$schema->tables['example'] = true;
 
 		$migration->up($schema);
 
-		$this->assertSame(['createOrUpdate:example'], $schema->statements);
+		$this->assertSame(['create:example'], $schema->statements);
 	}
 
 	public function test_it_drops_tables_when_rolled_back(): void {
-		$table     = new TestTable('foundation_example_table', 'example');
-		$migration = new CreateTable($table);
+		$table     = new TestTable('example');
+		$migration = new CreateTable('foundation_example_table', $table->blueprint());
 		$schema    = new RecordingSchema();
 
 		$schema->tables['example'] = true;

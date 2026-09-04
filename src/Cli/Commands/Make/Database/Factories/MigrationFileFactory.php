@@ -17,7 +17,7 @@ use StellarWP\Foundation\Database\DatabaseStubPath;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Id;
 
 /**
- * Creates generic, create-table, and update-table migration artifacts.
+ * Creates generic, create-table, and alter-table migration artifacts.
  */
 final readonly class MigrationFileFactory
 {
@@ -70,18 +70,19 @@ final readonly class MigrationFileFactory
 			'table_namespace'               => $table['namespace'],
 			'foundation_database_migration' => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Migration'),
 			'foundation_database_schema'    => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Schema'),
+			'foundation_database_blueprint' => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Table\\Blueprint'),
 		]));
 	}
 
 	/**
-	 * Build a migration that reconciles an existing table definition.
+	 * Build a migration that explicitly alters an existing table.
 	 *
 	 * @throws RuntimeException When project metadata or generator input is invalid.
 	 */
-	public function reconcileTable(string $name, string $tableClass, ?string $namespace = null, ?string $path = null, ?string $id = null): GeneratedMigration {
+	public function alterTable(string $name, string $tableClass, ?string $namespace = null, ?string $path = null, ?string $id = null): GeneratedMigration {
 		$context = $this->context($name, $namespace, $path, $id);
 		$table   = $this->tableReference($tableClass, $context['project']->defaultPsr4Namespace());
-		$stub    = $this->stubResolver->resolve('database', 'reconcile-table-migration', DatabaseStubPath::reconcileTableMigration());
+		$stub    = $this->stubResolver->resolve('database', 'alter-table-migration', DatabaseStubPath::alterTableMigration());
 
 		return $this->migration($context, $this->stubRenderer->render($stub, [
 			'namespace'                                  => $context['namespace'],
@@ -92,6 +93,7 @@ final readonly class MigrationFileFactory
 			'foundation_database_irreversible_migration' => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration'),
 			'foundation_database_migration'              => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Migration'),
 			'foundation_database_schema'                 => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Schema'),
+			'foundation_database_blueprint'              => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Table\\Blueprint'),
 		]));
 	}
 

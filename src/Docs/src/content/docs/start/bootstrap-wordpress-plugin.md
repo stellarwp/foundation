@@ -28,26 +28,25 @@ Create `src/App.php`. The application object binds shared values before register
 ```php title="App.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin;
+namespace Plugin;
 
-use Adbar\Dot;
+use RuntimeException;
 use StellarWP\Foundation\Container\Contracts\Container;
-use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Container\Contracts\Provider;
 
 final class App {
 
 	public const string PLUGIN_FILE = 'your_plugin.plugin_file';
 	public const string PLUGIN_DIR  = 'your_plugin.plugin_dir';
 
-	/** @var list<class-string<Providable>> */
+	/** @var list<class-string<Provider>> */
 	private const array PROVIDERS = [];
 
 	private static self $instance;
 
 	private function __construct(
 		private readonly string $plugin_file,
-		private readonly Container $container,
-		private readonly Dot $config
+		private readonly Container $container
 	) {
 		$this->configure_container();
 		$this->register_providers();
@@ -55,14 +54,37 @@ final class App {
 
 	public static function instance(
 		string $plugin_file,
-		Container $container,
-		Dot $config
+		Container $container
 	): self {
 		if ( ! isset( self::$instance ) ) {
-			self::$instance = new self( $plugin_file, $container, $config );
+			self::$instance = new self( $plugin_file, $container );
 		}
 
 		return self::$instance;
+	}
+
+	/**
+	 * Prevent cloning the application singleton.
+	 */
+	private function __clone(): void {
+	}
+
+	/**
+	 * Prevent serializing the application singleton.
+	 *
+	 * @throws RuntimeException Always, because the application must be created through instance().
+	 */
+	public function __sleep(): array {
+		throw new RuntimeException( 'The application singleton cannot be serialized.' );
+	}
+
+	/**
+	 * Prevent restoring the application singleton without running its constructor.
+	 *
+	 * @throws RuntimeException Always, because the application must be created through instance().
+	 */
+	public function __wakeup(): void {
+		throw new RuntimeException( 'The application singleton cannot be unserialized.' );
 	}
 
 	public function container(): Container {
@@ -70,8 +92,6 @@ final class App {
 	}
 
 	private function configure_container(): void {
-		$this->container->bind( Container::class, $this->container );
-		$this->container->singleton( Dot::class, $this->config );
 		$this->container->singleton( self::PLUGIN_FILE, $this->plugin_file );
 		$this->container->singleton( self::PLUGIN_DIR, plugin_dir_path( $this->plugin_file ) );
 	}
@@ -95,33 +115,31 @@ Create `src/functions.php`. The helper supplies the application dependencies on 
 ```php title="functions.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin;
+namespace Plugin;
 
-use Adbar\Dot;
-use lucatume\DI52\Container as DI52Container;
-use StellarWP\Foundation\Container\ContainerAdapter;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
 
-function your_plugin(): App {
+function plugin(): App {
 	static $app;
 
 	if ( isset( $app ) ) {
 		return $app;
 	}
 
-	$container = new ContainerAdapter( new DI52Container() );
-	$config    = new Dot( require dirname( __DIR__ ) . '/config.php' );
+	$config    = new ArrayConfiguration( require dirname( __DIR__ ) . '/config.php' );
+	$container = ( new ContainerFactory() )->create( $config );
 
 	$app = App::instance(
-		dirname( __DIR__ ) . '/your-plugin.php',
-		$container,
-		$config
+		dirname( __DIR__ ) . '/plugin.php',
+		$container
 	);
 
 	return $app;
 }
 ```
 
-Calls elsewhere in the plugin can use `your_plugin()->container()` when WordPress invokes a callback that cannot receive constructor dependencies, such as activation and deactivation hooks. Application services should continue to use constructor injection.
+Calls elsewhere in the plugin can use `plugin()->container()` when WordPress invokes a callback that cannot receive constructor dependencies, such as activation and deactivation hooks. Application services should continue to use constructor injection.
 
 ## Autoload the application with Composer
 
@@ -131,7 +149,7 @@ In the root `composer.json`, map the plugin namespace to `src/` and autoload the
 {
   "autoload": {
     "psr-4": {
-      "YourPlugin\\\\": "src/"
+      "Plugin\\\\": "src/"
     },
     "files": [
       "src/functions.php"
@@ -152,9 +170,9 @@ composer dump-autoload
 
 ## Start the application from the plugin entrypoint
 
-The root `your-plugin.php` can now load Composer and defer application startup to an appropriate WordPress hook:
+The root `plugin.php` can now load Composer and defer application startup to an appropriate WordPress hook:
 
-```php title="your-plugin.php"
+```php title="plugin.php"
 <?php declare(strict_types=1);
 
 /**
@@ -164,19 +182,15 @@ The root `your-plugin.php` can now load Composer and defer application startup t
 
 defined( 'ABSPATH' ) || exit;
 
-use function YourPlugin\your_plugin;
+use function Plugin\plugin;
 
 require_once __DIR__ . '/vendor/autoload.php';
 
 add_action( 'plugins_loaded', static function (): void {
-	your_plugin();
+	plugin();
 }, 0, 0 );
 ```
 
 Choose the hook and priority according to when the plugin's integrations must become available. The entrypoint should not contain feature bindings or business behavior.
 
 With this structure, WordPress starts one application, the application prepares one container, and providers compose each feature without spreading bootstrap logic throughout the plugin.
-
-## Continue
-
-[Register service providers](/start/register-service-providers/) for the plugin's application features.

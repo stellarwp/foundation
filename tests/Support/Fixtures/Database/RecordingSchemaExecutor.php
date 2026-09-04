@@ -2,7 +2,7 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database;
 
-use StellarWP\Foundation\Database\Contracts\SchemaExecutor;
+use StellarWP\Foundation\Database\Schema\Contracts\SchemaExecutor;
 
 final class RecordingSchemaExecutor implements SchemaExecutor
 {

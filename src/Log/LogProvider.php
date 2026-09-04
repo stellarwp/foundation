@@ -24,12 +24,12 @@ use StellarWP\Foundation\Log\Handlers\NullHandler;
  */
 final class LogProvider extends Provider
 {
-	public const string LOG_LEVEL        = self::class . '.log_level';
-	public const string CHANNEL_ERRORLOG = 'errorlog';
-	private const string CHANNEL_CONSOLE = 'console';
-	private const string CHANNEL_NULL    = 'null';
-	private const string CHANNEL_STACK   = 'stack';
-	public const array  CHANNELS         = [
+	private const string LOG_LEVEL        = self::class . '.log_level';
+	private const string CHANNEL_ERRORLOG = 'errorlog';
+	private const string CHANNEL_CONSOLE  = 'console';
+	private const string CHANNEL_NULL     = 'null';
+	private const string CHANNEL_STACK    = 'stack';
+	private const array CHANNELS          = [
 		self::CHANNEL_CONSOLE  => [
 			'class'     => StreamHandler::class,
 			'formatter' => ColoredLineFormatter::class,
@@ -67,7 +67,7 @@ final class LogProvider extends Provider
 			)
 		);
 
-		$this->container->bind(
+		$this->container->singleton(
 			LoggerInterface::class,
 			static function (C $c) use ($channel): LoggerInterface {
 				$handler = self::CHANNELS[$channel] ?? false;

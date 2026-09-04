@@ -4,7 +4,7 @@
  * Convert environment variables into a config array for use in log tests.
  *
  * @see \StellarWP\Foundation\Tests\TestCase::setUp()
- * @see \Adbar\Dot
+ * @see \StellarWP\Foundation\Container\Configuration\ArrayConfiguration
  * @see phpunit.xml.dist
  * @see .env.testing.slic
  */

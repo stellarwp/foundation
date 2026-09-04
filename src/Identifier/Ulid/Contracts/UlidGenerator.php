@@ -13,6 +13,8 @@ use StellarWP\Foundation\Identifier\Contracts\IdentifierGenerator;
 interface UlidGenerator extends IdentifierGenerator
 {
 	/**
+	 * Generate a canonical uppercase ULID string.
+	 *
 	 * @throws OutOfRangeException When the current timestamp is outside the ULID range.
 	 * @throws RandomException     When secure random bytes cannot be generated.
 	 * @throws RuntimeException    When the entropy source returns an invalid byte count.

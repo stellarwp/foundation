@@ -15,8 +15,8 @@ final class SessionFactoryTest extends TestCase
 {
 	public function test_it_creates_sessions_bound_to_the_configured_schema(): void {
 		$schema  = new RecordingSchema();
-		$factory = new SessionFactory();
-		$session = $factory->create($schema, $this->lease());
+		$factory = new SessionFactory($schema);
+		$session = $factory->create($this->lease());
 
 		$session->apply(new TestMigration('2026_09_01_000001_create_example'));
 
@@ -24,11 +24,11 @@ final class SessionFactoryTest extends TestCase
 	}
 
 	public function test_it_creates_a_new_session_for_each_migration_operation(): void {
-		$factory = new SessionFactory();
 		$schema  = new RecordingSchema();
+		$factory = new SessionFactory($schema);
 		$lease   = $this->lease();
 
-		$this->assertNotSame($factory->create($schema, $lease), $factory->create($schema, $lease));
+		$this->assertNotSame($factory->create($lease), $factory->create($lease));
 	}
 
 	private function lease(): Lease {

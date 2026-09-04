@@ -2,10 +2,8 @@
 
 namespace StellarWP\Foundation\Database\Cli;
 
-use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\WPCli\Command;
-use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 use WP_CLI;
 
 use function WP_CLI\Utils\format_items;
@@ -24,14 +22,13 @@ final class Migrate extends Command
 	private const string FLAG_YES        = 'yes';
 
 	public function __construct(
-		protected Container $container,
-		CommandPrefix $commandPrefix,
 		private readonly Migrator $migrator
 	) {
-		parent::__construct($this->container, $commandPrefix);
 	}
 
 	/**
+	 * Dispatch the selected migration operation or display migration status.
+	 *
 	 * @param list<mixed>         $args
 	 * @param array<string,mixed> $assocArgs
 	 */
@@ -164,6 +161,8 @@ final class Migrate extends Command
 	}
 
 	/**
+	 * Confirm and remove only the migration ledger.
+	 *
 	 * @param array<string, mixed> $assocArgs
 	 */
 	private function dropStore(array $assocArgs): void {
@@ -173,6 +172,8 @@ final class Migrate extends Command
 	}
 
 	/**
+	 * Confirm, roll back, and rerun all configured migrations.
+	 *
 	 * @param array<string, mixed> $assocArgs
 	 */
 	private function refreshMigrations(array $assocArgs): void {
@@ -195,9 +196,12 @@ final class Migrate extends Command
 	}
 
 	private function uninitializedMessage(): string {
-		return sprintf(
-			'Migration storage is not initialized. Run `wp %s --initialize` first.',
-			$this->command()
-		);
+		$command = $this->registeredCommandName();
+
+		if ($command === null) {
+			return 'Migration storage is not initialized. Run this command with --initialize first.';
+		}
+
+		return sprintf('Migration storage is not initialized. Run `wp %s --initialize` first.', $command);
 	}
 }

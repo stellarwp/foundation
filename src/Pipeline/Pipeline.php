@@ -3,24 +3,30 @@
 namespace StellarWP\Foundation\Pipeline;
 
 use Closure;
-use RuntimeException;
-use StellarWP\Foundation\Container\Contracts\Container;
+use StellarWP\Foundation\Container\Contracts\Resolver;
+use StellarWP\Foundation\Pipeline\Contracts\Pipeline as PipelineContract;
+use StellarWP\Foundation\Pipeline\Exceptions\PipelineNotStarted;
 use Throwable;
 
 /**
  * Adapted from Laravel's Pipeline to use our container system.
  */
-class Pipeline
+class Pipeline implements PipelineContract
 {
 	/**
 	 * The container implementation.
 	 */
-	protected ?Container $container;
+	protected readonly Resolver $container;
 
 	/**
 	 * The object being passed through the pipeline.
 	 */
 	protected mixed $passable;
+
+	/**
+	 * Whether a passable value, including null, has been supplied.
+	 */
+	private bool $started = false;
 
 	/**
 	 * The array of class pipes.
@@ -37,19 +43,8 @@ class Pipeline
 	/**
 	 * Create a new class instance.
 	 */
-	public function __construct(?Container $container = null) {
+	public function __construct(Resolver $container) {
 		$this->container = $container;
-	}
-
-	/**
-	 * Set the container instance.
-	 *
-	 * @return $this
-	 */
-	public function setContainer(Container $container): self {
-		$this->container = $container;
-
-		return $this;
 	}
 
 	/**
@@ -57,8 +52,9 @@ class Pipeline
 	 *
 	 * @return $this
 	 */
-	public function send(mixed $passable): self {
+	public function send(mixed $passable): static {
 		$this->passable = $passable;
+		$this->started  = true;
 
 		return $this;
 	}
@@ -100,8 +96,15 @@ class Pipeline
 
 	/**
 	 * Run the pipeline with a final destination callback.
+	 *
+	 * @throws PipelineNotStarted When no value has been supplied through {@see self::send()}.
+	 * @throws Throwable          When a pipe, container resolution, or the destination fails.
 	 */
 	public function then(Closure $destination): mixed {
+		if (! $this->started) {
+			throw new PipelineNotStarted('Call send() before executing the pipeline.');
+		}
+
 		$pipeline = array_reduce(
 			array_reverse($this->pipes()), $this->carry(), $this->prepareDestination($destination)
 		);
@@ -111,6 +114,9 @@ class Pipeline
 
 	/**
 	 * Run the pipeline and return the result.
+	 *
+	 * @throws PipelineNotStarted When no value has been supplied through {@see self::send()}.
+	 * @throws Throwable          When a pipe or container resolution fails.
 	 */
 	public function thenReturn(): mixed {
 		return $this->then(static fn ($passable) => $passable);
@@ -147,7 +153,7 @@ class Pipeline
 						// If the pipe is a string we will parse the string and resolve the class out
 						// of the dependency injection container. We can then build a callable and
 						// execute the pipe function giving in the parameters that are required.
-						$pipe = $this->getContainer()->get($name);
+						$pipe = $this->container->get($name);
 
 						$parameters = array_merge([$passable, $stack], $parameters);
 					} else {
@@ -191,19 +197,6 @@ class Pipeline
 	 */
 	protected function pipes(): array {
 		return $this->pipes;
-	}
-
-	/**
-	 * Get the container instance.
-	 *
-	 * @throws \RuntimeException
-	 */
-	protected function getContainer(): Container {
-		if (! $this->container) {
-			throw new RuntimeException('A container instance has not been passed to the Pipeline.');
-		}
-
-		return $this->container;
 	}
 
 	/**

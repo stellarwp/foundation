@@ -2,10 +2,10 @@
 
 namespace StellarWP\Foundation\Tests\Feature\Log;
 
-use lucatume\DI52\ContainerException;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use Psr\Log\LoggerInterface;
+use StellarWP\Foundation\Container\Exceptions\ContainerException;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class InvalidLoggerTest extends TestCase

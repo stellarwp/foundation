@@ -10,6 +10,8 @@ use StellarWP\Foundation\Database\Migration\Factories\LeaseFactory;
 use StellarWP\Foundation\Database\Migration\Factories\SessionFactory;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Store;
+use StellarWP\Foundation\Database\Migration\StoreSchema;
+use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\InMemoryLock;
@@ -17,9 +19,11 @@ use StellarWP\Foundation\Lock\SystemClock;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\InMemoryRepository;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchema;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchemaExecutor;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestDatabaseScope;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
 use StellarWP\Foundation\Tests\TestCase;
+use StellarWP\Foundation\WPCli\CommandContext;
 use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 use WP_CLI;
 
@@ -40,10 +44,14 @@ final class MigrateTest extends TestCase
 		$repository     = new InMemoryRepository();
 		$schema         = new RecordingSchema();
 		$lock           = new InMemoryLock(new SystemClock());
-		$store          = new Store($schema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, new LockTable('nx_foundation_locks', $database), 'nx-foundation-database-migrations', 300);
-		$command        = new Migrate(
-			$this->container,
-			new CommandPrefix('foundation'),
+		$storeSchema    = new StoreSchema(
+			$schema,
+			new Reconciler($database, new RecordingSchemaExecutor()),
+			$migrationTable,
+			new LockTable('nx_foundation_locks', $database)
+		);
+		$store   = new Store($storeSchema, new LeaseFactory(), new SessionFactory($schema), $scope, $lock, 'nx-foundation-database-migrations', 300);
+		$command = new Migrate(
 			new Migrator(
 				new MigrationCollection(),
 				$repository,
@@ -51,7 +59,7 @@ final class MigrateTest extends TestCase
 			)
 		);
 
-		$command->register();
+		$command->register(new CommandContext(new CommandPrefix('foundation')));
 
 		$deferredAdditions = WP_CLI::get_deferred_additions();
 
@@ -111,8 +119,8 @@ final class MigrateTest extends TestCase
 
 		$this->assertSame([], $repository->all());
 		$this->assertSame([
-			'createOrUpdate:nx_foundation_locks',
-			'createOrUpdate:nx_foundation_migrations',
+			'create:nx_foundation_locks',
+			'create:nx_foundation_migrations',
 		], $schema->statements);
 	}
 
@@ -177,7 +185,7 @@ final class MigrateTest extends TestCase
 	public function test_it_shows_a_warning_when_status_tables_do_not_exist(): void {
 		[$command] = $this->newCommand();
 
-		$this->expectOutputRegex('/2026_06_23_000001_create_example\s+pending/');
+		$this->expectOutputRegex('/2026_06_23_000001_create_example[|\s]+pending/');
 
 		$this->assertSame(0, $command->runCommand());
 	}
@@ -188,7 +196,7 @@ final class MigrateTest extends TestCase
 		$command->runCommand([], ['initialize' => true]);
 		$command->runCommand([], ['run' => true]);
 
-		$this->expectOutputRegex('/2026_06_23_000001_create_example\s+applied\s+1\s+2026-01-01 00:00:00/');
+		$this->expectOutputRegex('/2026_06_23_000001_create_example[|\s]+applied[|\s]+1[|\s]+2026-01-01 00:00:00/');
 
 		$this->assertSame(0, $command->runCommand());
 	}
@@ -197,9 +205,9 @@ final class MigrateTest extends TestCase
 		[$command, $repository] = $this->newCommand();
 
 		$command->runCommand([], ['initialize' => true]);
-		$repository->recordRun('2026_06_23_000002_missing_migration', 1);
+		$repository->recordRun('missing_migration', 1);
 
-		$this->expectOutputRegex('/2026_06_23_000002_missing_migration\s+unavailable/');
+		$this->expectOutputRegex('/missing_migration[|\s]+unavailable/');
 
 		$this->assertSame(0, $command->runCommand());
 	}
@@ -216,10 +224,14 @@ final class MigrateTest extends TestCase
 		$repository     = new InMemoryRepository();
 		$migrationTable = new MigrationTable('nx_foundation_migrations', $database);
 		$lock           = new InMemoryLock(new SystemClock());
-		$store          = new Store($wpSchema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, new LockTable('nx_foundation_locks', $database), 'nx-foundation-database-migrations', 300);
-		$command        = new Migrate(
-			$this->container,
-			new CommandPrefix('foundation'),
+		$storeSchema    = new StoreSchema(
+			$wpSchema,
+			new Reconciler($database, new RecordingSchemaExecutor()),
+			$migrationTable,
+			new LockTable('nx_foundation_locks', $database)
+		);
+		$store   = new Store($storeSchema, new LeaseFactory(), new SessionFactory($wpSchema), $scope, $lock, 'nx-foundation-database-migrations', 300);
+		$command = new Migrate(
 			new Migrator(
 				new MigrationCollection([
 					new TestMigration('2026_06_23_000001_create_example'),

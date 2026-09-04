@@ -6,12 +6,12 @@ use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Table;
 
 /**
- * Defines the columns, indexes, and options that make up one database table.
+ * Records the table schema operations owned by one migration.
  *
  * Column helpers return a {@see ColumnDefinition} whose modifiers apply only
  * to that column. Indexes and subsequent columns are declared on this object.
  */
-final class TableDefinition
+final class Blueprint
 {
 	/**
 	 * @var array<string, ColumnDefinition>
@@ -24,7 +24,17 @@ final class TableDefinition
 	private array $indexes = [];
 
 	/**
-	 * Create an empty definition owned by one logical table.
+	 * @var array<string, string>
+	 */
+	private array $droppedIndexes = [];
+
+	/**
+	 * @var array<string, string>
+	 */
+	private array $droppedColumns = [];
+
+	/**
+	 * Create an empty blueprint for one table.
 	 */
 	private function __construct(
 		private readonly Table $table
@@ -36,6 +46,13 @@ final class TableDefinition
 	 */
 	public static function for(Table $table): self {
 		return new self($table);
+	}
+
+	/**
+	 * Return the table whose schema this blueprint changes.
+	 */
+	public function table(): Table {
+		return $this->table;
 	}
 
 	/**
@@ -185,6 +202,46 @@ final class TableDefinition
 	}
 
 	/**
+	 * Remove a named secondary index when this blueprint is used to alter a table.
+	 *
+	 * Repeated declarations are collapsed so retrying a partially completed
+	 * migration does not issue the same removal more than once.
+	 *
+	 * @throws InvalidArgumentException When the name is blank or refers to the primary key.
+	 */
+	public function dropIndex(string $name): self {
+		if (trim($name) === '') {
+			throw new InvalidArgumentException('The dropped index name cannot be blank.');
+		}
+
+		if (strcasecmp($name, 'PRIMARY') === 0) {
+			throw new InvalidArgumentException('Use Schema::execute() with explicit ALTER TABLE SQL to remove the PRIMARY index.');
+		}
+
+		$this->droppedIndexes[strtolower($name)] = $name;
+
+		return $this;
+	}
+
+	/**
+	 * Remove a column when this blueprint is used to alter a table.
+	 *
+	 * Repeated declarations are collapsed so a migration remains safe to retry
+	 * after the database applied its DDL but before the ledger was updated.
+	 *
+	 * @throws InvalidArgumentException When the column name is blank.
+	 */
+	public function dropColumn(string $name): self {
+		if (trim($name) === '') {
+			throw new InvalidArgumentException('The dropped column name cannot be blank.');
+		}
+
+		$this->droppedColumns[strtolower($name)] = $name;
+
+		return $this;
+	}
+
+	/**
 	 * Return immutable snapshots of the configured columns in declaration order.
 	 *
 	 * @return list<Column>
@@ -197,6 +254,24 @@ final class TableDefinition
 	}
 
 	/**
+	 * Return columns that an alteration should add when they are missing.
+	 *
+	 * @return list<Column>
+	 */
+	public function addedColumns(): array {
+		return $this->columnsByIntent(false);
+	}
+
+	/**
+	 * Return columns explicitly marked for modification.
+	 *
+	 * @return list<Column>
+	 */
+	public function changedColumns(): array {
+		return $this->columnsByIntent(true);
+	}
+
+	/**
 	 * Return the configured indexes in declaration order.
 	 *
 	 * @return list<Index>
@@ -206,17 +281,130 @@ final class TableDefinition
 	}
 
 	/**
-	 * Return every completed-definition error that would make reconciliation unsafe.
+	 * Return named secondary indexes that an alteration should remove first.
 	 *
 	 * @return list<string>
 	 */
-	public function validationErrors(): array {
+	public function droppedIndexes(): array {
+		return array_values($this->droppedIndexes);
+	}
+
+	/**
+	 * Return columns that an alteration should remove.
+	 *
+	 * @return list<string>
+	 */
+	public function droppedColumns(): array {
+		return array_values($this->droppedColumns);
+	}
+
+	/**
+	 * Return errors that would make this an invalid initial table definition.
+	 *
+	 * @return list<string>
+	 */
+	public function errorsForCreate(): array {
+		$errors = $this->commonErrors();
+
+		if ($this->columns === []) {
+			array_unshift($errors, sprintf('Table %s does not define any columns.', $this->table->unprefixedName()));
+		}
+
+		if ($this->droppedIndexes !== [] || $this->droppedColumns !== []) {
+			$errors[] = 'A table creation blueprint cannot remove columns or indexes.';
+		}
+
+		foreach ($this->columns as $column) {
+			if ($column->changesExistingColumn()) {
+				$errors[] = sprintf('Column %s cannot be marked for change when creating a table.', $column->toColumn()->name);
+			}
+		}
+
+		foreach ($this->columns() as $column) {
+			if ($column->autoIncrement && ! $this->isFirstColumnInAnyIndex($column->name)) {
+				$errors[] = sprintf('AUTO_INCREMENT column %s must be the first column in an index.', $column->name);
+			}
+		}
+
+		foreach ($this->indexes as $index) {
+			foreach ($index->columns as $column) {
+				if (! isset($this->columns[strtolower($column)])) {
+					$errors[] = sprintf('Index %s references missing column %s.', $index->name, $column);
+				}
+			}
+		}
+
+		return $errors;
+	}
+
+	/**
+	 * Return errors that would make this an invalid table alteration.
+	 *
+	 * Alteration indexes may reference columns already present in the physical
+	 * table, so they are not required to appear in this migration's blueprint.
+	 *
+	 * @return list<string>
+	 */
+	public function errorsForAlter(): array {
+		$errors = $this->commonErrors();
+
+		if ($this->columns === [] && $this->indexes === [] && $this->droppedIndexes === [] && $this->droppedColumns === []) {
+			array_unshift($errors, sprintf('Table %s does not define any schema changes.', $this->table->unprefixedName()));
+		}
+
+		foreach ($this->droppedColumns as $key => $column) {
+			if (isset($this->columns[$key])) {
+				$errors[] = sprintf('Column %s cannot be declared and removed by the same blueprint.', $column);
+			}
+		}
+
+		foreach ($this->addedColumns() as $column) {
+			if ($column->autoIncrement && ! $this->isFirstColumnInAnyIndex($column->name)) {
+				$errors[] = sprintf('AUTO_INCREMENT column %s must be the first column in an index.', $column->name);
+			}
+		}
+
+		foreach ($this->indexes as $index) {
+			foreach ($index->columns as $column) {
+				if (isset($this->droppedColumns[strtolower($column)])) {
+					$errors[] = sprintf(
+						'Index %s references column %s, which is removed by the same blueprint.',
+						$index->name,
+						$column
+					);
+				}
+			}
+		}
+
+		return $errors;
+	}
+
+	/**
+	 * Assert that this blueprint can create its table.
+	 *
+	 * @throws InvalidArgumentException When the initial table definition is invalid.
+	 */
+	public function assertValidForCreate(): void {
+		$this->throwForErrors($this->errorsForCreate());
+	}
+
+	/**
+	 * Assert that this blueprint can alter an existing table.
+	 *
+	 * @throws InvalidArgumentException When the requested schema changes are invalid.
+	 */
+	public function assertValidForAlter(): void {
+		$this->throwForErrors($this->errorsForAlter());
+	}
+
+	/**
+	 * Return errors shared by creation and alteration blueprints.
+	 *
+	 * @return list<string>
+	 */
+	private function commonErrors(): array {
 		$errors  = [];
 		$columns = $this->columns();
-
-		if ($columns === []) {
-			$errors[] = sprintf('Table %s does not define any columns.', $this->table->id());
-		}
 
 		foreach ($columns as $column) {
 			array_push($errors, ...$column->validationErrors());
@@ -229,12 +417,6 @@ final class TableDefinition
 
 		if (count($autoIncrementColumns) > 1) {
 			$errors[] = 'A table can define only one AUTO_INCREMENT column.';
-		}
-
-		foreach ($autoIncrementColumns as $column) {
-			if (! $this->isFirstColumnInAnyIndex($column->name)) {
-				$errors[] = sprintf('AUTO_INCREMENT column %s must be the first column in an index.', $column->name);
-			}
 		}
 
 		/** @var array<string, array{name: string, count: int}> $secondaryIndexes */
@@ -267,28 +449,39 @@ final class TableDefinition
 			$errors[] = 'A table can define only one primary key.';
 		}
 
-		foreach ($this->indexes as $index) {
-			foreach ($index->columns as $column) {
-				if (! isset($this->columns[strtolower($column)])) {
-					$errors[] = sprintf('Index %s references missing column %s.', $index->name, $column);
-				}
-			}
-		}
-
 		return $errors;
 	}
 
 	/**
-	 * Assert that this completed definition can be passed to schema reconciliation.
+	 * Return columns matching the requested alteration intent.
 	 *
-	 * @throws InvalidArgumentException When columns or indexes form an invalid definition.
+	 * @return list<Column>
 	 */
-	public function assertValid(): void {
-		$errors = $this->validationErrors();
+	private function columnsByIntent(bool $changesExistingColumn): array {
+		$columns = [];
 
-		if ($errors !== []) {
-			throw new InvalidArgumentException(implode(' ', $errors));
+		foreach ($this->columns as $column) {
+			if ($column->changesExistingColumn() === $changesExistingColumn) {
+				$columns[] = $column->toColumn();
+			}
 		}
+
+		return $columns;
+	}
+
+	/**
+	 * Throw one validation exception containing every blueprint error.
+	 *
+	 * @param list<string> $errors
+	 *
+	 * @throws InvalidArgumentException When at least one validation error is present.
+	 */
+	private function throwForErrors(array $errors): void {
+		if ($errors === []) {
+			return;
+		}
+
+		throw new InvalidArgumentException(implode(' ', $errors));
 	}
 
 	/**

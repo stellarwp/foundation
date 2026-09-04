@@ -3,8 +3,8 @@
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database;
 
 use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Table\Blueprint;
 use StellarWP\Foundation\Database\Table\IndexType;
-use StellarWP\Foundation\Database\Table\TableDefinition;
 
 final readonly class IndexReconciliationTable implements Table
 {
@@ -19,16 +19,12 @@ final readonly class IndexReconciliationTable implements Table
 	) {
 	}
 
-	public function id(): string {
-		return 'index_reconciliation_table';
-	}
-
 	public function unprefixedName(): string {
 		return $this->unprefixedName;
 	}
 
-	public function definition(): TableDefinition {
-		$definition = TableDefinition::for($this);
+	public function blueprint(): Blueprint {
+		$definition = Blueprint::for($this);
 
 		$definition->bigIncrements('id');
 		$definition->string('email');

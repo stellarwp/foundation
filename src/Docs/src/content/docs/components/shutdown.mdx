@@ -71,7 +71,7 @@ Create `src/Product_Cache/Product_Cache_Writer.php`. This example assumes `Produ
 ```php title="Product_Cache_Writer.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Product_Cache;
+namespace Plugin\Product_Cache;
 
 use InvalidArgumentException;
 use StellarWP\Foundation\Shutdown\Contracts\Terminable;
@@ -124,7 +124,7 @@ In `src/Product_Cache/Provider.php`, supply the task's scalar configuration befo
 ```php title="Provider.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Product_Cache;
+namespace Plugin\Product_Cache;
 
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
@@ -173,11 +173,11 @@ The contextual bindings target the task's `$cache_key` and `$ttl` constructor ar
 In `src/App.php`, register `ShutdownProvider` before the feature provider that contributes the cache task:
 
 ```php title="App.php"
-use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Shutdown\ShutdownProvider;
-use YourPlugin\Product_Cache;
+use Plugin\Product_Cache;
 
-/** @var list<class-string<Providable>> */
+/** @var list<class-string<Provider>> */
 private const array PROVIDERS = [
 	ShutdownProvider::class,
 	Product_Cache\Provider::class,

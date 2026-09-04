@@ -48,11 +48,11 @@ Identifier services are registered through the shared application provider list:
 In `src/App.php`, add the Foundation provider before features that generate or validate ULIDs:
 
 ```php title="App.php"
-use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Identifier\IdentifierProvider;
-use YourPlugin\Job;
+use Plugin\Job;
 
-/** @var list<class-string<Providable>> */
+/** @var list<class-string<Provider>> */
 private const array PROVIDERS = [
 	IdentifierProvider::class,
 	Job\Provider::class,
@@ -77,7 +77,7 @@ If the application chooses ULIDs as its default, create `src/Identifier/Provider
 ```php title="Provider.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Identifier;
+namespace Plugin\Identifier;
 
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
@@ -105,11 +105,11 @@ final class Provider extends Service_Provider {
 Register both providers in `src/App.php`, in that order:
 
 ```php title="App.php"
-use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Identifier\IdentifierProvider;
-use YourPlugin\Identifier;
+use Plugin\Identifier;
 
-/** @var list<class-string<Providable>> */
+/** @var list<class-string<Provider>> */
 private const array PROVIDERS = [
 	IdentifierProvider::class,
 	Identifier\Provider::class,
@@ -127,7 +127,7 @@ In `src/Job/Job_Creator.php`, inject the broad contract when the feature needs a
 ```php title="Job_Creator.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Job;
+namespace Plugin\Job;
 
 use StellarWP\Foundation\Identifier\Contracts\IdentifierGenerator;
 
@@ -162,7 +162,7 @@ In `src/Job/Job_Request.php`, use `UlidValidator` at input boundaries before pas
 ```php title="Job_Request.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Job;
+namespace Plugin\Job;
 
 use InvalidArgumentException;
 use StellarWP\Foundation\Identifier\Ulid\UlidValidator;
@@ -213,7 +213,7 @@ When application code depends on `IdentifierGenerator`, use a small fixture that
 ```php title="Fixed_Identifier_Generator.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Tests\Support\Fixtures\Identifier;
+namespace Plugin\Tests\Support\Fixtures\Identifier;
 
 use StellarWP\Foundation\Identifier\Contracts\IdentifierGenerator;
 

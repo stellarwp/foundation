@@ -105,11 +105,11 @@ Use lowercase names in configuration. Foundation also accepts title case and upp
 In `src/App.php`, add `LogProvider` before feature providers that consume `LoggerInterface`:
 
 ```php title="App.php"
-use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Log\LogProvider;
-use YourPlugin\Catalog;
+use Plugin\Catalog;
 
-/** @var list<class-string<Providable>> */
+/** @var list<class-string<Provider>> */
 private const array PROVIDERS = [
 	LogProvider::class,
 	Catalog\Provider::class,
@@ -117,6 +117,8 @@ private const array PROVIDERS = [
 ```
 
 `LogProvider` is an optional default. Applications that need rotating files, a remote log service, custom processors, or different failure behavior can omit it and bind `LoggerInterface` in their own provider.
+
+The configured application logger is a singleton. Handlers or processors added after resolution remain attached for the lifetime of that application container. A replacement application logger should normally be registered as a singleton as well; use a separate factory only when the feature intentionally needs independent logger instances.
 
 ### Understand configuration failures
 
@@ -144,7 +146,7 @@ In `src/Catalog/Catalog_Importer.php`, depend on `Psr\Log\LoggerInterface`, not 
 ```php title="Catalog_Importer.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Catalog;
+namespace Plugin\Catalog;
 
 use Psr\Log\LoggerInterface;
 
@@ -250,3 +252,9 @@ $this->assertTrue( $handler->hasWarning( [
 ```
 
 Assert logs only when they are part of the feature's observable operational contract. Otherwise, test the feature's result and use `NullLogger`.
+
+## Upgrading to 2.0
+
+The configured `LoggerInterface` is now an application-lifetime singleton. Handlers or processors added to the resolved logger remain visible to later consumers of that logger. Register an explicit factory under an application-owned identifier when independent logger instances are required.
+
+`LogProvider` container identifiers and channel maps are internal implementation details in 2.0. Replace references to `LogProvider::LOG_LEVEL`, `LogProvider::CHANNEL_ERRORLOG`, or `LogProvider::CHANNELS` with the documented `log.level`, `log.channel`, and `log.channels` configuration keys.

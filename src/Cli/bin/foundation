@@ -1,13 +1,10 @@
 #!/usr/bin/env php
 <?php declare(strict_types=1);
 
-use Adbar\Dot;
-use lucatume\DI52\Container as DI52Container;
-use StellarWP\ContainerContract\ContainerInterface;
 use StellarWP\Foundation\Cli\Application;
 use StellarWP\Foundation\Cli\CliProvider;
-use StellarWP\Foundation\Container\ContainerAdapter;
-use StellarWP\Foundation\Container\Contracts\Container;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
 
 final class FoundationCliBootstrapException extends RuntimeException
 {
@@ -48,10 +45,7 @@ try {
 
 	require $autoload;
 
-	$container = new ContainerAdapter(new DI52Container());
-	$container->bind(Container::class, $container);
-	$container->bind(ContainerInterface::class, $container);
-	$container->singleton(Dot::class, new Dot());
+	$container = (new ContainerFactory())->create(new ArrayConfiguration());
 	$container->register(CliProvider::class);
 
 	exit($container->get(Application::class)->run());

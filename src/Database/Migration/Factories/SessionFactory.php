@@ -14,9 +14,17 @@ use StellarWP\Foundation\Database\Migration\Session;
 final class SessionFactory
 {
 	/**
+	 * Create a session factory for the schema supplied to application migrations.
+	 */
+	public function __construct(
+		private readonly Schema $schema
+	) {
+	}
+
+	/**
 	 * Create a session for schema changes protected by an active migration lease.
 	 */
-	public function create(Schema $schema, Lease $lease): Session {
-		return new Session($schema, $lease);
+	public function create(Lease $lease): Session {
+		return new Session($this->schema, $lease);
 	}
 }

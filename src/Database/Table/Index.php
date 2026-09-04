@@ -18,6 +18,8 @@ final readonly class Index
 	private string $type;
 
 	/**
+	 * Define an ordered set of columns for one supported index type.
+	 *
 	 * @param list<string> $columns
 	 *
 	 * @throws InvalidArgumentException When the index name, columns, or type are invalid.

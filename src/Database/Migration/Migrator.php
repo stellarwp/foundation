@@ -182,7 +182,7 @@ final readonly class Migrator
 	 * Roll back recorded migrations in reverse order after confirming every implementation is available.
 	 *
 	 * @param array<string, Migration> $migrations
-	 * @param list<Record>             $records
+	 * @param list<Record>             $records    Ledger records in ascending execution order.
 	 * @param Session                  $session    The active migration session that maintains lock ownership.
 	 *
 	 * @throws LedgerFailure            When a rolled-back migration ledger record cannot be deleted.
@@ -192,7 +192,7 @@ final readonly class Migrator
 	 * @throws UnavailableMigration     When a recorded migration implementation is unavailable.
 	 */
 	private function rollbackRecords(array $migrations, array $records, Session $session): Result {
-		usort($records, static fn (Record $a, Record $b): int => $b->id <=> $a->id);
+		$records     = array_reverse($records);
 		$unavailable = array_values(array_map(
 			static fn (Record $record): string => $record->migration,
 			array_filter($records, static fn (Record $record): bool => ! isset($migrations[$record->migration]))
