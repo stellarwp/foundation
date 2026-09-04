@@ -315,11 +315,23 @@ Test application services through their public behavior. Reserve container integ
 
 ## Upgrading to 2.0
 
-Replace application bindings for `Adbar\Dot` with the Foundation `Configuration` contract. Construct the supplied `ArrayConfiguration` from the array returned by `config.php`, then pass it to `ContainerFactory::create()`. The factory creates the default backend and registers Foundation's `Container`, `Resolver`, and `Configuration` contracts.
+Most existing providers need little or no structural change. A provider that already extends `Provider`, declares no constructor, and registers its feature in `register()` keeps the same shape.
 
-Prefer `ContainerFactory` over constructing `ContainerAdapter` directly. A custom composition root that wraps its own DI52 container must register the `Container`, `Resolver`, and `Configuration` contracts before registering any provider; every `Provider` resolves that configuration during construction.
+First, update the application composition root to create the shared container with `ContainerFactory`. This replaces direct `ContainerAdapter`, DI52, and `Adbar\Dot` setup:
 
-The `Provider` constructor now resolves Foundation's `Configuration` contract from the container and is final. Remove application provider constructors that accepted or forwarded the container and `Adbar\Dot`; providers can read the same configuration through `$this->config` during `register()`. For example, `src/Catalog/Catalog_Provider.php` can configure the catalog endpoint without declaring a provider constructor:
+<LinkCard
+  title="Configure the Container"
+  description="Create the 2.0 container and make config.php available to every provider."
+  href="/start/configure-the-container/"
+/>
+
+Then update each application provider:
+
+1. Keep extending `StellarWP\Foundation\Container\Contracts\Provider` and implement `register()`.
+2. Remove custom provider constructors. Read configuration through `$this->config` and let the base provider receive the container.
+3. Type factory callbacks against `StellarWP\Foundation\Container\Contracts\Resolver`, conventionally imported as `C`, instead of DI52's container.
+
+After those changes, `src/Catalog/Catalog_Provider.php` can look like this:
 
 ```php title="Catalog_Provider.php"
 <?php declare(strict_types=1);
@@ -327,6 +339,7 @@ The `Provider` constructor now resolves Foundation's `Configuration` contract fr
 namespace Plugin\Catalog;
 
 use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 
 /**
  * Configures the application's catalog services.
@@ -341,16 +354,19 @@ final class Catalog_Provider extends Provider {
 		$this->container->when( Remote_Catalog::class )
 			->needs( '$endpoint' )
 			->give( (string) $this->config->get( 'catalog.endpoint' ) );
+
+		$this->container->singleton( Remote_Catalog::class );
+		$this->container->singleton(
+			Catalog::class,
+			static fn ( C $c ): Remote_Catalog => $c->get( Remote_Catalog::class )
+		);
 	}
 }
 ```
 
-Applications that implemented the removed `Providable` interface directly should extend `Provider` instead. Update provider lists and `class-string` annotations to reference `Provider` as well.
+If the application used lower-level container APIs, make these additional replacements:
 
-Provider subclasses can no longer declare their own constructors. Move scalar provider settings into `config.php` and read them through `$this->config`. Inject runtime collaborators into the application services configured by the provider rather than into the provider itself; use the inherited `$this->container` only to register those definitions and hooks.
-
-Container factory callbacks should import `StellarWP\Foundation\Container\Contracts\Resolver as C` instead of `lucatume\DI52\Container`. Callback bodies can continue calling `$c->get()` and `$c->has()`.
-
-Catch `StellarWP\Foundation\Container\Exceptions\ContainerException` or the more specific `NotFoundException` instead of DI52 exceptions. `ContainerAdapter::getContainer()` and its forwarding of undocumented DI52 methods have been removed; use only operations declared by the Foundation `Container` and `Resolver` contracts.
-
-Provider-level `isDeferred()`, `provides()`, and `boot()` methods have also been removed. Move required bindings, hook registration, and other startup behavior into `register()` or an explicit application-owned lifecycle. Services bound during `register()` remain lazy until they are requested.
+- Replace direct implementations of the removed `Providable` interface with classes that extend `Provider`.
+- Move provider `boot()`, `provides()`, and deferred-provider behavior into `register()` or an application-owned lifecycle.
+- Replace `ContainerAdapter::getContainer()` and forwarded DI52 methods with operations declared by Foundation's `Container` and `Resolver` contracts.
+- Catch Foundation's `ContainerException` or `NotFoundException` instead of DI52 exceptions.
