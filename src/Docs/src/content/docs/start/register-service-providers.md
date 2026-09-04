@@ -142,7 +142,3 @@ private const array PROVIDERS = [
 Register infrastructure providers before feature providers that consume them. Avoid resolving application services while providers are still registering; complete the container graph before WordPress invokes its feature entrypoints.
 
 For a larger feature, its top-level `Provider` may register internal providers so `App` only needs to know the feature entrypoint. Keep that provider as a pure composition boundary: if it registers other providers, it should not also contain bindings, configuration, hooks, or feature behavior. Providers shared across features still belong in the application's ordered provider list.
-
-## Continue
-
-[Scope Foundation to the application](/start/scope-foundation/) before using shared WordPress resources.

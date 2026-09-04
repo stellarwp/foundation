@@ -67,7 +67,3 @@ Different environments may use different databases, but a deployed environment s
 Package-specific configuration takes precedence over names derived from `foundation.prefix`. Use an override when an existing installation must retain a previously published table, lock, or command name.
 
 New applications and plugins should normally configure only `foundation.prefix` and allow Foundation packages to derive consistent defaults.
-
-## Continue
-
-[Test the application](/start/test-the-application/) with isolated provider and WordPress bootstrap scenarios.

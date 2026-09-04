@@ -63,7 +63,3 @@ require_once __DIR__ . '/vendor/autoload.php';
 ```
 
 WordPress projects may use a build tool such as Strauss to prefix production dependencies. That packaging step does not change which Foundation packages belong in `require` or `require-dev`.
-
-## Continue
-
-[Configure the container](/start/configure-the-container/) that providers and application services will share.

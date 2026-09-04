@@ -27,7 +27,3 @@ Foundation components provide infrastructure and extension points. Application-s
 - Keep authorization, business rules, and domain behavior in application code.
 
 Foundation does not require an application to adopt every component at once.
-
-## Continue
-
-[Install Foundation](/start/install-foundation/) using the approach that matches the application.

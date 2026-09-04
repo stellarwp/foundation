@@ -74,7 +74,3 @@ if ( is_file( __DIR__ . '/.env' ) ) {
 ```
 
 WordPress applications can map deployment values into `$_ENV` before the plugin constructs its container. Keep local environment files out of production archives.
-
-## Continue
-
-[Bootstrap a WordPress plugin](/start/bootstrap-wordpress-plugin/) with one application object that owns the container, configuration, and provider order.

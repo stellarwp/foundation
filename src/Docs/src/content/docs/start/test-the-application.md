@@ -135,7 +135,3 @@ final class Catalog_Application_Test extends TestCase {
 ```
 
 Use one isolated test class for each application configuration. The underscored `_setUpBeforeClass()` hook remains available as a Codeception compatibility API, but new tests should use PHPUnit's standard `setUpBeforeClass()` method.
-
-## Continue
-
-[Explore the Container component](/components/container/) and the other focused Foundation packages.

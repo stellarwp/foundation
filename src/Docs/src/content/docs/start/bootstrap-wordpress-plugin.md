@@ -194,7 +194,3 @@ add_action( 'plugins_loaded', static function (): void {
 Choose the hook and priority according to when the plugin's integrations must become available. The entrypoint should not contain feature bindings or business behavior.
 
 With this structure, WordPress starts one application, the application prepares one container, and providers compose each feature without spreading bootstrap logic throughout the plugin.
-
-## Continue
-
-[Register service providers](/start/register-service-providers/) for the plugin's application features.
