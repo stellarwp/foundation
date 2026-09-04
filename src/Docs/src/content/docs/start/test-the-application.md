@@ -23,7 +23,17 @@ use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
 use StellarWP\Foundation\Container\ContainerFactory;
 use StellarWP\Foundation\Container\Contracts\Container;
 
+use function Plugin\plugin;
+
 abstract class TestCase extends WPTestCase {
+
+	protected Container $container;
+
+	protected function setUp(): void {
+		parent::setUp();
+
+		$this->container = plugin()->container();
+	}
 
 	/**
 	 * Create a new container using the supplied configuration values.
@@ -66,7 +76,7 @@ final class Catalog_Provider_Test extends TestCase {
 }
 ```
 
-This approach tests provider behavior without relying on the application's static `App` singleton or changing process-level environment values. The shared test case loads WordPress, so providers can register hooks and use WordPress APIs while still receiving an independent container.
+The shared test case exposes the normally booted application container through `$this->container`. Use `create_container()` when a provider scenario needs different configuration without replacing that application container or changing process-level environment values. Because the base class loads WordPress, providers can still register hooks and use WordPress APIs.
 
 ## Test application configuration
 
@@ -92,8 +102,6 @@ namespace Plugin\Tests\WPUnit\Catalog;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use Plugin\Catalog\Catalog_Synchronizer;
 use Plugin\Tests\TestCase;
-
-use function Plugin\plugin;
 
 #[RunTestsInSeparateProcesses]
 final class Catalog_Application_Test extends TestCase {
@@ -121,7 +129,7 @@ final class Catalog_Application_Test extends TestCase {
 	}
 
 	public function test_it_boots_with_catalog_synchronization_enabled(): void {
-		$synchronizer = plugin()->container()->get( Catalog_Synchronizer::class );
+		$synchronizer = $this->container->get( Catalog_Synchronizer::class );
 
 		$this->assertTrue( $synchronizer->is_enabled() );
 	}
