@@ -3,8 +3,9 @@
 namespace StellarWP\Foundation\WPCli;
 
 use InvalidArgumentException;
-use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\ConfiguredProvider;
 use StellarWP\Foundation\Container\Traits\ResolvesFoundationPrefix;
+use StellarWP\Foundation\WPCli\Contracts\RegistrableCommand;
 use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 use UnexpectedValueException;
 
@@ -15,7 +16,7 @@ use UnexpectedValueException;
  * {@see self::COMMANDS} with the container's additive array binding to
  * contribute command classes from feature-specific providers.
  */
-final class WPCliProvider extends Provider
+final class WPCliProvider extends ConfiguredProvider
 {
 	use ResolvesFoundationPrefix;
 
@@ -40,6 +41,7 @@ final class WPCliProvider extends Provider
 			->needs('$value')
 			->give($commandPrefix);
 		$this->container->singleton(CommandPrefix::class);
+		$this->container->singleton(CommandContext::class);
 
 		add_action('cli_init', function (): void {
 			$this->registerCommands();
@@ -64,18 +66,20 @@ final class WPCliProvider extends Provider
 		$commands = is_array($commands) ? array_values($commands) : iterator_to_array($commands, false);
 
 		foreach ($commands as $index => $command) {
-			if (! $command instanceof Command) {
+			if (! $command instanceof RegistrableCommand) {
 				throw new UnexpectedValueException(sprintf(
-					'WP-CLI command at index %d must extend %s; received %s.',
+					'WP-CLI command at index %d must implement %s; received %s.',
 					$index,
-					Command::class,
+					RegistrableCommand::class,
 					get_debug_type($command)
 				));
 			}
 		}
 
+		$context = $this->container->get(CommandContext::class);
+
 		foreach ($commands as $command) {
-			$command->register();
+			$command->register($context);
 		}
 	}
 }

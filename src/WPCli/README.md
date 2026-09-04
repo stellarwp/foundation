@@ -3,7 +3,7 @@
 > [!WARNING]
 > **This is a read-only repository!** For pull requests or issues, see [stellarwp/foundation](https://github.com/stellarwp/foundation).
 
-Foundation WP-CLI provides a container-aware command base class and a shared
+Foundation WP-CLI provides an injectable command base class and a shared
 provider for registering application commands during WP-CLI bootstrap.
 
 ## Installation

@@ -2,7 +2,8 @@
 
 namespace StellarWP\Foundation\Database\Table\Tables;
 
-use StellarWP\Foundation\Database\Contracts\Database;
+use StellarWP\Foundation\Database\Contracts\ManagedTable;
+use StellarWP\Foundation\Database\Contracts\TableGateway;
 use StellarWP\Foundation\Database\Table\Column;
 use StellarWP\Foundation\Database\Table\Table;
 use StellarWP\Foundation\Database\Table\TableDefinition;
@@ -10,25 +11,23 @@ use StellarWP\Foundation\Database\Table\TableDefinition;
 /**
  * Defines the migration ledger table used to record completed migrations.
  */
-final readonly class MigrationTable extends Table
+final readonly class MigrationTable extends Table implements ManagedTable
 {
-	public const string ID = 'foundation_database_migrations_table';
-
 	/**
 	 * Create the ledger table with its configured unprefixed WordPress name.
 	 */
 	public function __construct(
-		string $unprefixedTableName,
-		Database $database
+		private string $unprefixedTableName,
+		TableGateway $database
 	) {
-		parent::__construct($unprefixedTableName, $database);
+		parent::__construct($database);
 	}
 
 	/**
-	 * Return the stable registration identifier for migration ledger storage.
+	 * Return the configured table name before WordPress scope prefixing.
 	 */
-	public function id(): string {
-		return self::ID;
+	public function unprefixedName(): string {
+		return $this->unprefixedTableName;
 	}
 
 	/**

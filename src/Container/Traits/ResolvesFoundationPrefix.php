@@ -3,14 +3,14 @@
 namespace StellarWP\Foundation\Container\Traits;
 
 use InvalidArgumentException;
-use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\ConfiguredProvider;
 
 /**
  * Resolves the application prefix used to scope Foundation resources.
  *
- * @mixin Provider
+ * @mixin ConfiguredProvider
  *
- * @phpstan-require-extends Provider
+ * @phpstan-require-extends ConfiguredProvider
  */
 trait ResolvesFoundationPrefix
 {

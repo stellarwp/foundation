@@ -2,8 +2,9 @@
 
 namespace StellarWP\Foundation\Tests\Unit\LockRedis;
 
-use Adbar\Dot;
 use InvalidArgumentException;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\Contracts\Configuration;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\LockRedis\Contracts\Connection;
 use StellarWP\Foundation\LockRedis\LockRedisProvider;
@@ -16,7 +17,9 @@ final class LockRedisProviderTest extends TestCase
 	public function test_it_registers_a_redis_lock_with_the_configured_prefix(): void {
 		$connection = new RecordingConnection();
 
-		$this->container->get(Dot::class)->set('lock.redis.prefix', 'provider:lock:');
+		$this->container->singleton(Configuration::class, new ArrayConfiguration([
+			'lock' => ['redis' => ['prefix' => 'provider:lock:']],
+		]));
 		$this->container->bind(Connection::class, $connection);
 		$this->container->register(LockRedisProvider::class);
 
@@ -29,7 +32,9 @@ final class LockRedisProviderTest extends TestCase
 	}
 
 	public function test_it_does_not_bind_the_generic_lock_contract(): void {
-		$this->container->get(Dot::class)->set('lock.redis.prefix', 'provider:lock:');
+		$this->container->singleton(Configuration::class, new ArrayConfiguration([
+			'lock' => ['redis' => ['prefix' => 'provider:lock:']],
+		]));
 		$this->container->register(LockRedisProvider::class);
 
 		$this->assertFalse($this->container->has(Lock::class));

@@ -16,8 +16,8 @@ final class SchemaTest extends TestCase
 		$database->rowResults[] = ['table' => 'wp_example'];
 		$database->rowResults[] = ['Key_name' => 'example_key'];
 		$schema                 = new Schema($database, new Reconciler($database, new RecordingSchemaExecutor()));
-		$table                  = new TestTable('example_table', 'example%');
-		$indexTable             = new TestTable('index_table', 'example');
+		$table                  = new TestTable('example%');
+		$indexTable             = new TestTable('example');
 
 		$this->assertTrue($schema->hasTable($table));
 		$this->assertTrue($schema->hasIndex($indexTable, 'example_key'));
@@ -28,7 +28,7 @@ final class SchemaTest extends TestCase
 	public function test_it_drops_indexes(): void {
 		$database = new FakeDatabase();
 		$schema   = new Schema($database, new Reconciler($database, new RecordingSchemaExecutor()));
-		$table    = new TestTable('example_table', 'example');
+		$table    = new TestTable('example');
 
 		$schema->dropIndex($table, 'example_key');
 

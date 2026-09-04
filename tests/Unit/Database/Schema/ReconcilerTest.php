@@ -23,7 +23,7 @@ final class ReconcilerTest extends TestCase
 		$executor                = new RecordingSchemaExecutor();
 		$reconciler              = new Reconciler($database, $executor);
 
-		$reconciler->reconcile(new TestTable('example', 'example'));
+		$reconciler->reconcile(new TestTable('example'));
 
 		$this->assertStringContainsString('CREATE TABLE `wp_example`', $executor->statements[0]);
 		$this->assertSame("SHOW FULL COLUMNS FROM `wp_example` WHERE Field = 'id'", $database->rowQueries[0]);
@@ -262,7 +262,7 @@ final class ReconcilerTest extends TestCase
 		$this->expectException(DatabaseException::class);
 		$this->expectExceptionMessage('column id expected extra auto_increment, found none');
 
-		$reconciler->reconcile(new TestTable('example', 'example'));
+		$reconciler->reconcile(new TestTable('example'));
 	}
 
 	public function test_it_reports_column_and_index_differences_together(): void {
@@ -349,7 +349,7 @@ final class ReconcilerTest extends TestCase
 		$this->expectExceptionMessage('could not inspect wp_example.id');
 
 		(new Reconciler(new FakeDatabase(), new RecordingSchemaExecutor()))
-			->reconcile(new TestTable('example', 'example'));
+			->reconcile(new TestTable('example'));
 	}
 
 	public function test_it_rejects_invalid_column_metadata(): void {
@@ -360,7 +360,7 @@ final class ReconcilerTest extends TestCase
 		$this->expectExceptionMessage('returned invalid column metadata for wp_example.id');
 
 		(new Reconciler($database, new RecordingSchemaExecutor()))
-			->reconcile(new TestTable('example', 'example'));
+			->reconcile(new TestTable('example'));
 	}
 
 	/**

@@ -92,9 +92,9 @@ final class WPCliCommand extends Command
 				'namespace'                => $namespace,
 				'class'                    => $className,
 				'foundation_wpcli_command' => $project->foundationClass('StellarWP\\Foundation\\WPCli\\Command'),
-				'subcommand'               => $subcommand,
+				'subcommand_doc'           => $this->stubRenderer->phpDocLine($subcommand),
 				'subcommand_php'           => $this->stubRenderer->phpStringLiteral($subcommand),
-				'description'              => $description,
+				'description_doc'          => $this->stubRenderer->phpDocLine($description),
 				'description_php'          => $this->stubRenderer->phpStringLiteral($description),
 			])
 		);

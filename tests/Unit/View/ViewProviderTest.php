@@ -2,8 +2,9 @@
 
 namespace StellarWP\Foundation\Tests\Unit\View;
 
-use Adbar\Dot;
 use InvalidArgumentException;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\Contracts\Configuration;
 use StellarWP\Foundation\Tests\TestCase;
 use StellarWP\Foundation\View\Contracts\DirectoryAwareView;
 use StellarWP\Foundation\View\Contracts\View;
@@ -13,7 +14,9 @@ use StellarWP\Foundation\View\ViewProvider;
 final class ViewProviderTest extends TestCase
 {
 	public function test_it_registers_the_configured_view_as_a_shared_service(): void {
-		$this->container->get(Dot::class)->set('view.directory', $this->data_dir('View/default'));
+		$this->container->singleton(Configuration::class, new ArrayConfiguration([
+			'view' => ['directory' => $this->data_dir('View/default')],
+		]));
 		$this->container->register(ViewProvider::class);
 
 		$view = $this->container->get(View::class);

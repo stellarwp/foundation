@@ -16,7 +16,7 @@ final class ShutdownProvider extends Provider
 	private bool $registered = false;
 
 	public function register(): void {
-		// DI52 may register the provider repeatedly, but its definitions and WordPress hook must be added only once.
+		// Repeated provider registration must not duplicate definitions or the WordPress hook.
 		if ($this->registered) {
 			return;
 		}

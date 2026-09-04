@@ -2,9 +2,6 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Cli;
 
-use Adbar\Dot;
-use lucatume\DI52\Container as DI52Container;
-use StellarWP\ContainerContract\ContainerInterface;
 use StellarWP\Foundation\Cli\Application;
 use StellarWP\Foundation\Cli\CliProvider;
 use StellarWP\Foundation\Cli\Commands\Make\Database\Factories\MigrationFileFactory;
@@ -23,17 +20,14 @@ use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
-use StellarWP\Foundation\Container\ContainerAdapter;
-use StellarWP\Foundation\Container\Contracts\Container;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class CliProviderTest extends TestCase
 {
 	public function test_it_registers_cli_services(): void {
-		$container = new ContainerAdapter(new DI52Container());
-		$container->bind(Container::class, $container);
-		$container->bind(ContainerInterface::class, $container);
-		$container->singleton(Dot::class, new Dot());
+		$container = (new ContainerFactory())->create(new ArrayConfiguration());
 		$container->register(CliProvider::class);
 
 		$this->assertInstanceOf(Application::class, $container->get(Application::class));
@@ -50,7 +44,7 @@ final class CliProviderTest extends TestCase
 		$this->assertInstanceOf(GeneratedFileWriter::class, $container->get(GeneratedFileWriter::class));
 		$this->assertInstanceOf(StubRenderer::class, $container->get(StubRenderer::class));
 		$this->assertInstanceOf(StubResolver::class, $container->get(StubResolver::class));
-		$this->assertSame($container->get(CliProvider::ROOT_PATH), $container->get(ProjectDirectory::class)->path);
+		$this->assertSame(getcwd(), $container->get(ProjectDirectory::class)->path);
 		$this->assertInstanceOf(GitHubPackageRepositoryCreator::class, $container->get(PackageRepositoryCreator::class));
 		$this->assertTrue($container->get(Application::class)->has('package:create'));
 		$this->assertTrue($container->get(Application::class)->has('make:database-migration'));

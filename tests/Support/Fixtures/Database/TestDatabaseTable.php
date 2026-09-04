@@ -2,6 +2,8 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database;
 
+use StellarWP\Foundation\Database\Contracts\ManagedTable;
+use StellarWP\Foundation\Database\Contracts\TableGateway;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\QueryException;
 use StellarWP\Foundation\Database\Table\Table;
@@ -10,10 +12,17 @@ use StellarWP\Foundation\Database\Table\TableDefinition;
 /**
  * Provides a concrete table gateway for database table tests.
  */
-final readonly class TestDatabaseTable extends Table
+final readonly class TestDatabaseTable extends Table implements ManagedTable
 {
-	public function id(): string {
-		return 'test_database_table';
+	public function __construct(
+		private string $unprefixedTableName,
+		TableGateway $database
+	) {
+		parent::__construct($database);
+	}
+
+	public function unprefixedName(): string {
+		return $this->unprefixedTableName;
 	}
 
 	public function definition(): TableDefinition {

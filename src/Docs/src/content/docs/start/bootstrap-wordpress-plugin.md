@@ -30,7 +30,6 @@ Create `src/App.php`. The application object binds shared values before register
 
 namespace YourPlugin;
 
-use Adbar\Dot;
 use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Container\Contracts\Providable;
 
@@ -46,8 +45,7 @@ final class App {
 
 	private function __construct(
 		private readonly string $plugin_file,
-		private readonly Container $container,
-		private readonly Dot $config
+		private readonly Container $container
 	) {
 		$this->configure_container();
 		$this->register_providers();
@@ -55,11 +53,10 @@ final class App {
 
 	public static function instance(
 		string $plugin_file,
-		Container $container,
-		Dot $config
+		Container $container
 	): self {
 		if ( ! isset( self::$instance ) ) {
-			self::$instance = new self( $plugin_file, $container, $config );
+			self::$instance = new self( $plugin_file, $container );
 		}
 
 		return self::$instance;
@@ -70,8 +67,6 @@ final class App {
 	}
 
 	private function configure_container(): void {
-		$this->container->bind( Container::class, $this->container );
-		$this->container->singleton( Dot::class, $this->config );
 		$this->container->singleton( self::PLUGIN_FILE, $this->plugin_file );
 		$this->container->singleton( self::PLUGIN_DIR, plugin_dir_path( $this->plugin_file ) );
 	}
@@ -97,9 +92,8 @@ Create `src/functions.php`. The helper supplies the application dependencies on 
 
 namespace YourPlugin;
 
-use Adbar\Dot;
-use lucatume\DI52\Container as DI52Container;
-use StellarWP\Foundation\Container\ContainerAdapter;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
 
 function your_plugin(): App {
 	static $app;
@@ -108,13 +102,12 @@ function your_plugin(): App {
 		return $app;
 	}
 
-	$container = new ContainerAdapter( new DI52Container() );
-	$config    = new Dot( require dirname( __DIR__ ) . '/config.php' );
+	$config    = new ArrayConfiguration( require dirname( __DIR__ ) . '/config.php' );
+	$container = ( new ContainerFactory() )->create( $config );
 
 	$app = App::instance(
 		dirname( __DIR__ ) . '/your-plugin.php',
-		$container,
-		$config
+		$container
 	);
 
 	return $app;

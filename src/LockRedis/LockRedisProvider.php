@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\LockRedis;
 
 use InvalidArgumentException;
-use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\ConfiguredProvider;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Lock\Contracts\Clock;
 use StellarWP\Foundation\Lock\SystemClock;
@@ -11,9 +11,9 @@ use StellarWP\Foundation\Lock\SystemClock;
 /**
  * Registers Redis lock services without choosing a client or global lock strategy.
  */
-final class LockRedisProvider extends Provider
+final class LockRedisProvider extends ConfiguredProvider
 {
-	public const string PREFIX = self::class . '.prefix';
+	private const string PREFIX = self::class . '.prefix';
 
 	/**
 	 * @throws InvalidArgumentException When the required Redis lock prefix is not configured.

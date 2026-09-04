@@ -37,7 +37,7 @@ use StellarWP\Foundation\Container\Contracts\Resolver as C;
  */
 final class CliProvider extends Provider
 {
-	public const string ROOT_PATH = self::class . '.root_path';
+	private const string ROOT_PATH = self::class . '.root_path';
 
 	/**
 	 * Register the CLI application and every built-in command feature.

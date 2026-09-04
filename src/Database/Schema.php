@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\Database;
 
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Database;
+use StellarWP\Foundation\Database\Contracts\ManagedTable;
 use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
@@ -29,7 +30,7 @@ final readonly class Schema implements SchemaContract
 	 * @throws DatabaseException        When WordPress cannot reconcile the table definition.
 	 * @throws InvalidArgumentException When the table definition is invalid.
 	 */
-	public function createOrUpdate(Table $table): void {
+	public function createOrUpdate(ManagedTable $table): void {
 		$this->reconciler->reconcile($table);
 	}
 

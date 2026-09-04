@@ -1,10 +1,7 @@
 <?php declare(strict_types=1);
 
-use Adbar\Dot;
-use lucatume\DI52\Container as DI52Container;
-use StellarWP\ContainerContract\ContainerInterface;
-use StellarWP\Foundation\Container\ContainerAdapter;
-use StellarWP\Foundation\Container\Contracts\Container;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
 use StellarWP\Foundation\Database\Cli\Migrate;
 use StellarWP\Foundation\Database\Contracts\Migration;
 use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
@@ -23,6 +20,7 @@ use StellarWP\Foundation\Database\Scope\SiteScope;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestTable;
+use StellarWP\Foundation\WPCli\CommandContext;
 use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 
 if (! class_exists(WP_CLI::class)) {
@@ -42,10 +40,7 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 		return;
 	}
 
-	$container = new ContainerAdapter(new DI52Container());
-	$container->bind(Container::class, $container);
-	$container->bind(ContainerInterface::class, $container);
-	$container->singleton(Dot::class, new Dot());
+	$container = (new ContainerFactory())->create(new ArrayConfiguration());
 
 	$scope              = new SiteScope($wpdb);
 	$database           = new Database($wpdb, $scope);
@@ -59,7 +54,7 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 	$lock               = new DatabaseLock($database, $lockTable);
 	$store              = new Store($schema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, $lockTable, 'nx-foundation-database-migrations', 300);
 
-	$migration = new class(new TestTable('foundation_cli_example', $exampleTable)) implements Migration {
+	$migration = new class(new TestTable($exampleTable)) implements Migration {
 		public function __construct(
 			private readonly TestTable $table
 		) {
@@ -79,8 +74,6 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 	};
 
 	$command = new Migrate(
-		$container,
-		new CommandPrefix('foundation'),
 		new Migrator(
 			new MigrationCollection([$migration]),
 			$repository,
@@ -88,5 +81,5 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 		)
 	);
 
-	$command->register();
+	$command->register(new CommandContext(new CommandPrefix('foundation')));
 });

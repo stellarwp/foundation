@@ -2,21 +2,17 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database;
 
-use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Contracts\ManagedTable;
 use StellarWP\Foundation\Database\Table\Column;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 
-final readonly class SchemaReconciliationTable implements Table
+final readonly class SchemaReconciliationTable implements ManagedTable
 {
 	public function __construct(
 		private string $unprefixedName,
 		private int $attemptsDefault,
 		private bool $completedAtNullable
 	) {
-	}
-
-	public function id(): string {
-		return 'schema_reconciliation_table';
 	}
 
 	public function unprefixedName(): string {

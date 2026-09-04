@@ -60,6 +60,9 @@ final class WPCliCommandTest extends TestCase
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Cli\\Commands;', $contents);
 		$this->assertStringContainsString('use StellarWP\\Foundation\\WPCli\\Command;', $contents);
 		$this->assertStringContainsString('final class Sync_Products_Command extends Command {', $contents);
+		$this->assertStringContainsString('* Sync products.', $contents);
+		$this->assertStringContainsString('@example wp <prefix> sync-products <item>', $contents);
+		$this->assertStringContainsString('@example wp <prefix> sync-products <item> --format=json --dry-run', $contents);
 		$this->assertStringContainsString('public const string ARG_ITEM', $contents);
 		$this->assertStringContainsString('public function runCommand( array $args = [], array $assocArgs = [] ): int {', $contents);
 		$this->assertStringContainsString('WP_CLI::line( sprintf(', $contents);

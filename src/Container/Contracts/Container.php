@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\Container\Contracts;
 
 use Closure;
 use StellarWP\ContainerContract\ContainerInterface;
+use StellarWP\Foundation\Container\Exceptions\ContainerException;
 
 /**
  * Registers and resolves Foundation application services.
@@ -19,7 +20,7 @@ interface Container extends ContainerInterface, Resolver
 	 * @param class-string $serviceProviderClass
 	 * @param string       ...$alias
 	 *
-	 * @throws \lucatume\DI52\ContainerException
+	 * @throws ContainerException When the provider cannot be registered.
 	 */
 	public function register(string $serviceProviderClass, ...$alias): void;
 
@@ -53,7 +54,7 @@ interface Container extends ContainerInterface, Resolver
 	 * Closure implementations receive a Foundation {@see Resolver}, never the
 	 * underlying container implementation.
 	 *
-	 * @throws \lucatume\DI52\ContainerException
+	 * @throws ContainerException When the additive binding cannot be registered.
 	 */
 	public function mergeArrayVar(string $id, mixed $implementation): void;
 
@@ -63,11 +64,15 @@ interface Container extends ContainerInterface, Resolver
 	 *
 	 * @param array<mixed>  $buildArgs         The arguments passed to the constructor in the order they are provided.
 	 * @param string[]|null $afterBuildMethods An array of methods that should be called after the instance is resolved.
+	 *
+	 * @throws ContainerException When the factory cannot be created or its service cannot be resolved.
 	 */
 	public function instance(mixed $id, array $buildArgs = [], ?array $afterBuildMethods = null): Closure;
 
 	/**
 	 * @param class-string|string|object $id
+	 *
+	 * @throws ContainerException When the callback cannot be created or its service cannot be resolved.
 	 */
 	public function callback(string|object $id, string $method): callable;
 
@@ -82,7 +87,7 @@ interface Container extends ContainerInterface, Resolver
 	 * @param non-empty-list<class-string|object|callable> $decorators
 	 * @param list<string>|null                            $afterBuildMethods
 	 *
-	 * @throws \lucatume\DI52\ContainerException
+	 * @throws ContainerException When a decorator binding cannot be registered.
 	 */
 	public function singletonDecorators(
 		string $id,
@@ -102,7 +107,7 @@ interface Container extends ContainerInterface, Resolver
 	 * @param non-empty-list<class-string|object|callable> $decorators
 	 * @param list<string>|null                            $afterBuildMethods
 	 *
-	 * @throws \lucatume\DI52\ContainerException
+	 * @throws ContainerException When a decorator binding cannot be registered.
 	 */
 	public function bindDecorators(
 		string $id,

@@ -17,6 +17,7 @@
         "lucatume/di52": ">=4.1",
         "monolog/monolog": "^2.11",
         "nikic/php-parser": ">=5.0 <6.0",
+        "psr/container": ">=1.1",
         "psr/log": ">=1.0",
         "stellarwp/container-contract": "^1.1",
         "symfony/console": ">=5.4",

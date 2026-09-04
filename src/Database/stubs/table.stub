@@ -2,24 +2,16 @@
 
 namespace {{ namespace }};
 
-use {{ foundation_database_contract }};
+use {{ foundation_database_managed_table }};
 use {{ foundation_database_table }};
 use {{ foundation_database_table_definition }};
 
-final readonly class {{ class }} extends Table {
-
-	public const string ID = {{ id_php }};
+final readonly class {{ class }} extends Table implements ManagedTable {
 
 	private const string UNPREFIXED_TABLE_NAME = {{ table_php }};
 
-	public function __construct(
-		Database $database
-	) {
-		parent::__construct( self::UNPREFIXED_TABLE_NAME, $database );
-	}
-
-	public function id(): string {
-		return self::ID;
+	public function unprefixedName(): string {
+		return self::UNPREFIXED_TABLE_NAME;
 	}
 
 	public function definition(): TableDefinition {

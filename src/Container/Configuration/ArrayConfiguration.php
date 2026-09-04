@@ -1,0 +1,29 @@
+<?php declare(strict_types=1);
+
+namespace StellarWP\Foundation\Container\Configuration;
+
+use Adbar\Dot;
+use StellarWP\Foundation\Container\Contracts\Configuration;
+
+/**
+ * Reads dotted configuration keys from an application configuration array.
+ */
+final readonly class ArrayConfiguration implements Configuration
+{
+	/** @var Dot<array-key, mixed> */
+	private Dot $configuration;
+
+	/**
+	 * @param array<array-key, mixed> $configuration
+	 */
+	public function __construct(array $configuration = []) {
+		$this->configuration = new Dot($configuration);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function get(string $key, mixed $default = null): mixed {
+		return $this->configuration->get($key, $default);
+	}
+}

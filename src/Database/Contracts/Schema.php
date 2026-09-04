@@ -16,7 +16,7 @@ interface Schema
 	 * @throws DatabaseException        When WordPress cannot reconcile the table definition.
 	 * @throws InvalidArgumentException When the table definition is invalid.
 	 */
-	public function createOrUpdate(Table $table): void;
+	public function createOrUpdate(ManagedTable $table): void;
 
 	/**
 	 * Execute a complete, trusted schema SQL statement without placeholder binding.

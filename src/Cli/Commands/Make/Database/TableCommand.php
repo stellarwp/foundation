@@ -17,7 +17,6 @@ use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\Psr4Namespace;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Database\DatabaseStubPath;
-use StellarWP\Foundation\Database\Migration\ValueObjects\Id;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -59,7 +58,6 @@ final class TableCommand extends Command
 			->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the generated table class.')
 			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Directory where the table class should be written.')
 			->addOption('provider', null, InputOption::VALUE_REQUIRED, 'Database provider file to update when it exists.')
-			->addOption('id', null, InputOption::VALUE_REQUIRED, 'Stable table identifier: nonblank, unpadded, non-integer-like, and at most 191 bytes.')
 			->addOption('table-name', null, InputOption::VALUE_REQUIRED, 'Unprefixed WordPress table name.')
 			->addOption('migration', 'm', InputOption::VALUE_NONE, 'Also create the table\'s initial migration.')
 			->addOption('migration-id', null, InputOption::VALUE_REQUIRED, 'Stable identifier for the initial migration. Requires --migration.');
@@ -198,8 +196,6 @@ final class TableCommand extends Command
 		$stub      = $this->stubResolver->resolve('database', 'table', DatabaseStubPath::table());
 		$relative  = $this->projectDirectory->relativePath($path . '/' . $className . '.php');
 		$table     = $this->tableName($input, $className);
-		$idOption  = $input->getOption('id');
-		$id        = (new Id(is_string($idOption) ? $idOption : $table . '_table'))->value;
 
 		return new GeneratedFile(
 			path: $path . '/' . $className . '.php',
@@ -207,9 +203,8 @@ final class TableCommand extends Command
 			contents: $this->stubRenderer->render($stub, [
 				'namespace'                            => $namespace,
 				'class'                                => $className,
-				'id_php'                               => $this->stubRenderer->phpStringLiteral($id),
 				'table_php'                            => $this->stubRenderer->phpStringLiteral($table),
-				'foundation_database_contract'         => $project->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Database'),
+				'foundation_database_managed_table'    => $project->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\ManagedTable'),
 				'foundation_database_table'            => $project->foundationClass('StellarWP\\Foundation\\Database\\Table\\Table'),
 				'foundation_database_table_definition' => $project->foundationClass('StellarWP\\Foundation\\Database\\Table\\TableDefinition'),
 			])

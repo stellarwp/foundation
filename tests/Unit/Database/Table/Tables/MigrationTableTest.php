@@ -28,7 +28,6 @@ final class MigrationTableTest extends TestCase
 
 		$schema->createOrUpdate($table);
 
-		$this->assertSame(MigrationTable::ID, $table->id());
 		$this->assertSame('wp_network_foundation_migrations', $table->name());
 		$this->assertStringContainsString('CREATE TABLE `wp_network_foundation_migrations`', $executor->statements[0]);
 		$this->assertStringContainsString('`migration` varbinary(191)', $executor->statements[0]);

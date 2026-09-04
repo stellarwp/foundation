@@ -2,15 +2,13 @@
 
 namespace StellarWP\Foundation\Tests\WPUnit\Database;
 
-use Adbar\Dot;
-use lucatume\DI52\Container as DI52Container;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
-use StellarWP\ContainerContract\ContainerInterface;
-use StellarWP\Foundation\Container\ContainerAdapter;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
 use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Database\Contracts\Database as DatabaseContract;
-use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Contracts\ManagedTable;
 use StellarWP\Foundation\Database\Database;
 use StellarWP\Foundation\Database\DatabaseProvider;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
@@ -75,7 +73,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	public function test_database_executes_and_reads_rows_through_wpdb(): void {
-		$tableObject = new TestTable('database_table', $this->unprefixedTable('database'));
+		$tableObject = new TestTable($this->unprefixedTable('database'));
 		$table       = $this->database->tableName($tableObject);
 
 		$this->database->execute(sprintf(
@@ -95,8 +93,8 @@ final class DatabaseIntegrationTest extends WPTestCase
 			'second'
 		);
 
-		$this->assertSame($GLOBALS['wpdb']->prefix . 'example', $this->database->tableName(new TestTable('example', 'example')));
-		$this->assertSame($GLOBALS['wpdb']->prefix . 'wp_reports', $this->database->tableName(new TestTable('reports', 'wp_reports')));
+		$this->assertSame($GLOBALS['wpdb']->prefix . 'example', $this->database->tableName(new TestTable('example')));
+		$this->assertSame($GLOBALS['wpdb']->prefix . 'wp_reports', $this->database->tableName(new TestTable('wp_reports')));
 		$this->assertSame(['name' => 'first'], $this->database->row(sprintf(
 			'SELECT name FROM %s WHERE id = 1',
 			$this->database->quoteIdentifier($table)
@@ -118,16 +116,13 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 		$this->assertSame(
 			$GLOBALS['wpdb']->prefix . $maximum,
-			$this->database->tableName(new TestTable('maximum_table_name', $maximum))
+			$this->database->tableName(new TestTable($maximum))
 		);
 
 		$this->expectException(DatabaseException::class);
 		$this->expectExceptionMessage('64-character identifier limit');
 
-		$this->database->tableName(new TestTable(
-			'too_long_table_name',
-			str_repeat('a', 65 - strlen($GLOBALS['wpdb']->prefix))
-		));
+		$this->database->tableName(new TestTable(str_repeat('a', 65 - strlen($GLOBALS['wpdb']->prefix))));
 	}
 
 	/**
@@ -138,7 +133,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->expectException(DatabaseException::class);
 		$this->expectExceptionMessage($message);
 
-		$this->database->tableName(new TestTable('invalid_table_name', $tableName));
+		$this->database->tableName(new TestTable($tableName));
 	}
 
 	/**
@@ -160,7 +155,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	public function test_database_crud_helpers_and_schema_inspection_use_wordpress(): void {
-		$tableObject = new TestTable('crud_table', $this->unprefixedTable('crud'));
+		$tableObject = new TestTable($this->unprefixedTable('crud'));
 		$table       = $this->database->tableName($tableObject);
 
 		$this->database->execute(sprintf(
@@ -195,7 +190,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	public function test_database_insert_returns_affected_rows_for_string_identifiers(): void {
-		$tableObject = new TestTable('string_ids_table', $this->unprefixedTable('string_ids'));
+		$tableObject = new TestTable($this->unprefixedTable('string_ids'));
 		$table       = $this->database->tableName($tableObject);
 
 		$this->database->execute(sprintf(
@@ -259,7 +254,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 	public function test_database_wraps_wordpress_query_failures(): void {
 		$previous = $GLOBALS['wpdb']->suppress_errors(true);
-		$table    = new TestTable('missing_table', 'missing_foundation_table');
+		$table    = new TestTable('missing_foundation_table');
 
 		try {
 			$exception = $this->assertQueryFails(fn (): mixed => $this->database->rows('SELECT * FROM %i', 'missing_foundation_table'));
@@ -311,7 +306,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	public function test_schema_creates_inspects_and_changes_tables_through_wordpress(): void {
-		$tableObject = new TestTable('schema_table', $this->unprefixedTable('schema'));
+		$tableObject = new TestTable($this->unprefixedTable('schema'));
 		$table       = $this->database->tableName($tableObject);
 		$schema      = $this->schema;
 
@@ -340,14 +335,10 @@ final class DatabaseIntegrationTest extends WPTestCase
 	public function test_schema_creates_queue_style_table_definitions_through_wordpress(): void {
 		$table  = $this->unprefixedTable('queue_schema');
 		$schema = $this->schema;
-		$queue  = new class($table) implements Table {
+		$queue  = new class($table) implements ManagedTable {
 			public function __construct(
 				private string $unprefixedName
 			) {
-			}
-
-			public function id(): string {
-				return 'queue_schema_table';
 			}
 
 			public function unprefixedName(): string {
@@ -463,18 +454,14 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 	public function test_schema_preserves_quote_and_backslash_string_defaults(): void {
 		$unprefixedTableName = $this->unprefixedTable('string_default');
-		$tableName           = $this->database->tableName(new TestTable('string_default_table', $unprefixedTableName));
+		$tableName           = $this->database->tableName(new TestTable($unprefixedTableName));
 		$default             = "customer's \\ path";
-		$table               = static function (string $columnDefault) use ($unprefixedTableName): Table {
-			return new class($unprefixedTableName, $columnDefault) implements Table {
+		$table               = static function (string $columnDefault) use ($unprefixedTableName): ManagedTable {
+			return new class($unprefixedTableName, $columnDefault) implements ManagedTable {
 				public function __construct(
 					private string $unprefixedName,
 					private string $default
 				) {
-				}
-
-				public function id(): string {
-					return 'string_default_table';
 				}
 
 				public function unprefixedName(): string {
@@ -502,7 +489,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 	public function test_schema_rejects_unapplied_numeric_defaults_and_nullability(): void {
 		$unprefixedTableName = $this->unprefixedTable('column_properties');
-		$table               = $this->database->tableName(new TestTable('column_properties', $unprefixedTableName));
+		$table               = $this->database->tableName(new TestTable($unprefixedTableName));
 
 		$this->schema->createOrUpdate(new SchemaReconciliationTable($unprefixedTableName, 1, false));
 
@@ -542,7 +529,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 	public function test_schema_rejects_an_unapplied_auto_increment_attribute(): void {
 		$unprefixedTableName = $this->unprefixedTable('column_extra');
-		$tableObject         = new TestTable('column_extra', $unprefixedTableName);
+		$tableObject         = new TestTable($unprefixedTableName);
 		$table               = $this->database->tableName($tableObject);
 
 		$this->database->execute(sprintf(
@@ -754,8 +741,6 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 		$container->register(DatabaseProvider::class);
 
-		$this->assertSame('nx_foundation_migrations', $container->get(DatabaseProvider::MIGRATIONS_TABLE));
-		$this->assertSame('nx_foundation_locks', $container->get(DatabaseProvider::LOCKS_TABLE));
 		$this->assertInstanceOf(Database::class, $container->get(Database::class));
 		$this->assertInstanceOf(Database::class, $container->get(DatabaseContract::class));
 		$this->assertInstanceOf(Schema::class, $container->get(Schema::class));
@@ -791,16 +776,13 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	private function table(string $suffix): string {
-		return $this->database->tableName(new TestTable(
-			'temporary_' . $suffix,
-			$this->unprefixedTable($suffix)
-		));
+		return $this->database->tableName(new TestTable($this->unprefixedTable($suffix)));
 	}
 
 	private function unprefixedTable(string $suffix): string {
 		$table = 'foundation_' . $suffix . '_' . str_replace('.', '_', uniqid('', true));
 
-		$this->tables[] = $this->database->tableName(new TestTable('temporary_' . $suffix, $table));
+		$this->tables[] = $this->database->tableName(new TestTable($table));
 
 		return $table;
 	}
@@ -821,11 +803,6 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	private function newContainer(): Container {
-		$container = new ContainerAdapter(new DI52Container());
-		$container->bind(Container::class, $container);
-		$container->bind(ContainerInterface::class, $container);
-		$container->singleton(Dot::class, new Dot());
-
-		return $container;
+		return (new ContainerFactory())->create(new ArrayConfiguration());
 	}
 }

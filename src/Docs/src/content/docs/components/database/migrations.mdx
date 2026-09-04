@@ -86,24 +86,16 @@ The generated `src/Database/Tables/Reports_Table.php` owns its stable, unprefixe
 
 namespace YourPlugin\Database\Tables;
 
-use StellarWP\Foundation\Database\Contracts\Database;
+use StellarWP\Foundation\Database\Contracts\ManagedTable;
 use StellarWP\Foundation\Database\Table\Table;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 
-final readonly class Reports_Table extends Table {
-
-	public const string ID = 'reports_table';
+final readonly class Reports_Table extends Table implements ManagedTable {
 
 	private const string UNPREFIXED_TABLE_NAME = 'reports';
 
-	public function __construct(
-		Database $database
-	) {
-		parent::__construct( self::UNPREFIXED_TABLE_NAME, $database );
-	}
-
-	public function id(): string {
-		return self::ID;
+	public function unprefixedName(): string {
+		return self::UNPREFIXED_TABLE_NAME;
 	}
 
 	public function definition(): TableDefinition {
@@ -191,7 +183,7 @@ $table->primary( 'site_id', 'external_id' );
 ```
 
 :::note[Custom table implementations]
-If an application implements `StellarWP\Foundation\Database\Contracts\Table` directly, `unprefixedName()` must return a stable name such as `reports`, never `wp_reports`. Pass that table object to Foundation's database and schema services; they apply the active WordPress prefix and validate the physical identifier at the point of use.
+If an application implements `StellarWP\Foundation\Database\Contracts\Table` directly, `unprefixedName()` must return a stable name such as `reports`, never `wp_reports`. The table can then be passed to focused database services such as `TableWriter`, `SchemaInspector`, or `TableNameResolver`. Build table-scoped reads with `QueryBuilder` and a `QueryGateway`. Extend the supplied `Table` base class when the table object itself should expose the query and write convenience methods. Implement `ManagedTable` before passing the table to `Schema::createOrUpdate()` so Foundation can read the complete schema it owns.
 :::
 
 ### Apply an initial table definition

@@ -4,8 +4,8 @@ namespace StellarWP\Foundation\Database\Schema;
 
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Database;
+use StellarWP\Foundation\Database\Contracts\ManagedTable;
 use StellarWP\Foundation\Database\Contracts\SchemaExecutor;
-use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Schema\ValueObjects\IndexState;
 use StellarWP\Foundation\Database\Table\Column;
@@ -31,7 +31,7 @@ final readonly class Reconciler
 	 * @throws DatabaseException        When WordPress cannot reconcile the table definition.
 	 * @throws InvalidArgumentException When the table definition is invalid.
 	 */
-	public function reconcile(Table $table): void {
+	public function reconcile(ManagedTable $table): void {
 		$definition = $table->definition();
 		$definition->assertValid();
 
@@ -58,7 +58,7 @@ final readonly class Reconciler
 	 *
 	 * @throws DatabaseException When the physical table name is invalid.
 	 */
-	private function createTableSql(Table $table, TableDefinition $definition): string {
+	private function createTableSql(ManagedTable $table, TableDefinition $definition): string {
 		$parts = [];
 
 		foreach ($definition->columns() as $column) {
@@ -82,7 +82,7 @@ final readonly class Reconciler
 	 *
 	 * @throws DatabaseException When a default cannot be reconciled.
 	 */
-	private function applyBinaryDefaults(Table $table, TableDefinition $definition): void {
+	private function applyBinaryDefaults(ManagedTable $table, TableDefinition $definition): void {
 		foreach ($definition->columns() as $column) {
 			$default = $column->defaultSql();
 
@@ -110,7 +110,7 @@ final readonly class Reconciler
 	 *
 	 * @return array<string, array{nullable: bool, default: mixed, extra: string, comment: string}>
 	 */
-	private function reconcileCommentsAndInspectColumns(Table $table, TableDefinition $definition): array {
+	private function reconcileCommentsAndInspectColumns(ManagedTable $table, TableDefinition $definition): array {
 		$columnProperties = [];
 
 		foreach ($definition->columns() as $column) {
@@ -197,7 +197,7 @@ final readonly class Reconciler
 	 *
 	 * @return array{nullable: bool, default: mixed, extra: string, comment: string}
 	 */
-	private function columnProperties(Table $table, Column $column): array {
+	private function columnProperties(ManagedTable $table, Column $column): array {
 		$row = $this->database->row(
 			'SHOW FULL COLUMNS FROM %i WHERE Field = %s',
 			$this->database->tableName($table),
@@ -245,7 +245,7 @@ final readonly class Reconciler
 	 *
 	 * @return list<string>
 	 */
-	private function indexDifferences(Table $table, TableDefinition $definition): array {
+	private function indexDifferences(ManagedTable $table, TableDefinition $definition): array {
 		$expected    = $this->expectedIndexes($definition);
 		$actual      = $this->physicalIndexes($table);
 		$differences = [];
@@ -299,7 +299,7 @@ final readonly class Reconciler
 	 *
 	 * @return array<string, IndexState>
 	 */
-	private function physicalIndexes(Table $table): array {
+	private function physicalIndexes(ManagedTable $table): array {
 		$tableName = $this->database->tableName($table);
 
 		return PhysicalIndexCollection::fromRows(

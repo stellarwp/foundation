@@ -2,11 +2,11 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database;
 
-use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Contracts\ManagedTable;
 use StellarWP\Foundation\Database\Table\IndexType;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 
-final readonly class IndexReconciliationTable implements Table
+final readonly class IndexReconciliationTable implements ManagedTable
 {
 	/**
 	 * @param non-empty-list<string> $indexColumns
@@ -17,10 +17,6 @@ final readonly class IndexReconciliationTable implements Table
 		private array $indexColumns = ['email'],
 		private string $indexType = IndexType::UNIQUE
 	) {
-	}
-
-	public function id(): string {
-		return 'index_reconciliation_table';
 	}
 
 	public function unprefixedName(): string {

@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\Database\Table;
 
 use InvalidArgumentException;
-use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Contracts\ManagedTable;
 
 /**
  * Defines the columns, indexes, and options that make up one database table.
@@ -27,14 +27,14 @@ final class TableDefinition
 	 * Create an empty definition owned by one logical table.
 	 */
 	private function __construct(
-		private readonly Table $table
+		private readonly ManagedTable $table
 	) {
 	}
 
 	/**
 	 * Begin defining the columns and indexes for a table.
 	 */
-	public static function for(Table $table): self {
+	public static function for(ManagedTable $table): self {
 		return new self($table);
 	}
 
@@ -215,7 +215,7 @@ final class TableDefinition
 		$columns = $this->columns();
 
 		if ($columns === []) {
-			$errors[] = sprintf('Table %s does not define any columns.', $this->table->id());
+			$errors[] = sprintf('Table %s does not define any columns.', $this->table->unprefixedName());
 		}
 
 		foreach ($columns as $column) {

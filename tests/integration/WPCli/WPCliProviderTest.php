@@ -2,12 +2,14 @@
 
 namespace StellarWP\Foundation\Tests\Integration\WPCli;
 
-use Adbar\Dot;
 use InvalidArgumentException;
 use stdClass;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\Contracts\Configuration;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Tests\Support\Fixtures\WPCli\RecordingCommand;
 use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
+use StellarWP\Foundation\WPCli\CommandContext;
 use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 use StellarWP\Foundation\WPCli\WPCliProvider;
 use UnexpectedValueException;
@@ -15,17 +17,20 @@ use UnexpectedValueException;
 final class WPCliProviderTest extends WPTestCase
 {
 	public function test_it_preserves_the_zero_configuration_command_prefix(): void {
-		$this->container->singleton(Dot::class, new Dot());
+		$this->container->singleton(Configuration::class, new ArrayConfiguration());
 		$this->container->register(WPCliProvider::class);
 
 		$commandPrefix = $this->container->get(CommandPrefix::class);
+		$context       = $this->container->get(CommandContext::class);
 
 		$this->assertSame('nx', $commandPrefix->value);
 		$this->assertSame($commandPrefix, $this->container->get(CommandPrefix::class));
+		$this->assertSame($context, $this->container->get(CommandContext::class));
+		$this->assertSame('nx example', $context->name('example'));
 	}
 
 	public function test_it_uses_the_foundation_prefix_by_default(): void {
-		$this->container->singleton(Dot::class, new Dot([
+		$this->container->singleton(Configuration::class, new ArrayConfiguration([
 			'foundation' => [
 				'prefix' => 'your-plugin',
 			],
@@ -37,7 +42,7 @@ final class WPCliProviderTest extends WPTestCase
 	}
 
 	public function test_it_uses_the_package_specific_command_prefix(): void {
-		$this->container->singleton(Dot::class, new Dot([
+		$this->container->singleton(Configuration::class, new ArrayConfiguration([
 			'foundation' => [
 				'prefix' => 'your-plugin',
 			],
@@ -52,7 +57,7 @@ final class WPCliProviderTest extends WPTestCase
 	}
 
 	public function test_it_rejects_an_invalid_foundation_prefix_when_the_command_prefix_is_overridden(): void {
-		$this->container->singleton(Dot::class, new Dot([
+		$this->container->singleton(Configuration::class, new ArrayConfiguration([
 			'foundation' => [
 				'prefix' => 'Invalid Prefix',
 			],
@@ -68,7 +73,7 @@ final class WPCliProviderTest extends WPTestCase
 	}
 
 	public function test_it_registers_configured_commands_on_cli_init(): void {
-		$this->container->singleton(Dot::class, new Dot([
+		$this->container->singleton(Configuration::class, new ArrayConfiguration([
 			'wpcli' => [
 				'command_prefix' => 'your-plugin-tools',
 			],
@@ -117,7 +122,7 @@ final class WPCliProviderTest extends WPTestCase
 		$this->container->register(WPCliProvider::class);
 
 		$this->expectException(UnexpectedValueException::class);
-		$this->expectExceptionMessage('must extend');
+		$this->expectExceptionMessage('must implement');
 
 		try {
 			do_action('cli_init');

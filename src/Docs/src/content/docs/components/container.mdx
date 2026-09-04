@@ -7,7 +7,7 @@ sidebar:
 
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-Foundation Container adapts [DI52](https://github.com/lucatume/di52) behind a shared container contract and service provider base class. Use it to describe how application services are constructed while keeping dependency resolution out of the services themselves.
+Foundation Container provides a shared container contract and service provider base class. Use it to describe how application services are constructed while keeping dependency resolution and the underlying container implementation out of the services themselves.
 
 ## Installation
 
@@ -24,9 +24,9 @@ Other Foundation packages install Container automatically when they depend on it
 Create one container in the application composition root and register providers in dependency order. These guides establish that structure:
 
 <CardGrid>
-  <LinkCard
-    title="Configure the Container"
-    description="Construct the shared adapter and make application configuration available."
+	  <LinkCard
+	    title="Configure the Container"
+	    description="Construct the shared container and make application configuration available."
     href="/start/configure-the-container/"
   />
   <LinkCard
@@ -75,7 +75,7 @@ In `src/Catalog/Provider.php`, bind an interface when the container cannot infer
 
 namespace YourPlugin\Catalog;
 
-use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\Container\Contracts\ConfiguredProvider as Service_Provider;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 
 /**
@@ -97,6 +97,10 @@ final class Provider extends Service_Provider {
 ```
 
 Bindings are lazy. Registering `Remote_Catalog` does not construct it; the container builds it when another service first requests `Catalog`.
+
+Extend `ConfiguredProvider` when a provider reads `$this->config`. Extend the narrower `Provider` when it needs only the container. Both use the same `register()` lifecycle, but providers that do not consume configuration are not forced to depend on it.
+
+Foundation providers register eagerly. Keep expensive services lazy by binding them in `register()` and letting the container construct them on first use; do not add provider-level deferred or boot phases.
 
 ### Supply configuration and scalar values
 
@@ -184,6 +188,10 @@ private function register_catalog_sync(): void {
 
 This avoids constructing the synchronizer during every request merely to register its callback.
 
+### Handle container failures
+
+Catch `StellarWP\Foundation\Container\Exceptions\NotFoundException` when a requested identifier may be absent. Failures raised by the container while registering or resolving services use `StellarWP\Foundation\Container\Exceptions\ContainerException`. Both implement the corresponding PSR container exception interfaces, and the original application failure remains available through `getPrevious()` when the underlying container wrapped one. Exceptions thrown by a provider's own `register()` method remain that provider's exception and propagate unchanged.
+
 ### Decorate a service
 
 In `src/Catalog/Provider.php`, use a decorator chain when cross-cutting behavior should wrap a service without changing its implementation. List the outermost decorator first and the base implementation last:
@@ -221,3 +229,30 @@ $this->assertTrue( $catalog->was_synchronized() );
 ```
 
 Test application services through their public behavior. Reserve container integration tests for provider graphs where the binding itself is the behavior under test.
+
+## Upgrading to 2.0
+
+Replace application bindings for `Adbar\Dot` with the Foundation `Configuration` contract. Construct the supplied `ArrayConfiguration` from the array returned by `config.php`, then pass it to `ContainerFactory::create()`. The factory creates the default backend and registers Foundation's `Container`, `Resolver`, and `Configuration` contracts.
+
+Providers that read configuration should extend `ConfiguredProvider`; providers that do not should extend `Provider`. Update explicit provider constructors to match the selected base class:
+
+```php
+public function __construct( Container $container ) {
+	parent::__construct( $container );
+}
+```
+
+```php
+public function __construct(
+	Container $container,
+	Configuration $configuration
+) {
+	parent::__construct( $container, $configuration );
+}
+```
+
+Container factory callbacks should import `StellarWP\Foundation\Container\Contracts\Resolver as C` instead of `lucatume\DI52\Container`. Callback bodies can continue calling `$c->get()` and `$c->has()`.
+
+Catch `StellarWP\Foundation\Container\Exceptions\ContainerException` or the more specific `NotFoundException` instead of DI52 exceptions. `ContainerAdapter::getContainer()` and its forwarding of undocumented DI52 methods have been removed; use only operations declared by the Foundation `Container` and `Resolver` contracts.
+
+Provider-level `isDeferred()`, `provides()`, and `boot()` methods have also been removed. Move required bindings, hook registration, and other startup behavior into `register()` or an explicit application-owned lifecycle. Services bound during `register()` remain lazy until they are requested.

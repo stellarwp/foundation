@@ -24,7 +24,6 @@ final class LockTableTest extends TestCase
 
 		$schema->createOrUpdate($table);
 
-		$this->assertSame(LockTable::ID, $table->id());
 		$this->assertSame('wp_network_foundation_locks', $table->name());
 		$this->assertStringContainsString('CREATE TABLE `wp_network_foundation_locks`', $executor->statements[0]);
 		$this->assertStringContainsString('`name` varbinary(191)', $executor->statements[0]);

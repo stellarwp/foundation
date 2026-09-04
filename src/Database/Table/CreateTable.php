@@ -2,9 +2,9 @@
 
 namespace StellarWP\Foundation\Database\Table;
 
+use StellarWP\Foundation\Database\Contracts\ManagedTable;
 use StellarWP\Foundation\Database\Contracts\Migration;
 use StellarWP\Foundation\Database\Contracts\Schema;
-use StellarWP\Foundation\Database\Contracts\Table;
 
 /**
  * Adapts a table definition into a ledger-recorded migration.
@@ -12,12 +12,13 @@ use StellarWP\Foundation\Database\Contracts\Table;
 final readonly class CreateTable implements Migration
 {
 	public function __construct(
-		private Table $table
+		private string $migrationId,
+		private ManagedTable $table
 	) {
 	}
 
 	public function id(): string {
-		return $this->table->id();
+		return $this->migrationId;
 	}
 
 	public function up(Schema $schema): void {

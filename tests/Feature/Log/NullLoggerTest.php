@@ -22,6 +22,7 @@ final class NullLoggerTest extends TestCase
 	public function test_it_can_change_log_channels(): void {
 		$logger = $this->container->get(LoggerInterface::class);
 		$this->assertInstanceOf(Logger::class, $logger);
+		$this->assertSame($logger, $this->container->get(LoggerInterface::class));
 		$handler = $logger->getHandlers()[0];
 		$this->assertInstanceOf(NullHandler::class, $handler);
 	}

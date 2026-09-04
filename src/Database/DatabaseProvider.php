@@ -3,14 +3,23 @@
 namespace StellarWP\Foundation\Database;
 
 use InvalidArgumentException;
-use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\ConfiguredProvider;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Container\Traits\ResolvesFoundationPrefix;
 use StellarWP\Foundation\Database\Cli\Migrate;
+use StellarWP\Foundation\Database\Contracts\CharsetCollationProvider;
 use StellarWP\Foundation\Database\Contracts\Database as DatabaseContract;
 use StellarWP\Foundation\Database\Contracts\DatabaseScope;
+use StellarWP\Foundation\Database\Contracts\QueryExecutor;
+use StellarWP\Foundation\Database\Contracts\QueryGateway;
+use StellarWP\Foundation\Database\Contracts\QueryReader;
 use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
 use StellarWP\Foundation\Database\Contracts\SchemaExecutor;
+use StellarWP\Foundation\Database\Contracts\SchemaInspector;
+use StellarWP\Foundation\Database\Contracts\SqlDialect;
+use StellarWP\Foundation\Database\Contracts\TableGateway;
+use StellarWP\Foundation\Database\Contracts\TableNameResolver;
+use StellarWP\Foundation\Database\Contracts\TableWriter;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
@@ -31,15 +40,17 @@ use StellarWP\Foundation\WPCli\WPCliProvider;
 /**
  * Registers Foundation database services for WordPress environments.
  */
-final class DatabaseProvider extends Provider
+final class DatabaseProvider extends ConfiguredProvider
 {
 	use ResolvesFoundationPrefix;
 
-	public const string MIGRATIONS       = self::class . '.migrations';
-	public const string MIGRATIONS_TABLE = self::class . '.migrations_table';
-	public const string LOCKS_TABLE      = self::class . '.locks_table';
-	public const string LOCK_NAME        = self::class . '.lock_name';
-	public const string LOCK_TTL         = self::class . '.lock_ttl';
+	public const string MIGRATIONS        = self::class . '.migrations';
+	private const string MIGRATIONS_TABLE = self::class . '.migrations_table';
+	private const string LOCKS_TABLE      = self::class . '.locks_table';
+	private const string LOCK_NAME        = self::class . '.lock_name';
+	private const string LOCK_TTL         = self::class . '.lock_ttl';
+
+	private bool $registered = false;
 
 	/**
 	 * Register database, schema, migration, lock, and WP-CLI services.
@@ -47,6 +58,10 @@ final class DatabaseProvider extends Provider
 	 * @throws InvalidArgumentException When the configured Foundation prefix is invalid.
 	 */
 	public function register(): void {
+		if ($this->registered) {
+			return;
+		}
+
 		$this->registerDatabase();
 		$this->registerDatabaseScope();
 		$this->registerSchema();
@@ -55,6 +70,8 @@ final class DatabaseProvider extends Provider
 		$this->registerMigrations();
 		$this->registerLocks();
 		$this->registerCliCommands();
+
+		$this->registered = true;
 	}
 
 	/**
@@ -95,6 +112,15 @@ final class DatabaseProvider extends Provider
 		});
 		$this->container->singleton(Database::class);
 		$this->container->singleton(DatabaseContract::class, static fn (C $c): Database => $c->get(Database::class));
+		$this->container->singleton(CharsetCollationProvider::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
+		$this->container->singleton(QueryExecutor::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
+		$this->container->singleton(QueryGateway::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
+		$this->container->singleton(QueryReader::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
+		$this->container->singleton(SchemaInspector::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
+		$this->container->singleton(SqlDialect::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
+		$this->container->singleton(TableNameResolver::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
+		$this->container->singleton(TableGateway::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
+		$this->container->singleton(TableWriter::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
 	}
 
 	/**

@@ -10,7 +10,7 @@ use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
-use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\ConfiguredProvider;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Log\Formatters\ColoredLineFormatter;
 use StellarWP\Foundation\Log\Handlers\NullHandler;
@@ -22,14 +22,14 @@ use StellarWP\Foundation\Log\Handlers\NullHandler;
  * unavailable, the application should keep running. Consumers that need different
  * channels, handlers, or failure behavior can register their own provider instead.
  */
-final class LogProvider extends Provider
+final class LogProvider extends ConfiguredProvider
 {
-	public const string LOG_LEVEL        = self::class . '.log_level';
-	public const string CHANNEL_ERRORLOG = 'errorlog';
-	private const string CHANNEL_CONSOLE = 'console';
-	private const string CHANNEL_NULL    = 'null';
-	private const string CHANNEL_STACK   = 'stack';
-	public const array  CHANNELS         = [
+	private const string LOG_LEVEL        = self::class . '.log_level';
+	private const string CHANNEL_ERRORLOG = 'errorlog';
+	private const string CHANNEL_CONSOLE  = 'console';
+	private const string CHANNEL_NULL     = 'null';
+	private const string CHANNEL_STACK    = 'stack';
+	private const array CHANNELS          = [
 		self::CHANNEL_CONSOLE  => [
 			'class'     => StreamHandler::class,
 			'formatter' => ColoredLineFormatter::class,
@@ -67,7 +67,7 @@ final class LogProvider extends Provider
 			)
 		);
 
-		$this->container->bind(
+		$this->container->singleton(
 			LoggerInterface::class,
 			static function (C $c) use ($channel): LoggerInterface {
 				$handler = self::CHANNELS[$channel] ?? false;

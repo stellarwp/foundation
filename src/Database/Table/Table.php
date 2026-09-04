@@ -2,8 +2,8 @@
 
 namespace StellarWP\Foundation\Database\Table;
 
-use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\Table as TableContract;
+use StellarWP\Foundation\Database\Contracts\TableGateway;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\QueryException;
 use StellarWP\Foundation\Database\Query\QueryBuilder;
@@ -17,27 +17,24 @@ use StellarWP\Foundation\Database\Query\QueryBuilder;
 abstract readonly class Table implements TableContract
 {
 	/**
-	 * Bind this table gateway to its stable unprefixed name and database service.
+	 * Bind this table gateway to the database service used for its operations.
 	 */
 	public function __construct(
-		private string $unprefixedTableName,
-		private Database $database
+		private TableGateway $database
 	) {
 	}
 
 	/**
 	 * Return the database service for custom operations scoped to this table.
 	 */
-	final protected function database(): Database {
+	final protected function database(): TableGateway {
 		return $this->database;
 	}
 
 	/**
 	 * Return the stable table name before WordPress scope is applied.
 	 */
-	final public function unprefixedName(): string {
-		return $this->unprefixedTableName;
-	}
+	abstract public function unprefixedName(): string;
 
 	/**
 	 * Resolve a validated physical table name for the active WordPress database scope.

@@ -2,10 +2,9 @@
 
 namespace StellarWP\Foundation\Tests\WPUnitSupport;
 
-use Adbar\Dot;
 use lucatume\WPBrowser\TestCase\WPTestCase as CodeceptionWPTestCase;
-use StellarWP\ContainerContract\ContainerInterface;
-use StellarWP\Foundation\Container\ContainerAdapter;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
 use StellarWP\Foundation\Container\Contracts\Container;
 
 /**
@@ -21,9 +20,8 @@ abstract class WPTestCase extends CodeceptionWPTestCase
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->container = new ContainerAdapter(new \lucatume\DI52\Container());
-		$this->container->bind(Container::class, $this->container);
-		$this->container->bind(ContainerInterface::class, $this->container);
-		$this->container->singleton(Dot::class, new Dot(require dirname(__DIR__) . '/config.php'));
+		$this->container = (new ContainerFactory())->create(
+			new ArrayConfiguration(require dirname(__DIR__) . '/config.php')
+		);
 	}
 }

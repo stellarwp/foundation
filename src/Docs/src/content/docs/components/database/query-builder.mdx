@@ -15,6 +15,25 @@ Foundation Database wraps common `wpdb` operations with prepared bindings, quote
   href="/components/database/"
 />
 
+Tables used for queries do not need to be managed by Foundation migrations. A wrapper around an existing WordPress, WooCommerce, or legacy table can extend the supplied `Table` base class and provide only its stable name. For example, `src/Database/Tables/Import_Log_Table.php` can target an externally managed table without declaring ownership of its schema:
+
+```php title="Import_Log_Table.php"
+<?php declare(strict_types=1);
+
+namespace YourPlugin\Database\Tables;
+
+use StellarWP\Foundation\Database\Table\Table;
+
+final readonly class Import_Log_Table extends Table {
+
+	public function unprefixedName(): string {
+		return 'import_log';
+	}
+}
+```
+
+Implement `ManagedTable` as well only when Foundation migrations own the table definition and lifecycle.
+
 ## Read rows
 
 Inject the table object into the class that owns its queries. The table keeps physical naming and common database operations together. For example, create `src/Report/Report_Repository.php`:
@@ -94,7 +113,7 @@ $deleted = $this->table->delete( [ 'id' => $reportId ] );
 
 ### Add table-specific operations
 
-Add an intent-revealing method to the table class when specialized SQL belongs to that table and should be reused by its consumers. The base `Table` exposes its `Database` contract to subclasses through the protected `database()` method.
+Add an intent-revealing method to the table class when specialized SQL belongs to that table and should be reused by its consumers. The base `Table` exposes its table-scoped database gateway to subclasses through the protected `database()` method.
 
 For example, add `archive_status()` to `src/Database/Tables/Reports_Table.php`:
 
@@ -143,14 +162,14 @@ Prefer `toSql()` plus `bindings()` for structured diagnostics. A fully prepared 
 `toQuery()` captures SQL for the active WordPress database scope. If code calls `switch_to_blog()`, build a new query before executing it so the table name uses the new site's prefix. Calling `get()`, `first()`, or `value()` directly on the table query builder resolves the active scope as part of that operation.
 :::
 
-Inject the `Database` contract in addition to the table when specialized SQL belongs to a repository workflow rather than one table, or when a query spans multiple tables. Add it explicitly to that repository's constructor:
+Inject `QueryExecutor` in addition to the table when specialized SQL belongs to a repository workflow rather than one table, or when a query spans multiple tables. Add it explicitly to that repository's constructor:
 
 ```php
-use StellarWP\Foundation\Database\Contracts\Database;
+use StellarWP\Foundation\Database\Contracts\QueryExecutor;
 
 public function __construct(
 	private Reports_Table $table,
-	private Database $database
+	private QueryExecutor $database
 ) {
 }
 ```
@@ -179,6 +198,25 @@ $affected = $this->database->execute(
 ```
 
 Use `prepare()` when another WordPress API requires the prepared SQL string. Keep values in placeholders instead of concatenating untrusted input.
+
+### Choose the smallest database capability
+
+Type-hint the smallest contract that supports the operation. This keeps repositories, decorators, and test doubles independent of unrelated database behavior:
+
+| Contract | Use it for |
+| --- | --- |
+| `QueryReader` | Prepared raw reads that return rows or values |
+| `QueryExecutor` | Raw writes and schema statements in addition to reads |
+| `QueryGateway` | Building and executing table-scoped read queries |
+| `TableWriter` | Table-scoped insert, update, and delete operations |
+| `SchemaInspector` | Checking physical tables, columns, and indexes |
+| `TableNameResolver` | Resolving a table name for the active WordPress site |
+| `SqlDialect` | Quoting identifiers and escaping `LIKE` values |
+| `CharsetCollationProvider` | Supplying charset and collation for managed schemas |
+| `TableGateway` | Supplying the complete query and write API exposed to concrete `Table` subclasses |
+| `Database` | A convenient aggregate when one collaborator genuinely needs several capabilities |
+
+Foundation binds every default capability through the aggregate `Database` contract. Replacing that aggregate therefore keeps the narrower capability bindings coherent. New optional capabilities can be added as separate contracts without forcing existing database implementations to change.
 
 ## Handle query failures
 

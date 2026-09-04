@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\Database\Query;
 
 use InvalidArgumentException;
-use StellarWP\Foundation\Database\Contracts\Database;
+use StellarWP\Foundation\Database\Contracts\QueryGateway;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 
@@ -42,7 +42,7 @@ final class QueryBuilder
 	 * Begin a query for one table and an optional SQL alias.
 	 */
 	public function __construct(
-		private readonly Database $database,
+		private readonly QueryGateway $database,
 		private readonly Table $table,
 		private readonly ?string $alias = null
 	) {

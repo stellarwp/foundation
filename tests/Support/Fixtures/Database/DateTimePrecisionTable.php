@@ -2,18 +2,14 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database;
 
-use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Contracts\ManagedTable;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 
-final readonly class DateTimePrecisionTable implements Table
+final readonly class DateTimePrecisionTable implements ManagedTable
 {
 	public function __construct(
 		private string $unprefixedName
 	) {
-	}
-
-	public function id(): string {
-		return 'datetime_precision_table';
 	}
 
 	public function unprefixedName(): string {

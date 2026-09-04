@@ -2,11 +2,10 @@
 
 namespace StellarWP\Foundation\Tests;
 
-use Adbar\Dot;
 use Mockery;
 use ReflectionObject;
-use StellarWP\ContainerContract\ContainerInterface;
-use StellarWP\Foundation\Container\ContainerAdapter;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
 use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Container\Contracts\Providable;
 use StellarWP\Foundation\Log\LogProvider;
@@ -52,10 +51,9 @@ class TestCase extends \PHPUnit\Framework\TestCase
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->container = new ContainerAdapter(new \lucatume\DI52\Container());
-		$this->container->bind(Container::class, $this->container);
-		$this->container->bind(ContainerInterface::class, $this->container);
-		$this->container->singleton(Dot::class, new Dot(require __DIR__ . '/config.php'));
+		$this->container = (new ContainerFactory())->create(
+			new ArrayConfiguration(require __DIR__ . '/config.php')
+		);
 		$this->container->singleton(self::TEST_DIR, __DIR__);
 		$this->container->singleton(self::DATA_DIR, __DIR__ . '/_data/');
 		$this->container->singleton(self::FIXTURE_DIR, fn (): string => dirname((string) (new ReflectionObject($this))->getFileName()) . '/fixtures');

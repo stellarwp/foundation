@@ -95,7 +95,7 @@ In `src/Admin_Notice/Provider.php`, alias the Foundation base provider because i
 
 namespace YourPlugin\Admin_Notice;
 
-use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\Container\Contracts\ConfiguredProvider as Service_Provider;
 
 /**
  * Configures the admin notice and connects it to WordPress.

@@ -5,28 +5,23 @@ sidebar:
   order: 3
 ---
 
-Foundation adapts [DI52](https://github.com/lucatume/di52) behind its container contract. Construct one adapter during application bootstrap and use that instance for every provider.
+Foundation adapts its default container backend behind Foundation-owned contracts. Create one container during application bootstrap and use that instance for every provider.
 
 ## Create the shared container
 
-Construct the adapter in the application's composition root. For example, a root `bootstrap.php` can create and configure the shared instance. Feature classes should receive the services they need rather than creating another container.
+Use `ContainerFactory` in the application's composition root. It creates the default backend and registers the `Container`, `Resolver`, and `Configuration` contracts. Feature classes should receive the services they need rather than creating another container.
 
 ```php title="bootstrap.php"
 <?php declare(strict_types=1);
 
-use Adbar\Dot;
-use lucatume\DI52\Container as DI52Container;
-use StellarWP\Foundation\Container\ContainerAdapter;
-use StellarWP\Foundation\Container\Contracts\Container;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
 
-$container = new ContainerAdapter( new DI52Container() );
-$config    = new Dot( require __DIR__ . '/config.php' );
-
-$container->bind( Container::class, $container );
-$container->singleton( Dot::class, $config );
+$config    = new ArrayConfiguration( require __DIR__ . '/config.php' );
+$container = ( new ContainerFactory() )->create( $config );
 ```
 
-Binding the Foundation `Container` contract allows application services to request the shared adapter. The `Dot` binding makes the application's configuration available to every Foundation provider.
+The `Container` contract allows providers to register services through the shared container. The narrower `Resolver` contract is used by services that only need to resolve class-based collaborators, such as Pipeline. `Configuration` makes the same read-only configuration snapshot available to every configured Foundation provider without exposing the underlying configuration library.
 
 ## Map environment values in config.php
 
@@ -46,13 +41,15 @@ return [
 ];
 ```
 
-Providers read nested values through their inherited `$this->config` property:
+Providers that extend `ConfiguredProvider` read nested values through their inherited `$this->config` property:
 
 ```php
 $channel = $this->config->get( 'log.channel' );
 ```
 
-Pass resolved configuration into service constructors through container bindings. Application services should not read the environment or the `Dot` configuration object directly.
+The default value is used only when a key is absent. A configured `null` value remains `null`. Treat configuration as a stable snapshot for the lifetime of the application container.
+
+Pass resolved configuration into service constructors through container bindings. Application services should not read the environment or the configuration object directly.
 
 ## Load an optional .env file
 

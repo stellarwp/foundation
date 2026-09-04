@@ -2,22 +2,18 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database;
 
-use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Contracts\ManagedTable;
 use StellarWP\Foundation\Database\Table\TableDefinition;
 
 /**
  * Defines a table with a configurable column comment for schema reconciliation tests.
  */
-final readonly class CommentedTable implements Table
+final readonly class CommentedTable implements ManagedTable
 {
 	public function __construct(
 		private string $unprefixedName,
 		private ?string $comment
 	) {
-	}
-
-	public function id(): string {
-		return 'commented_table';
 	}
 
 	public function unprefixedName(): string {

@@ -65,13 +65,14 @@ final class DatabaseCommandTest extends TestCase
 		$contents = (string) file_get_contents($path);
 
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Database\\Tables;', $contents);
-		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Contracts\\Database;', $contents);
+		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Contracts\\ManagedTable;', $contents);
 		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Table\\Table;', $contents);
 		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Table\\TableDefinition;', $contents);
-		$this->assertStringContainsString('final readonly class Reports_Table extends Table {', $contents);
-		$this->assertStringContainsString("public const string ID = 'reports_table';", $contents);
+		$this->assertStringContainsString('final readonly class Reports_Table extends Table implements ManagedTable {', $contents);
 		$this->assertStringContainsString("private const string UNPREFIXED_TABLE_NAME = 'reports';", $contents);
-		$this->assertStringContainsString('parent::__construct( self::UNPREFIXED_TABLE_NAME, $database );', $contents);
+		$this->assertStringContainsString('return self::UNPREFIXED_TABLE_NAME;', $contents);
+		$this->assertStringNotContainsString('function __construct', $contents);
+		$this->assertFalse($this->tableCommand($root)->getDefinition()->hasOption('id'));
 		$this->assertStringContainsString("->longText( 'payload' )", $contents);
 	}
 
@@ -545,7 +546,6 @@ final class DatabaseCommandTest extends TestCase
 			'name'         => 'Audit_Log',
 			'--namespace'  => 'Acme\\Plugin\\Storage',
 			'--path'       => 'custom/tables',
-			'--id'         => 'audit_log_storage',
 			'--table-name' => 'custom_audit_log',
 		]);
 
@@ -563,7 +563,6 @@ final class DatabaseCommandTest extends TestCase
 
 		$this->assertSame(Command::SUCCESS, $tableStatus);
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Storage;', $tableContents);
-		$this->assertStringContainsString("public const string ID = 'audit_log_storage';", $tableContents);
 		$this->assertStringContainsString("private const string UNPREFIXED_TABLE_NAME = 'custom_audit_log';", $tableContents);
 		$this->assertSame(Command::SUCCESS, $migrationStatus);
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Storage\\Migrations;', $migrationContents);
@@ -1818,7 +1817,7 @@ PHP);
 		$reconcileContents = (string) file_get_contents($root . '/src/Database/Migrations/Add_Status_To_Reports.php');
 		$genericContents   = (string) file_get_contents($root . '/src/Database/Migrations/Bump_Version.php');
 
-		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Database;', $tableContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\ManagedTable;', $tableContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Table\\Table;', $tableContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Table\\TableDefinition;', $tableContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Migration;', $migrationContents);
@@ -2093,24 +2092,6 @@ PHP);
 		$this->assertSame(Command::FAILURE, $statusCode);
 		$this->assertStringContainsString($message, $tester->getDisplay());
 		$this->assertFileDoesNotExist($root . '/src/Database/Migrations/Bump_Version.php');
-	}
-
-	/**
-	 * @dataProvider invalidMigrationIdProvider
-	 */
-	#[DataProvider('invalidMigrationIdProvider')]
-	public function test_database_table_generator_rejects_runtime_invalid_ids(string $id, string $message): void {
-		$root   = $this->temporaryProject();
-		$tester = new CommandTester($this->tableCommand($root));
-
-		$statusCode = $tester->execute([
-			'name' => 'reports',
-			'--id' => $id,
-		]);
-
-		$this->assertSame(Command::FAILURE, $statusCode);
-		$this->assertStringContainsString($message, $tester->getDisplay());
-		$this->assertFileDoesNotExist($root . '/src/Database/Tables/Reports_Table.php');
 	}
 
 	/**

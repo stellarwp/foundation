@@ -12,7 +12,7 @@ use StellarWP\Foundation\Tests\TestCase;
 final class TableDefinitionTest extends TestCase
 {
 	public function test_column_modifiers_are_scoped_to_the_returned_column_definition(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 		$status     = $definition->string('status', 20);
 
 		$definition->string('category', 40);
@@ -26,7 +26,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_collects_columns_and_indexes(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->bigIncrements('id');
 		$definition->string('status', 20);
@@ -40,7 +40,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_quotes_index_names_and_columns_and_escapes_embedded_backticks(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->string('report`status');
 		$definition->index('report`lookup', 'report`status');
@@ -52,7 +52,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_defines_queue_style_columns_with_modifiers(): void {
-		$definition = TableDefinition::for(new TestTable('queue_table', 'queue'));
+		$definition = TableDefinition::for(new TestTable('queue'));
 
 		$definition->bigIncrements('id');
 		$definition->string('queue', 255);
@@ -86,7 +86,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_defines_less_common_column_helpers(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->bigInteger('remote_id')->unsigned();
 		$definition->string('status')->nullable()->notNull()->default('draft');
@@ -100,7 +100,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_defines_datetime_precision_boundaries(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->dateTime('seconds', 0);
 		$definition->dateTime('microseconds', 6);
@@ -119,7 +119,7 @@ final class TableDefinitionTest extends TestCase
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('Datetime precision must be between 0 and 6.');
 
-		TableDefinition::for(new TestTable('reports_table', 'reports'))
+		TableDefinition::for(new TestTable('reports'))
 			->dateTime('created_at', $precision);
 	}
 
@@ -134,7 +134,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_rejects_indexes_that_reference_missing_columns(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->string('status', 20);
 		$definition->index('missing_index', 'missing');
@@ -147,13 +147,13 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_rejects_tables_without_columns(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
-		$this->assertSame(['Table reports_table does not define any columns.'], $definition->validationErrors());
+		$this->assertSame(['Table reports does not define any columns.'], $definition->validationErrors());
 	}
 
 	public function test_it_rejects_invalid_final_column_states(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->bigIncrements('id')->nullable();
 		$definition->dateTime('completed_at')->default(null);
@@ -170,7 +170,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_final_column_validation_is_independent_of_modifier_order(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->bigIncrements('id')->nullable()->notNull();
 		$definition->dateTime('completed_at')->default(null)->nullable();
@@ -179,7 +179,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_rejects_an_unindexed_auto_increment_column(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->integer('sequence')->autoIncrement();
 
@@ -189,7 +189,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_rejects_multiple_auto_increment_columns(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->bigIncrements('id');
 		$definition->integer('legacy_id')->autoIncrement();
@@ -201,7 +201,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_requires_an_auto_increment_column_to_lead_its_index(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->string('tenant');
 		$definition->integer('sequence')->autoIncrement();
@@ -213,7 +213,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_accepts_an_auto_increment_column_leading_a_secondary_index(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->integer('sequence')->autoIncrement();
 		$definition->string('tenant');
@@ -226,21 +226,21 @@ final class TableDefinitionTest extends TestCase
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('An index must define at least one column.');
 
-		TableDefinition::for(new TestTable('reports_table', 'reports'))->index('empty_index');
+		TableDefinition::for(new TestTable('reports'))->index('empty_index');
 	}
 
 	public function test_it_rejects_duplicate_column_names_case_insensitively(): void {
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('Column status is already defined.');
 
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->string('Status')->nullable();
 		$definition->text('status');
 	}
 
 	public function test_it_matches_index_column_references_case_insensitively(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->string('Status');
 		$definition->index('status_lookup', 'status');
@@ -249,7 +249,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_reports_duplicate_primary_keys(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->bigIncrements('id');
 		$definition->string('status');
@@ -259,7 +259,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_reports_duplicate_index_names(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->bigIncrements('id');
 		$definition->string('status');
@@ -271,7 +271,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_reports_duplicate_index_names_case_insensitively(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->string('status');
 		$definition->string('type');
@@ -282,7 +282,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_reports_every_duplicate_index_name(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->string('status');
 		$definition->string('type');
@@ -298,7 +298,7 @@ final class TableDefinitionTest extends TestCase
 	}
 
 	public function test_it_rejects_primary_as_a_secondary_index_name(): void {
-		$definition = TableDefinition::for(new TestTable('reports_table', 'reports'));
+		$definition = TableDefinition::for(new TestTable('reports'));
 
 		$definition->bigIncrements('id');
 		$definition->string('status');

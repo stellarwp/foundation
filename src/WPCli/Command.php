@@ -2,18 +2,18 @@
 
 namespace StellarWP\Foundation\WPCli;
 
-use StellarWP\Foundation\Container\Contracts\Container;
-use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
+use StellarWP\Foundation\WPCli\Contracts\RegistrableCommand;
+use StellarWP\Foundation\WPCli\Exceptions\CommandAlreadyRegistered;
 use WP_CLI;
 use WP_CLI_Command;
 
 /**
- * Base class for WP-CLI commands that use the Foundation container.
+ * Base class for WP-CLI commands registered through Foundation.
  *
- * Extend this class in an application package when a command needs container
- * access and should register itself with WP-CLI using a consistent synopsis.
+ * Extend this class in an application package when a command should register
+ * itself with WP-CLI using a consistent synopsis and exit-status behavior.
  */
-abstract class Command extends WP_CLI_Command
+abstract class Command extends WP_CLI_Command implements RegistrableCommand
 {
 	protected const string POSITIONAL  = 'positional';
 	protected const string ASSOCIATIVE = 'assoc';
@@ -21,12 +21,7 @@ abstract class Command extends WP_CLI_Command
 	protected const int SUCCESS        = 0;
 	protected const int ERROR          = 1;
 
-	public function __construct(
-		protected Container $container,
-		private readonly CommandPrefix $commandPrefix
-	) {
-		parent::__construct();
-	}
+	private ?CommandContext $context = null;
 
 	/**
 	 * @param list<mixed>         $args
@@ -55,9 +50,22 @@ abstract class Command extends WP_CLI_Command
 
 	/**
 	 * Register the command with WP-CLI.
+	 *
+	 * @throws CommandAlreadyRegistered When this command instance has already been registered.
 	 */
-	public function register(): void {
-		WP_CLI::add_command($this->command(), function (array $args, array $assocArgs): void {
+	public function register(CommandContext $context): void {
+		if ($this->context !== null) {
+			throw new CommandAlreadyRegistered(sprintf(
+				'%s has already been registered as "%s".',
+				static::class,
+				$this->command($this->context)
+			));
+		}
+
+		$name           = $this->command($context);
+		$deferredBefore = WP_CLI::get_deferred_additions();
+
+		$registered = WP_CLI::add_command($name, function (array $args, array $assocArgs): void {
 			$status = $this->runCommand(array_values($args), $assocArgs);
 
 			if ($status !== self::SUCCESS) {
@@ -67,10 +75,25 @@ abstract class Command extends WP_CLI_Command
 			'shortdesc' => $this->description(),
 			'synopsis'  => $this->arguments(),
 		]);
+
+		$deferredAfter = WP_CLI::get_deferred_additions();
+		$wasDeferred   = array_key_exists($name, $deferredAfter)
+			&& (! array_key_exists($name, $deferredBefore) || $deferredAfter[$name] !== $deferredBefore[$name]);
+
+		if ($registered || $wasDeferred) {
+			$this->context = $context;
+		}
 	}
 
-	protected function command(): string {
-		return trim($this->commandPrefix->value . ' ' . $this->subcommand());
+	protected function command(CommandContext $context): string {
+		return $context->name($this->subcommand());
+	}
+
+	/**
+	 * Return the configured command name after this command has been registered.
+	 */
+	final protected function registeredCommandName(): ?string {
+		return $this->context === null ? null : $this->command($this->context);
 	}
 
 	/**
