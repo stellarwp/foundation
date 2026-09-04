@@ -106,6 +106,12 @@ Foundation providers register eagerly. Keep expensive services lazy by binding t
 In the same `src/Catalog/Catalog_Provider.php`, use a contextual binding when one class needs a scalar or a feature-specific implementation. Target scalar constructor arguments by their `$name`. Import Foundation's `Resolver` as `C` when a factory callback must resolve another service:
 
 ```php title="Catalog_Provider.php"
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
+```
+
+Then update the provider's catalog registration:
+
+```php title="Catalog_Provider.php"
 private function register_catalog(): void {
 	$this->container->when( Remote_Catalog::class )
 		->needs( '$endpoint' )
