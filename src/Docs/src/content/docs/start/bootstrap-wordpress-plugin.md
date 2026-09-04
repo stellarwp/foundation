@@ -131,7 +131,7 @@ function plugin(): App {
 	$container = ( new ContainerFactory() )->create( $config );
 
 	$app = App::instance(
-		dirname( __DIR__ ) . '/your-plugin.php',
+		dirname( __DIR__ ) . '/plugin.php',
 		$container
 	);
 
@@ -170,9 +170,9 @@ composer dump-autoload
 
 ## Start the application from the plugin entrypoint
 
-The root `your-plugin.php` can now load Composer and defer application startup to an appropriate WordPress hook:
+The root `plugin.php` can now load Composer and defer application startup to an appropriate WordPress hook:
 
-```php title="your-plugin.php"
+```php title="plugin.php"
 <?php declare(strict_types=1);
 
 /**
