@@ -11,7 +11,9 @@ final class ProviderTest extends TestCase
 {
 	public function test_it_makes_configuration_available_to_providers(): void {
 		$this->container->singleton(Configuration::class, new FixedConfiguration([
-			'fixture.value' => 'configured',
+			'fixture' => [
+				'value' => 'configured',
+			],
 		]));
 
 		$this->container->register(ConfigurationReadingProvider::class);

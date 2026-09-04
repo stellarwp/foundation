@@ -21,4 +21,41 @@ final class ArrayConfigurationTest extends TestCase
 		$this->assertNull($configuration->get('feature.value', 'fallback'));
 		$this->assertSame('fallback', $configuration->get('feature.missing', 'fallback'));
 	}
+
+	public function test_it_determines_whether_nested_values_exist(): void {
+		$configuration = new ArrayConfiguration([
+			'feature' => [
+				'enabled' => true,
+				'value'   => null,
+			],
+		]);
+
+		$this->assertTrue($configuration->has('feature.enabled'));
+		$this->assertTrue($configuration->has('feature.value'));
+		$this->assertFalse($configuration->has('feature.missing'));
+	}
+
+	public function test_it_returns_every_configuration_value(): void {
+		$values = [
+			'feature' => [
+				'enabled' => true,
+			],
+		];
+
+		$configuration = new ArrayConfiguration($values);
+
+		$this->assertSame($values, $configuration->all());
+	}
+
+	public function test_an_exact_key_takes_priority_over_its_dotted_path(): void {
+		$configuration = new ArrayConfiguration([
+			'feature.value' => 'exact',
+			'feature'       => [
+				'value' => 'nested',
+			],
+		]);
+
+		$this->assertTrue($configuration->has('feature.value'));
+		$this->assertSame('exact', $configuration->get('feature.value'));
+	}
 }

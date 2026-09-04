@@ -10,16 +10,30 @@ use StellarWP\Foundation\Container\Contracts\Configuration;
  */
 final readonly class ArrayConfiguration implements Configuration
 {
-	/** @var Dot<array-key, mixed> */
+	/** @var Dot<string, mixed> */
 	private Dot $configuration;
 
 	/**
 	 * Create configuration backed by the supplied application values.
 	 *
-	 * @param array<array-key, mixed> $configuration
+	 * @param array<string, mixed> $configuration
 	 */
 	public function __construct(array $configuration = []) {
 		$this->configuration = new Dot($configuration);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function all(): array {
+		return $this->configuration->all();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function has(string $key): bool {
+		return $this->configuration->has($key);
 	}
 
 	/**
