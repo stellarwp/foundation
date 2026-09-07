@@ -143,6 +143,8 @@ final class Provider extends Service_Provider {
 	}
 
 	private function register_cache_writer(): void {
+		$this->container->singleton( Product_Cache_Buffer::class );
+
 		$this->container->when( Product_Cache_Writer::class )
 			->needs( '$cache_key' )
 			->give( (string) $this->config->get( 'product_cache.key', 'your_plugin_products' ) );
@@ -164,7 +166,7 @@ final class Provider extends Service_Provider {
 }
 ```
 
-The contextual bindings target the task's `$cache_key` and `$ttl` constructor arguments. The container autowires `Product_Cache_Buffer`, applies those configured scalar values when the task collection is resolved, and then constructs the task.
+Register the buffer as a singleton so application services and the shutdown writer receive the same instance. Data collected during the request is then available when the writer is resolved at shutdown. The contextual bindings supply the writer's `$cache_key` and `$ttl` constructor arguments.
 
 `Task` is an immutable value object pairing one `Terminable` service with its priority. Lower values run first. Tasks with the same priority retain provider contribution order.
 
