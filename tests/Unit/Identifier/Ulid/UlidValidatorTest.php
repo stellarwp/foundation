@@ -13,15 +13,16 @@ final class UlidValidatorTest extends TestCase
 	 */
 	public static function invalidUlidProvider(): array {
 		return [
-			'empty'           => ['identifier' => ''],
-			'too short'       => ['identifier' => '01ARYZ6S41000000000000000'],
-			'too long'        => ['identifier' => '01ARYZ6S4100000000000000000'],
-			'lowercase'       => ['identifier' => '01aryz6s410000000000000000'],
-			'ambiguous i'     => ['identifier' => '01ARYZ6S41000000000000000I'],
-			'ambiguous l'     => ['identifier' => '01ARYZ6S41000000000000000L'],
-			'ambiguous o'     => ['identifier' => '01ARYZ6S41000000000000000O'],
-			'excluded u'      => ['identifier' => '01ARYZ6S41000000000000000U'],
-			'timestamp above' => ['identifier' => '81ARYZ6S410000000000000000'],
+			'empty'            => ['identifier' => ''],
+			'too short'        => ['identifier' => '01ARYZ6S41000000000000000'],
+			'too long'         => ['identifier' => '01ARYZ6S4100000000000000000'],
+			'trailing newline' => ['identifier' => "01ARYZ6S410000000000000000\n"],
+			'lowercase'        => ['identifier' => '01aryz6s410000000000000000'],
+			'ambiguous i'      => ['identifier' => '01ARYZ6S41000000000000000I'],
+			'ambiguous l'      => ['identifier' => '01ARYZ6S41000000000000000L'],
+			'ambiguous o'      => ['identifier' => '01ARYZ6S41000000000000000O'],
+			'excluded u'       => ['identifier' => '01ARYZ6S41000000000000000U'],
+			'timestamp above'  => ['identifier' => '81ARYZ6S410000000000000000'],
 		];
 	}
 
