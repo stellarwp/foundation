@@ -61,7 +61,7 @@ Set a stable application prefix in the root `config.php` for a standalone plugin
 
 return [
 	'foundation' => [
-		'prefix' => 'your-plugin',
+		'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? 'your-plugin',
 	],
 ];
 ```
@@ -86,7 +86,7 @@ Package-specific settings in the root `config.php` override values derived from 
 ```php title="config.php"
 return [
 	'foundation' => [
-		'prefix' => 'your-plugin',
+		'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? 'your-plugin',
 	],
 	'database' => [
 		'migrations_table' => $_ENV['FOUNDATION_DATABASE_MIGRATIONS_TABLE'] ?? '',
