@@ -19,72 +19,63 @@ Split packages:
 - `stellarwp/foundation-cli`
 - `stellarwp/foundation-docs`
 
-## Namespaces
+## Design Priorities
 
-Use package namespaces under `StellarWP\Foundation\<Package>\`.
+Foundation helps developers adopt capabilities quickly. Assume familiarity with DI and provider-based applications, but require no knowledge of package internals for ordinary use. Preserve correctness and operational guarantees; within those constraints, prioritize understandable consumer code, compatibility, supported customization, then internal conventions.
 
-## Code Organization
+- **Opinionated defaults:** offer a common, sensible implementation and provider wiring when the capability supports them. Require explicit configuration where values cannot safely be inferred. A package may provide contracts, standalone utilities, or a specific implementation without a provider or universal default. Offer additional implementations or integrations as separate `foundation-<name>` packages when they warrant their own dependencies or scope.
+- **Explicit extension points:** support meaningful application variations without requiring consumers to assemble internal collaborators. Each extension point should have an identifiable purpose.
+- **Progressive disclosure:** explain the recommended workflow, what the supplied implementation provides, and its relevant limits before advanced configuration or replacement.
 
-Prefer feature-first organization, also known as vertical slice architecture or package-by-feature, when adding command/tooling features. Group a command and its private collaborators under the command feature namespace.
+Use official Laravel documentation as inspiration for familiar naming, fluent APIs, complete examples, and progressive disclosure when relevant. Adopt patterns that fit Foundation's scope; do not copy Laravel's architecture wholesale. Avoid Laravel-style static facades and global service resolution. An ordinary injected object may provide a convenient facade over complex internals when it reduces what developers must coordinate or understand.
 
-For example, use:
+## Implementation Approach
 
-```text
-Commands/
-  Package/
-    Contracts/
-      PackageRepositoryCreator.php
-    CreateCommand.php
-    PackageResolver.php
-    PackageFilesValidator.php
-    GitHubPackageRepositoryCreator.php
-```
+For substantial features or API changes, briefly present a complete consumer example, responsibility ownership, supported variation, and representative implementation shape before broad implementation. Show enough setup and central service code to expose required choices, dependencies, and control flow. Reuse established package patterns; scale this preparation to the change rather than requiring a separate plan or approval for routine work.
 
-instead of splitting those private collaborators into broad technical folders too early.
+Implement and verify against those examples. Revisit settled decisions for demonstrated correctness, usability, required variation, or compatibility problems. Do not expand a refactor merely for architectural uniformity or hypothetical future requirements. A review against these instructions should identify concrete gaps, not trigger a repository-wide rewrite.
 
-If a collaborator is only useful for one command group, keep it under that command group's feature folder. If it becomes useful across multiple command groups, promote it to a broader domain or infrastructure namespace such as `Package/`, `GitHub/`, `Console/`, or `Process/`.
+For unreleased greenfield APIs with no consumers, correct demonstrated problems directly, without compatibility layers for abandoned designs. Preserve obligations to supported released versions separately. Before release, establish representative consumer and replacement tests as a compatibility baseline. Completion means the intended workflows and variations work with their documented guarantees, not that every imaginable extension exists.
 
-When it is very clear that a class will be reused by many similar features, promote it immediately instead of burying it in the first feature slice. This is especially true for command/tooling infrastructure where many commands will need the same capability, such as shell command formatting, process execution, console IO helpers, package discovery, or GitHub API clients.
+## Public APIs and Compatibility
 
-Feature-local interfaces should live in a `Contracts/` folder inside the feature slice, for example `Commands/Package/Contracts/PackageRepositoryCreator.php`. Only promote contracts to a package-level `Contracts/` namespace when they are intended to be shared across multiple features or consumed as public extension points.
+Distinguish APIs consumers call, contracts they implement, base classes they extend, and Foundation-owned internals. Document supported extension points and mark implementation-only types `@internal`; PHP visibility alone is not a compatibility policy. Account for constructors, protected hooks, returned types, generated code, configuration, persistent identifiers, and failure behavior as well as method signatures.
 
-Shared infrastructure interfaces should live under that shared namespace's `Contracts/` folder, for example `Process/Contracts/ProcessRunner.php`.
+Design contracts as the smallest coherent capabilities with meaningful substitution boundaries, not the fewest possible methods. Keep backend-specific behavior off general contracts. Use separate contracts for optional capabilities; where a provider supplies an implementation, bind its supported contracts coherently so application replacements work. Keep conveniences on concrete classes unless they are reusable capabilities, and keep internal helpers off the supported API.
 
-Design public contracts as the smallest stable capabilities consumers need so applications can replace the supplied implementation without inheriting unrelated backend assumptions. Do not put filesystem, database, transport, framework, or other implementation-specific behavior on a general contract merely because the default concrete class supports it. Use a separate capability contract when only some implementations provide optional behavior, and bind each supported contract to the default implementation in the package provider. Follow interface segregation and dependency inversion: application code should be able to supply a substantially different implementation without implementing meaningless methods or extending Foundation internals.
+Within a supported release line, do not add required methods to consumer-implemented interfaces or abstract classes, or infrastructure constructor requirements that consuming subclasses must mirror. Add optional behavior through separate capabilities or internally owned construction/lifecycle mechanisms. Generated application classes should declare application concerns while Foundation owns its infrastructure.
 
-Treat public interfaces, abstract classes, and generated base classes as long-lived application extension points. Do not add required methods to an existing public interface or abstract class, or add infrastructure constructor requirements that every consuming subclass must mirror. Introduce optional behavior through a separate capability contract or an internally owned context/factory so framework evolution does not force application-wide edits.
+## Code Organization and Construction
 
-Avoid scattered invariant enforcement where multiple methods must remember to call the same validation helper before using a value. Enforce each invariant once at the boundary that owns it, such as construction, parsing, or resolving a domain value, then make that guarantee part of the returned value or public contract so downstream code can rely on it. Repeat validation only at a genuinely independent trust boundary or when mutable external state can invalidate the guarantee.
+Use package namespaces under `StellarWP\Foundation\<Package>\`. Organize by component and feature, then local responsibility. Keep a command and private collaborators together, for example `Commands/Package/{CreateCommand,PackageResolver,PackageFilesValidator,GitHubPackageRepositoryCreator}.php` with `Contracts/PackageRepositoryCreator.php` beneath that feature.
 
-Do not declare empty constructors when PHP's implicit public constructor provides the same behavior. A private empty constructor is permitted when a constants holder or static utility must explicitly prevent instantiation.
+Promote collaborators shared across features to namespaces such as `Package/`, `GitHub/`, `Console/`, or `Process/`. Place clearly shared infrastructure there immediately when concrete planned consumers are known. Contracts belong in their owning namespace's `Contracts/` folder, such as `Process/Contracts/ProcessRunner.php`. Exceptions belong in the owning package or feature's `Exceptions/` folder.
 
-Keep convenience methods and implementation machinery on the concrete class unless they form a genuine reusable capability. Do not expose private helpers as public API speculatively. Prefer composition, and extract a focused collaborator when another real implementation needs to share the same policy or behavior.
+Prefer composition and cohesive, named responsibilities. Extract a collaborator when it owns a distinct policy, invariant, resource lifetime, substantial algorithm, or supported variation. Keep cohesive algorithms and ordinary control flow together; small methods, additional interfaces, and factories are not goals by themselves.
 
-Avoid `use ... as ...` import aliases unless they resolve a real class-name collision or ambiguity. Prefer importing the class by its actual short name. The standing exception is `use StellarWP\Foundation\Container\Contracts\Resolver as C;`, which may be used for concise container factory callbacks. Factory callbacks registered through Foundation container APIs must type-hint this Foundation resolver; raw `lucatume\DI52\Container` type references belong only in the Container package's backend adapter, default factory, and adapter-specific tests.
+Inject service collaborators through constructors. Do not hide fallback services behind nullable dependencies; supply defaults through a provider when appropriate, an owning factory, or documented composition. Direct `new` expressions inside application classes are for values/results, exceptions, PHP standard-library objects, and objects deliberately produced by an owning builder or factory. Do not create construction layers without a meaningful ownership or configuration responsibility.
 
-Exceptions should live in an `Exceptions/` folder. Put shared package exceptions at the package root, for example `src/Database/Exceptions/DatabaseException.php`; put feature-only exceptions under that feature's `Exceptions/` folder only when they are not shared outside that feature.
+Enforce invariants at their owning construction, parsing, or resolution boundary so downstream code can rely on them. Revalidate only across an independent trust boundary, after mutable state can invalidate the guarantee, or when completing a progressively built value. Feature-local value objects belong in `ValueObjects/`, should be `final readonly` where possible, and must not construct or resolve services.
 
-Add `@throws` PHPDoc annotations to methods and constructors for exceptions they intentionally throw or propagate as part of their contract. Keep the annotation specific enough that callers can understand validation, infrastructure, and failure behavior without reading the implementation.
+Encapsulate meaningful closed state behind named factories and predicates such as `isUnavailable()`. Expose raw state only for presentation or serialization. Simple transport DTO fields need not acquire getters or state machinery.
 
-Class and method docblocks must use multiline `/**`, content, and `*/` formatting; never place the complete docblock on one line. Public methods should begin with a concise explanation of their purpose or behavior instead of containing only tags such as `@param`, `@return`, or `@throws`; an implementation may use `{@inheritDoc}` when its public contract already provides that explanation. Add parameter detail when the value's meaning, format, or constraints are not clear from its name and type.
+## Source Conventions
 
-Generator commands should be grouped by the `make:*` workflow under `src/Cli/Commands/Make/`, for example `src/Cli/Commands/Make/WPCliCommand.php`. When a make feature grows beyond a single command class or needs private collaborators, group that feature under its own namespace such as `src/Cli/Commands/Make/Database/`. Command-specific collaborators should live inside that feature namespace, not beside unrelated command classes in `Commands/Make/`.
+Do not declare empty constructors when PHP's implicit public constructor suffices. Private empty constructors may prevent instantiation of static utilities or constants holders.
 
-Shared generation infrastructure that is not itself a console command and is reused across command features should live under `src/Cli/Generation/`.
+Avoid import aliases unless resolving a real collision or ambiguity. The standing exception is `use StellarWP\Foundation\Container\Contracts\Resolver as C;` for container factories.
 
-Default stubs should live with the package that owns the generated class shape. For example, WP-CLI command stubs live in `src/WPCli/stubs/` because the WPCli package owns the base `Command` API. The CLI package owns resolving, rendering, and writing generated files.
+Use multiline class and method docblocks. Public methods begin with a concise purpose or `{@inheritDoc}`. Describe unclear parameter constraints, and add specific `@throws` annotations for intentional validation, infrastructure, and propagated failures so callers need not inspect implementation details.
 
-Project-level stub overrides should use `foundation/stubs/<feature>/`, for example `foundation/stubs/wpcli/command.stub`.
+## Generators
 
-When generating classes intended for WordPress projects, use Snake_Case class names and WordPress formatting in the generated stub output, even though Foundation source follows this repository's formatter.
+Group `make:*` commands under `src/Cli/Commands/Make/`. A feature with private collaborators gets its own namespace, such as `Make/Database/`. Shared non-command generation infrastructure belongs in `src/Cli/Generation/`.
 
-Generators that write references to Foundation classes should detect `extra.strauss.namespace_prefix` from the consuming project's `composer.json` and render those Foundation imports with the configured prefix.
+Default stubs belong to the package owning the generated API, for example `src/WPCli/stubs/`. The CLI owns resolving, rendering, and writing files. Project overrides use `foundation/stubs/<feature>/`, such as `foundation/stubs/wpcli/command.stub`.
 
-Generator stubs should use context-aware placeholders for PHP literals, such as `{{ description_php }}` instead of raw `{{ description }}` inside quoted PHP strings.
+Generate WordPress code with Snake_Case classes and WordPress formatting. Detect `extra.strauss.namespace_prefix` in the consumer's `composer.json` and prefix generated Foundation imports. Use context-aware PHP literal placeholders such as `{{ description_php }}` rather than raw text inside quoted strings.
 
 Migration generators must not offer a force-overwrite option. Existing migrations are identity-bearing history: edit a migration only before it has been applied anywhere, or create a new migration for a new schema change.
-
-Migration IDs determine forward execution order. Collect all provider contributions into one migration collection, sort them globally in ascending byte-exact ID order, and then run only pending migrations. Provider registration and contribution order must not affect forward execution. Rollbacks must use the reverse of actual ledger execution order rather than reverse migration-ID order. Generated timestamp IDs provide the normal sortable convention; explicit custom IDs remain valid and assume responsibility for their lexical position.
 
 Database migration generators must distinguish table ownership from a table dependency through explicit options. Only `make:database-migration <name> --create=<table-class>` may use the create-table stub whose migration-owned blueprint defines the complete initial schema and whose rollback drops the complete table. `make:database-migration <name> --table=<table-class>` selects an alteration migration: inject the existing table, declare only the explicit additions, changes, and removals owned by that migration, and default `down()` to `IrreversibleMigration` until the developer supplies a safe inverse. The options are mutually exclusive and accept either a short class from the default table namespace or a fully qualified class. Never infer destructive behavior from a migration name. `make:database-table <name> --migration` must reuse the same create-migration factory so combined and standalone generation remain consistent.
 
@@ -114,43 +105,29 @@ If local scaffolding assets such as `foundation/stubs/` should not be included i
 
 ## Container Providers
 
-When writing providers or container registration code, prefer container-driven construction over inline factories with explicit `new` calls. Bind classes and interfaces directly when the container can autowire them.
+When a package provides container integration, bind autowireable classes and interfaces directly. Use contextual `when()->needs()->give()` bindings for scalar arguments, collections, and substitutions. Use closures for computed or resolved dependencies; keep construction in owning providers or factories.
 
-All providers extend `Provider`, whose final constructor receives the `Container` and resolves the application-lifetime `Configuration` snapshot. Providers may use the inherited `$this->config` property when needed and ignore it otherwise; do not introduce separate configured and unconfigured provider base classes that force developers to choose between provider shapes. Provider subclasses must not declare constructors or repeat Foundation infrastructure dependencies. Bind the Foundation `Configuration` contract before registering providers. Keep third-party configuration implementations such as `Adbar\Dot` behind a Foundation-owned adapter rather than exposing them in provider signatures or application services.
+All providers extend `Provider`. Its final constructor receives `Container` and resolves the application-lifetime `Configuration` snapshot; subclasses use `$this->config` when needed and must not declare constructors. Keep one provider shape. Bind `Configuration` before registering providers, and keep third-party implementations such as `Adbar\Dot` behind a Foundation-owned adapter.
 
 Foundation providers have one eager `register()` lifecycle. Keep deferred construction in lazy service bindings rather than adding provider-level `provides()`, `isDeferred()`, or `boot()` phases tied to a particular container engine. Providers that append to additive collections or register hooks must make repeated registration idempotent so a second `register()` call does not duplicate contributions or callbacks.
 
-Use `StellarWP\Foundation\Container\ContainerFactory` at application and tooling composition roots when creating Foundation's default container. Do not repeat the DI52 adapter construction or core `Container`, `Resolver`, `ContainerInterface`, and `Configuration` bindings in consuming code. Construct `ContainerAdapter` directly only in adapter-specific tests or when deliberately integrating a separately owned DI52 instance.
+Use `StellarWP\Foundation\Container\ContainerFactory` at composition roots for the default container; it owns DI52 construction and core contract bindings. Construct `ContainerAdapter` directly only in adapter-specific tests or deliberate integration with a separately owned DI52 instance.
 
-Container factory closures receive `StellarWP\Foundation\Container\Contracts\Resolver`, not the underlying DI engine. Type-hint that contract whenever a factory must resolve another service so generated and application code remains independent of DI52.
+Container factory closures receive `StellarWP\Foundation\Container\Contracts\Resolver`; type-hint it whenever resolving another service. Raw `lucatume\DI52\Container` references belong only in the Container backend adapter, default factory, and adapter-specific tests.
 
 Container contracts and application code must use Foundation-owned container exceptions. Keep backend exceptions, raw-container accessors, and magic passthrough methods inside the adapter implementation so replacing the underlying engine requires changes only at the composition root and adapter boundary.
 
-Use contextual bindings with `$this->container->when()->needs()->give()` for scalar constructor arguments, command lists, or feature-specific substitutions. Use a factory closure only when the value must be computed or resolved from the container, and keep that closure focused on supplying the constructor dependency rather than constructing the full object.
-
-Foundation package providers must define their internal container identifiers, including scalar bindings and additive collection contribution points, with `self::class . '.descriptive_suffix'` instead of global literal strings. This allows namespace prefixing tools such as Strauss to scope the identifier to the prefixed provider class. Consuming applications should instead use stable text identifiers prefixed with their application or plugin name, for example `your-plugin.report.exporters`. Do not apply class-derived identifiers to configuration keys, persistent database or cache identifiers, lock names, channel names, WP-CLI command names, or other externally visible values that must remain stable across builds.
-
-Keep provider-owned scalar and implementation wiring identifiers private. Make an identifier public only when it is an intentional consumer extension point, such as an additive migration, command, or shutdown-task collection. Tests should prefer asserting the resolved service behavior over reading private container entries.
-
-Classes should take the dependencies they need directly. Do not make constructor dependencies nullable just to instantiate fallback concrete classes internally, for example `?Dependency $dependency = null` with `$this->dependency = $dependency ?? new Dependency()`. Register default implementations and aliases in a provider instead so consumers can replace them through container configuration.
+Foundation provider identifiers use `self::class . '.descriptive_suffix'` so Strauss scopes them, including scalar bindings and additive collections. Keep wiring identifiers private; expose intentional contribution points such as migration, command, and shutdown-task collections. Test resolved behavior rather than private entries. Application identifiers use stable text such as `your-plugin.report.exporters`. Configuration keys, persistent database/cache identifiers, lock/channel names, and WP-CLI commands must remain stable across builds, independent of PHP namespaces.
 
 Use the optional `foundation.prefix` configuration key when Foundation-managed resources must be scoped to a consuming application. Its effective zero-configuration value is `nx`; providers should derive their default resource names from that shared value instead of repeating their own fallbacks. Distributable plugins must configure a stable, unique prefix so separate Foundation consumers do not share resources. Documentation and examples should use a generic lowercase kebab-case value such as `your-plugin`, never a developer-specific project name. Package-specific settings must take priority over values derived from the shared prefix.
 
-Classes should receive service collaborators through constructor injection. Direct `new` expressions inside application classes are reserved for immutable value or result objects, exceptions, PHP standard-library objects, and objects deliberately produced by an owning builder or factory. Keep feature-local value objects under that feature's `ValueObjects/` namespace. Value objects should be `final readonly` where possible and must not resolve or construct service dependencies.
+Organize substantial provider registration into focused methods such as `registerMigrations()` or `registerLocks()`, keeping contextual bindings beside the classes they configure. Group by capability, not container mechanism. A small, cohesive `register()` need not delegate merely for uniformity.
 
-Encapsulate closed domain state behind intention-revealing query methods. Do not require consumers to compare a public primitive property with class constants, for example `$status->state === Status::UNAVAILABLE`; keep the representation private and prefer predicates such as `$status->isUnavailable()`. Use named factories to construct valid states, and expose a raw state value only when presentation or serialization genuinely requires it. Apply this rule to objects that own state meaning or invariants, not mechanically to simple transport DTO fields.
-
-Organize provider registration by feature or capability, not by container mechanism. The main `register()` method should call focused private methods such as `registerConfiguration()`, `registerMigrations()`, `registerLocks()`, or `registerCliCommands()`. Keep each feature's contextual bindings beside the classes they configure. Avoid generic methods such as `configureContextualBindings()` that group unrelated bindings only because they use the same container API.
-
-Treat configured pipelines as provider-owned services. Bind each distinct pipe sequence under a feature-local container identifier, then use a contextual binding to give each consumer the pipeline it needs. Consumers should send values and choose the destination without assembling their own pipe lists. Use `bind()` rather than `singleton()` because `Pipeline` carries mutable execution state.
-
-Provider code may depend on the concrete `Pipeline` to configure `through()`, `pipe()`, or `via()`. Application services that only execute a configured pipeline should depend on `StellarWP\Foundation\Pipeline\Contracts\Pipeline` so the execution implementation remains replaceable. Always inject the Foundation `Resolver` when constructing the supplied concrete pipeline; do not depend on registration APIs it does not use or reintroduce a nullable resolver or setter-based partial lifecycle.
+Configure application pipe sequences in providers under feature-local identifiers and inject them contextually. Use `bind()`, not `singleton()`, because `Pipeline` carries mutable execution state. Providers may use the concrete pipeline's `through()`, `pipe()`, and `via()` methods; consumers execute through `StellarWP\Foundation\Pipeline\Contracts\Pipeline`, sending values and choosing destinations. Construct the supplied pipeline with the Foundation `Resolver`, without registration dependencies, nullable fallbacks, or setter-based initialization.
 
 Register infrastructure providers and top-level feature providers from the application's composition root, such as the ordered provider list in `App.php`. A provider that registers definitions, configuration, or hooks must not also register other providers. The exception is a feature composition provider whose sole responsibility is registering that feature's internal providers; it should contain no service bindings, configuration, hooks, or other behavior. Keep cross-feature and application-level dependencies visible in the `App.php` provider list.
 
-## Split Packages
-
-Split packages live in `src/<Package>/` and are split to read-only repositories named `stellarwp/foundation-<package>`.
+## Database
 
 `stellarwp/foundation-database` is a WordPress-backed database package. Keep its runtime implementation centered on `wpdb`, `dbDelta()`, WordPress table prefixes, and WP-CLI integration. If the project later needs file storage, Redis storage, PDO database support, or another non-WordPress backend, prefer a separate package or explicit driver package instead of making `foundation-database` a generic DBAL-style abstraction.
 
@@ -164,7 +141,13 @@ Keep the concrete `Database` as the convenient complete facade, but add new impl
 
 Foundation Database and Schema operations should accept `Table` instances rather than offering parallel string table-name arguments. Keep unprefixed strings at the table construction and prefix-resolution boundary instead of exposing them as an alternative developer workflow.
 
+Migration IDs determine forward execution order. Collect all provider contributions into one migration collection, sort globally in ascending byte-exact ID order, and run pending migrations. Contribution order must not affect execution. Rollbacks reverse actual ledger execution order. Generated timestamps provide sortable IDs; custom IDs remain valid and assume responsibility for their lexical position.
+
 Foundation Database stores unprefixed table names and applies the active WordPress site's prefix through `DatabaseScope` on every access. The same container and database services may be reused after `switch_to_blog()` between complete `Migrator` calls. Each migration operation must capture its starting scope and reject a context change before lock renewal, ledger writes, or lock release; when the context is uncertain, leave the original lock to expire rather than touching another site's lock table. A migration must never call `switch_to_blog()` itself, even temporarily, because restoring the original site before a boundary check would hide schema writes made in the wrong scope. Keep developer-authored `Migration` and `Schema` contracts independent of site scope so a future network-wide implementation can use `$wpdb->base_prefix` and network-specific state without requiring migration rewrites.
+
+## Split Packages
+
+Split packages live in `src/<Package>/` and are split to read-only repositories named `stellarwp/foundation-<package>`.
 
 When adding a new split package, set its package `composer.json` PHP constraint to `>=8.3` unless the user explicitly says otherwise. PHP 7.4 release compatibility will be handled later by an automated Rector downgrade workflow, not by lowering the package PHP constraint during development.
 
@@ -236,17 +219,13 @@ Use `composer monorepo list` to inspect available Monorepo Builder commands.
 
 ## Documentation
 
-The documentation site lives in `src/Docs/` and uses Astro with Starlight. Use the Node version in `src/Docs/.nvmrc`, install dependencies with `npm ci`, and run `npm run build` from `src/Docs/` after documentation changes.
+The documentation site lives in `src/Docs/` and uses Astro with Starlight. For site changes, use the Node version in `src/Docs/.nvmrc`, install dependencies with `npm ci`, and run `npm run build` there.
 
 Same-repository documentation pull requests are previewed from the monorepo workflow. Production documentation is deployed only for published stable releases by the tag workflow that is split into `stellarwp/foundation-docs`; never deploy documentation production from a push to the monorepo's `main` branch. Both workflows use the `foundation-docs` Cloudflare Pages project through Direct Upload, configured with `production` as its production branch.
 
-Write public documentation as current product documentation. Do not mention implementation phases, review checkpoints, future documentation work, or temporary plans. If code behavior, public APIs, package requirements, configuration, or supported integrations change, update the relevant documentation in the same change. Add a component guide and sidebar entry when adding a public split package.
+Document the current product, without implementation phases or temporary plans. Update relevant guides alongside behavior, API, dependency, configuration, or integration changes. New public packages need a component guide and sidebar entry. Keep split READMEs to an overview, installation, and canonical guide links.
 
-Once a component has a central documentation guide, keep its split-package `README.md` focused on a short overview, installation, and links to the canonical guide. Do not duplicate full configuration and usage documentation across the README and documentation site.
-
-Structure component guides for scanning. Prefer a small set of root sections such as `Installation`, `Configuration`, `Usage`, and `Testing`, with task-oriented subsections beneath them. Avoid a long flat list of root headings. Lead with the decision a developer must make, then show installation, configuration, the simplest complete use case, important failure behavior, and testing.
-
-When one component exposes several independently used capabilities, use a concise overview page with nested task guides instead of forcing every capability into one long page. Keep shared installation and configuration on the overview, then give each task guide one clear ownership boundary. Link to canonical shared behavior rather than duplicating it across component pages.
+Lead guides with what the package provides and its simplest complete use case: installation, essential configuration and provider registration where applicable, useful operations, failures, and testing. Introduce customization afterward. Use a few root sections with task-oriented subsections; independently used capabilities get nested task guides under a shared overview. Link shared behavior rather than duplicating it.
 
 Place operational warnings beside the decision or API behavior they qualify. State the concrete failure mode, distinguish expected outcomes from infrastructure failures, tell the developer whether to skip, retry, or abort, and include compact pseudocode when the response would otherwise remain ambiguous.
 
@@ -260,11 +239,13 @@ Documentation examples for consuming WordPress projects should use Snake_Case cl
 
 WP-CLI command class examples should include one or more `@example` annotations showing the complete `wp <prefix> <subcommand>` invocation, including a representative invocation with options or flags when applicable.
 
-Use the canonical application architecture in WordPress examples: `App` owns the request singleton, providers are registered in explicit dependency order, and feature providers group definitions and hooks by capability. Use `$this->container->callback(ClassName::class, 'method')` for WordPress callbacks when the container should resolve the service lazily.
+When examples include WordPress application bootstrap, use the canonical architecture: `App` owns the request singleton, providers register in explicit dependency order, and feature providers group definitions and hooks by capability. Use `$this->container->callback(ClassName::class, 'method')` for lazy WordPress callbacks.
 
 Keep full source paths in the prose immediately before code examples and use only the filename in a code-block `title`. Nova's Shiki metadata parser interprets path segments such as `/Lock/` as word-highlighting instructions and otherwise adds unintended borders around matching code tokens.
 
 ## Verification
+
+Test observable behavior, operational guarantees, and supported substitutions. Keep representative consumer fixtures, including generated class shapes, stable after establishing the release baseline; changing them during an internal refactor requires a compatibility explanation. Avoid tests that merely mirror trivial construction or private wiring. Extend existing coverage rather than creating a test for every class mechanically.
 
 When `composer lint` reports style-only issues, run `composer format` to let the project formatter fix them before making manual formatting edits.
 
