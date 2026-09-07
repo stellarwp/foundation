@@ -227,9 +227,9 @@ The provider's `through()` call accepts several pipe forms:
 
 | Pipe | Behavior |
 | --- | --- |
-| Class name | Resolved through the container; `handle()` is called when present, otherwise the object must be invokable |
-| Object | Used directly; `handle()` is called when present, otherwise the object must be invokable |
-| Callable | Called directly with the current value and `$next` |
+| Class name | Resolved through the container; the configured method (`handle()` by default) is called when present, otherwise the resolved object is invoked |
+| Non-invokable object | Used directly through the configured method (`handle()` by default) |
+| Callable, including an invokable object | Called directly with the current value and `$next`, even when the object also defines the configured method |
 | `ClassName:param1,param2` | Resolved through the container and given the extra string parameters after `$next` |
 
 Prefer class-name pipes for reusable application behavior because their constructor dependencies remain injectable. Closures are useful for a small operation local to one configured pipeline:
@@ -278,7 +278,7 @@ Parameters from the pipe string are always strings. Prefer constructor injection
 
 ### Use a different pipe method
 
-Pipes use `handle()` by default. Configure `via()` when every object pipe in that pipeline exposes another method:
+Pipes supplied as class names or non-invokable objects use `handle()` by default. Configure `via()` to select another method for those pipes:
 
 ```php
 static fn ( C $c ): Pipeline => $c->get( Pipeline::class )
@@ -289,7 +289,7 @@ static fn ( C $c ): Pipeline => $c->get( Pipeline::class )
 	] );
 ```
 
-Both classes in this example must expose `process( $value, Closure $next )`. Use `through()` to replace the configured pipe list and `pipe()` to append additional pipes.
+Both classes in this example expose `process( $value, Closure $next )`. Callables, including objects passed directly with an `__invoke()` method, are invoked directly regardless of `via()`. Use `through()` to replace the configured pipe list and `pipe()` to append additional pipes.
 
 ## Testing
 

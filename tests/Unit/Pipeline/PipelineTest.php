@@ -8,6 +8,7 @@ use RuntimeException;
 use StellarWP\Foundation\Pipeline\Contracts\Pipeline as PipelineContract;
 use StellarWP\Foundation\Pipeline\Exceptions\PipelineNotStarted;
 use StellarWP\Foundation\Pipeline\Pipeline;
+use StellarWP\Foundation\Tests\Support\Fixtures\Pipeline\MultipleMethodsPipe;
 use StellarWP\Foundation\Tests\Support\Pipeline\PipelineParameterizedStage;
 use StellarWP\Foundation\Tests\Support\Pipeline\PipelineStageOne;
 use StellarWP\Foundation\Tests\Support\Pipeline\PipelineStageTwo;
@@ -158,6 +159,18 @@ final class PipelineTest extends TestCase
 			->thenReturn();
 
 		$this->assertSame('A Sample String', $result);
+	}
+
+	public function test_invokable_objects_take_precedence_over_default_and_configured_methods(): void {
+		$pipe = new MultipleMethodsPipe();
+
+		$this->assertSame('value:invoke', $this->pipeline->through($pipe)->send('value')->thenReturn());
+		$this->assertSame('value:handle', $this->pipeline->through(MultipleMethodsPipe::class)->send('value')->thenReturn());
+
+		$this->pipeline->via('process');
+
+		$this->assertSame('value:invoke', $this->pipeline->through($pipe)->send('value')->thenReturn());
+		$this->assertSame('value:process', $this->pipeline->through(MultipleMethodsPipe::class)->send('value')->thenReturn());
 	}
 
 	public function test_it_rethrows_when_an_object_pipe_has_no_callable_handler(): void {
