@@ -14,7 +14,7 @@ use StellarWP\Foundation\Database\Schema\Contracts\SchemaExecutor;
 final class DbDelta implements SchemaExecutor
 {
 	/**
-	 * Execute dbDelta and fail when WordPress reports unapplied schema work.
+	 * Apply schema SQL through WordPress; the caller verifies the resulting schema.
 	 *
 	 * @throws DatabaseException When dbDelta or the global WordPress database is unavailable.
 	 * @throws QueryException    When dbDelta reports a database error while executing SQL.
@@ -39,41 +39,5 @@ final class DbDelta implements SchemaExecutor
 		if ($wpdb->last_error !== '') {
 			throw new QueryException($wpdb->last_error, $sql, [], $wpdb->last_error);
 		}
-
-		$pending = dbDelta([$sql], false);
-		$pending = array_filter(
-			$pending,
-			fn (string $change): bool => ! $this->createdTableExists($change, $wpdb)
-		);
-
-		if ($pending !== []) {
-			throw new DatabaseException(sprintf(
-				'Database schema reconciliation did not complete: %s',
-				implode('; ', $pending)
-			));
-		}
-	}
-
-	/**
-	 * Ignore WordPress 6.2's stale dry-run result for a table that was created successfully.
-	 *
-	 * @throws QueryException When WordPress cannot verify the table.
-	 */
-	private function createdTableExists(string $change, \wpdb $wpdb): bool {
-		$prefix = 'Created table ';
-
-		if (! str_starts_with($change, $prefix)) {
-			return false;
-		}
-
-		$table = trim(substr($change, strlen($prefix)), '`');
-		$query = $wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table));
-		$found = $wpdb->get_var($query);
-
-		if ($wpdb->last_error !== '') {
-			throw new QueryException($wpdb->last_error, 'SHOW TABLES LIKE %s', [$table], $wpdb->last_error);
-		}
-
-		return $found === $table;
 	}
 }

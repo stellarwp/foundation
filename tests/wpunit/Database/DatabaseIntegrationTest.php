@@ -403,6 +403,87 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertSame('decimal(10,2)', strtolower((string) ($amount['Type'] ?? '')));
 	}
 
+	public function test_schema_creates_and_retries_decimal_declarations_without_changing_stored_data(): void {
+		$table     = new TestTable($this->unprefixedTable('decimal_retry'));
+		$blueprint = Blueprint::for($table);
+		$columns   = [
+			new Column('amount', 'decimal(12)'),
+			new Column('numeric_amount', 'NUMERIC(12)'),
+			new Column('dec_amount', 'dec(12)'),
+			new Column('separate_precision', 'decimal', 12),
+			new Column('numeric_precision', 'numeric', 12),
+			new Column('dec_precision', 'dec', 12),
+			new Column('default_precision', 'decimal'),
+			new Column('numeric_default', 'numeric'),
+			new Column('dec_default', 'dec'),
+		];
+		$data = [];
+
+		foreach ($columns as $column) {
+			$blueprint->column($column);
+			$data[$column->name] = 42;
+		}
+
+		$this->schema->create($blueprint);
+		$this->database->insert($table, $data);
+
+		$statements = [];
+		$recordDdl  = static function (string $sql) use (&$statements): string {
+			if (preg_match('/\A\s*(?:CREATE|ALTER|DROP)\b/i', $sql) === 1) {
+				$statements[] = $sql;
+			}
+
+			return $sql;
+		};
+		add_filter('query', $recordDdl);
+
+		try {
+			$this->schema->create($blueprint);
+		} finally {
+			remove_filter('query', $recordDdl);
+		}
+
+		$this->assertSame([], $statements);
+		$this->assertSame([array_map(strval(...), $data)], $this->database->rows('SELECT * FROM %i', $this->database->tableName($table)));
+	}
+
+	/**
+	 * @dataProvider omittedSchemaDeclarations
+	 */
+	#[DataProvider('omittedSchemaDeclarations')]
+	public function test_schema_detects_unapplied_declarations_after_db_delta_returns(string $omitted, string $message): void {
+		$table     = new TestTable($this->unprefixedTable('unapplied_schema'));
+		$blueprint = Blueprint::for($table);
+		$blueprint->bigIncrements('id');
+		$blueprint->string('status', 20);
+		$blueprint->index('id_lookup', 'id');
+
+		// Simulate WordPress applying only part of the requested definition.
+		$omitDeclaration = static fn (array $queries): array => array_map(
+			static fn (string $sql): string => str_replace($omitted, '', $sql),
+			$queries
+		);
+		add_filter('dbdelta_create_queries', $omitDeclaration);
+
+		try {
+			$this->expectException(DatabaseException::class);
+			$this->expectExceptionMessage($message);
+			$this->schema->create($blueprint);
+		} finally {
+			remove_filter('dbdelta_create_queries', $omitDeclaration);
+		}
+	}
+
+	/**
+	 * @return array<string, array{string, string}>
+	 */
+	public static function omittedSchemaDeclarations(): array {
+		return [
+			'column' => ["  `status` varchar(20) NOT NULL,\n", '.status'],
+			'index'  => [",\n  KEY `id_lookup` (`id`)", 'index id_lookup expected KEY (id), found missing'],
+		];
+	}
+
 	public function test_schema_rejects_an_existing_table_with_an_incompatible_charset(): void {
 		$table     = new TestTable($this->unprefixedTable('wrong_charset'));
 		$tableName = $this->database->tableName($table);
@@ -562,16 +643,20 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$default             = "customer's \\ path";
 		$definition          = Blueprint::for($tableObject);
 		$definition->bigIncrements('id');
-		$definition->string('label', 100)->default('initial');
+		$definition->string('label', 100)->default($default);
 		$this->schema->create($definition);
+		$this->schema->create($definition);
+		$this->database->execute('INSERT INTO %i () VALUES ()', $tableName);
+		$this->assertSame($default, $this->database->value('SELECT label FROM %i WHERE id = 1', $tableName));
 
-		$change = Blueprint::for($tableObject);
+		$default = "updated customer's \\ path";
+		$change  = Blueprint::for($tableObject);
 		$change->string('label', 100)->default($default)->change();
 		$this->schema->alter($change);
 		$this->schema->alter($change);
 		$this->database->execute('INSERT INTO %i () VALUES ()', $tableName);
 
-		$this->assertSame($default, $this->database->value('SELECT label FROM %i LIMIT 1', $tableName));
+		$this->assertSame($default, $this->database->value('SELECT label FROM %i WHERE id = 2', $tableName));
 	}
 
 	public function test_schema_explicitly_changes_numeric_defaults_and_nullability(): void {

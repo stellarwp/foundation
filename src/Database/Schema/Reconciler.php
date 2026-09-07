@@ -38,7 +38,10 @@ final readonly class Reconciler
 		$table = $blueprint->table();
 		$this->executor->execute($this->createTableSql($table, $blueprint));
 		$this->applyBinaryDefaults($table, $blueprint);
-		$this->assertMatches($blueprint, $this->reconcileColumns($table, $blueprint));
+
+		$columnProperties = $this->reconcileColumnComments($table, $blueprint);
+
+		$this->assertMatches($blueprint, $columnProperties);
 	}
 
 	/**
@@ -225,7 +228,7 @@ final readonly class Reconciler
 	 *
 	 * @return array<string, ColumnProperties>
 	 */
-	private function reconcileColumns(Table $table, Blueprint $blueprint): array {
+	private function reconcileColumnComments(Table $table, Blueprint $blueprint): array {
 		$columnProperties = [];
 
 		foreach ($blueprint->columns() as $column) {

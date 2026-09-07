@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Tests\Unit\Database\Table;
 
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use StellarWP\Foundation\Database\Table\Column;
 use StellarWP\Foundation\Database\Table\ValueObjects\ColumnComment;
 use StellarWP\Foundation\Tests\TestCase;
@@ -83,6 +84,34 @@ final class ColumnTest extends TestCase
 			['Column completed_at cannot use DEFAULT NULL unless it is nullable.'],
 			(new Column('completed_at', 'datetime', hasDefault: true))->validationErrors()
 		);
+	}
+
+	/**
+	 * @dataProvider decimalTypes
+	 */
+	#[DataProvider('decimalTypes')]
+	public function test_it_normalizes_decimal_precision_and_scale(string $type, ?int $length, string $expected): void {
+		$this->assertSame($expected, (new Column('amount', $type, $length))->typeSql());
+	}
+
+	/**
+	 * @return array<string, array{string, ?int, string}>
+	 */
+	public static function decimalTypes(): array {
+		return [
+			'precision'                  => ['decimal(12)', null, 'decimal(12,0)'],
+			'numeric precision'          => ['NUMERIC(12)', null, 'decimal(12,0)'],
+			'dec precision'              => ['dec(12)', null, 'decimal(12,0)'],
+			'separate precision'         => ['decimal', 12, 'decimal(12,0)'],
+			'numeric separate precision' => ['numeric', 12, 'decimal(12,0)'],
+			'dec separate precision'     => ['dec', 12, 'decimal(12,0)'],
+			'default precision'          => ['decimal', null, 'decimal(10,0)'],
+			'numeric default precision'  => ['numeric', null, 'decimal(10,0)'],
+			'dec default precision'      => ['dec', null, 'decimal(10,0)'],
+			'explicit scale'             => ['decimal(12, 2)', null, 'decimal(12,2)'],
+			'numeric explicit scale'     => ['NUMERIC(12, 2)', null, 'decimal(12,2)'],
+			'dec explicit scale'         => ['dec(12, 2)', null, 'decimal(12,2)'],
+		];
 	}
 
 	public function test_it_rejects_auto_increment_on_non_integer_columns(): void {

@@ -82,9 +82,8 @@ final readonly class Column
 	 */
 	public function typeSql(): string {
 		return sprintf(
-			'%s%s%s',
+			'%s%s',
 			$this->canonicalType(),
-			$this->length === null ? '' : sprintf('(%d)', $this->length),
 			$this->unsigned ? ' unsigned' : ''
 		);
 	}
@@ -173,6 +172,10 @@ final readonly class Column
 	private function canonicalType(): string {
 		$type = trim($this->type);
 
+		if ($this->length !== null) {
+			$type .= sprintf('(%d)', $this->length);
+		}
+
 		if (preg_match('/\Adouble\s+precision\z/i', $type) === 1) {
 			return 'double';
 		}
@@ -182,7 +185,11 @@ final readonly class Column
 		}
 
 		if (preg_match('/\A(?:decimal|numeric|dec)\s*\(\s*(\d+)\s*\)\z/i', $type, $parts) === 1) {
-			return sprintf('decimal(%d)', (int) $parts[1]);
+			return sprintf('decimal(%d,0)', (int) $parts[1]);
+		}
+
+		if (preg_match('/\A(?:decimal|numeric|dec)\z/i', $type) === 1) {
+			return 'decimal(10,0)';
 		}
 
 		return $type;

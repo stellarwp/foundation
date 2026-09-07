@@ -230,6 +230,8 @@ $blueprint->column( new Column( 'amount', 'decimal(10,2)' ) )->default( 0 );
 $blueprint->column( new Column( 'checksum', 'varbinary', 32 ) )->nullable();
 ```
 
+For decimal columns, specify both precision and scale when fractional values are needed, such as `decimal(10,2)`. Omitting the scale uses zero fractional digits: `decimal(10)` and `new Column( 'amount', 'decimal', 10 )` both declare `decimal(10,0)`. Omitting precision as well uses `decimal(10,0)`. The `numeric` and `dec` aliases follow the same rules.
+
 ### Add indexes
 
 In `src/Database/Migrations/Create_Reports_Table.php`, declare indexes after their columns. Index names must be unique within the table, and composite index columns are stored in the order provided:

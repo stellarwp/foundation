@@ -12,9 +12,9 @@ use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 interface SchemaExecutor
 {
 	/**
-	 * Apply a complete schema definition to the configured database.
+	 * Execute a schema definition; the caller verifies the resulting physical state.
 	 *
-	 * @throws DatabaseException When the schema definition cannot be applied completely.
+	 * @throws DatabaseException When schema execution is unavailable or reports a database error.
 	 */
 	public function execute(string $sql): void;
 }
