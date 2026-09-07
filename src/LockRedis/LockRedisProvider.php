@@ -5,6 +5,7 @@ namespace StellarWP\Foundation\LockRedis;
 use InvalidArgumentException;
 use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use StellarWP\Foundation\Container\Traits\ResolvesFoundationPrefix;
 use StellarWP\Foundation\Lock\Contracts\Clock;
 use StellarWP\Foundation\Lock\SystemClock;
 
@@ -13,12 +14,14 @@ use StellarWP\Foundation\Lock\SystemClock;
  */
 final class LockRedisProvider extends Provider
 {
+	use ResolvesFoundationPrefix;
+
 	private const string PREFIX = self::class . '.prefix';
 
 	/**
 	 * Register the Redis lock policy and its shared implementation services.
 	 *
-	 * @throws InvalidArgumentException When the required Redis lock prefix is not configured.
+	 * @throws InvalidArgumentException When the configured Foundation or Redis lock prefix is invalid.
 	 */
 	public function register(): void {
 		$this->registerConfiguration();
@@ -29,9 +32,15 @@ final class LockRedisProvider extends Provider
 	/**
 	 * Validate and register the prefix used to isolate this application's locks.
 	 *
-	 * @throws InvalidArgumentException When the required Redis lock prefix is not configured.
+	 * @throws InvalidArgumentException When the configured Foundation or Redis lock prefix is invalid.
 	 */
 	private function registerConfiguration(): void {
+		if (! $this->config->has('lock.redis.prefix')) {
+			$this->container->singleton(self::PREFIX, $this->foundationPrefix() . ':lock:');
+
+			return;
+		}
+
 		$prefix = $this->config->get('lock.redis.prefix');
 
 		if (! is_string($prefix) || trim($prefix) === '') {

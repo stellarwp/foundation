@@ -40,7 +40,51 @@ final class LockRedisProviderTest extends TestCase
 		$this->assertFalse($this->container->has(Lock::class));
 	}
 
-	public function test_it_requires_an_explicit_prefix(): void {
+	public function test_it_scopes_locks_with_the_default_foundation_prefix(): void {
+		$connection = new RecordingConnection();
+
+		$this->container->bind(Connection::class, $connection);
+		$this->container->register(LockRedisProvider::class);
+
+		$this->container->get(RedisLock::class)->acquire('queue:sync', 60);
+
+		$this->assertSame(['nx:lock:queue:sync'], $connection->evaluateCalls[0]['keys']);
+	}
+
+	public function test_it_derives_the_prefix_from_the_configured_foundation_prefix(): void {
+		$connection = new RecordingConnection();
+
+		$this->container->singleton(Configuration::class, new ArrayConfiguration([
+			'foundation' => ['prefix' => 'your-plugin'],
+		]));
+		$this->container->bind(Connection::class, $connection);
+		$this->container->register(LockRedisProvider::class);
+
+		$this->container->get(RedisLock::class)->acquire('queue:sync', 60);
+
+		$this->assertSame(['your-plugin:lock:queue:sync'], $connection->evaluateCalls[0]['keys']);
+	}
+
+	public function test_it_preserves_an_explicit_prefix_byte_for_byte(): void {
+		$connection = new RecordingConnection();
+
+		$this->container->singleton(Configuration::class, new ArrayConfiguration([
+			'foundation' => ['prefix' => 'your-plugin'],
+			'lock'       => ['redis' => ['prefix' => 'Custom:Locks:']],
+		]));
+		$this->container->bind(Connection::class, $connection);
+		$this->container->register(LockRedisProvider::class);
+
+		$this->container->get(RedisLock::class)->acquire('queue:sync', 60);
+
+		$this->assertSame(['Custom:Locks:queue:sync'], $connection->evaluateCalls[0]['keys']);
+	}
+
+	public function test_it_rejects_an_invalid_explicit_prefix(): void {
+		$this->container->singleton(Configuration::class, new ArrayConfiguration([
+			'lock' => ['redis' => ['prefix' => '']],
+		]));
+
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('The lock.redis.prefix configuration value must be a non-empty string.');
 

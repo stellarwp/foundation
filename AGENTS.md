@@ -35,6 +35,8 @@ For substantial features or API changes, briefly present a complete consumer exa
 
 Implement and verify against those examples. Revisit settled decisions for demonstrated correctness, usability, required variation, or compatibility problems. Do not expand a refactor merely for architectural uniformity or hypothetical future requirements. A review against these instructions should identify concrete gaps, not trigger a repository-wide rewrite.
 
+Review the resulting class as a whole after applying review feedback: its primary responsibility and ordinary execution path should remain easy to follow. Each added guard, helper, or abstraction must earn its complexity through an intended requirement. Passing tests establish behavior, not that the design is appropriately simple; do not invent stricter requirements merely to justify defensive code.
+
 For unreleased greenfield APIs with no consumers, correct demonstrated problems directly, without compatibility layers for abandoned designs. Preserve obligations to supported released versions separately. Before release, establish representative consumer and replacement tests as a compatibility baseline. Completion means the intended workflows and variations work with their documented guarantees, not that every imaginable extension exists.
 
 ## Public APIs and Compatibility
@@ -57,7 +59,9 @@ Prefer composition and cohesive, named responsibilities. Extract a collaborator 
 
 Inject service collaborators through constructors. Do not hide fallback services behind nullable dependencies; supply defaults through a provider when appropriate, an owning factory, or documented composition. Direct `new` expressions inside application classes are for values/results, exceptions, PHP standard-library objects, and objects deliberately produced by an owning builder or factory. Do not create construction layers without a meaningful ownership or configuration responsibility.
 
-Enforce invariants at their owning construction, parsing, or resolution boundary so downstream code can rely on them. Revalidate only across an independent trust boundary, after mutable state can invalidate the guarantee, or when completing a progressively built value. Feature-local value objects belong in `ValueObjects/`, should be `final readonly` where possible, and must not construct or resolve services.
+Enforce Foundation-owned invariants at their owning construction, parsing, or resolution boundary so downstream code can rely on them. Delegate dependency-specific formats and connection settings to the dependency's parser and validation, propagating or translating its failures at the adapter boundary. Add pre-validation only for a demonstrated gap that would violate an intended Foundation guarantee, and explain that gap. Providers should primarily wire services. Keep small local guards inline; do not introduce chains of `assert*` or `validate*` helpers merely to subdivide configuration checks. Revalidate only across an independent trust boundary, after mutable state can invalidate the guarantee, or when completing a progressively built value.
+
+Feature-local value objects belong in `ValueObjects/`, should be `final readonly` where possible, and must not construct or resolve services.
 
 Encapsulate meaningful closed state behind named factories and predicates such as `isUnavailable()`. Expose raw state only for presentation or serialization. Simple transport DTO fields need not acquire getters or state machinery.
 
@@ -229,6 +233,8 @@ Document the current product, without implementation phases or temporary plans. 
 
 Lead guides with what the package provides and its simplest complete use case: installation, essential configuration and provider registration where applicable, useful operations, failures, and testing. Introduce customization afterward. Use a few root sections with task-oriented subsections; independently used capabilities get nested task guides under a shared overview. Link shared behavior rather than duplicating it.
 
+Explain what developers configure, call, and receive. Include implementation details or exclusions only when they affect a concrete usage decision or failure response; avoid cataloging what a component does not do.
+
 Place operational warnings beside the decision or API behavior they qualify. State the concrete failure mode, distinguish expected outcomes from infrastructure failures, tell the developer whether to skip, retry, or abort, and include compact pseudocode when the response would otherwise remain ambiguous.
 
 Order sequential setup guides so files are created before later examples reference or call them. When a component example assumes the application composition root or provider architecture, link back to the relevant Start Here guides. Prefer Starlight link cards for these prerequisite guides and Starlight asides for decisions or warnings developers must not miss.
@@ -236,6 +242,8 @@ Order sequential setup guides so files are created before later examples referen
 Keep runtime and developer dependencies distinct in installation documentation. Standalone WordPress plugins should require only the split runtime packages they ship and install `stellarwp/foundation-cli` with `--dev`. Before showing `composer require stellarwp/foundation`, warn that the aggregate package includes the developer CLI in its normal installation and that `--no-dev` will not remove it.
 
 Explain `foundation.prefix` according to the deployment boundary. A complete WordPress application that centrally owns its themes, plugins, and Foundation composition root can use the shared `nx` default. A distributable standalone plugin must configure a stable, unique prefix because PHP namespace prefixing does not isolate shared WP-CLI command names, database tables, or locks.
+
+Documentation configuration examples must read deployment-specific settings such as hosts, ports, databases, credentials, and resource prefixes from `$_ENV`, with appropriate type conversions and sensible defaults where safe. Preserve existing environment-variable mappings when simplifying examples. Read environment variables in the application's configuration file; providers and services consume the resulting configuration or injected values. When an optional override is absent, preserve the package's derived default rather than duplicating its derivation in application code.
 
 Documentation examples for consuming WordPress projects should use Snake_Case class names and WordPress formatting, including a blank line immediately after each class declaration's opening brace. Keep translatable user-facing text in the class that renders it; configuration examples should represent runtime or deployment behavior rather than untranslated display copy. Validate required scalar configuration at construction boundaries when an empty value would make the feature invalid.
 
