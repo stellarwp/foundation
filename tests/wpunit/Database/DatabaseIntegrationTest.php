@@ -27,6 +27,7 @@ use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Database\Scope\SiteScope;
 use StellarWP\Foundation\Database\Table\Blueprint;
 use StellarWP\Foundation\Database\Table\Column;
+use StellarWP\Foundation\Database\Table\IndexType;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
@@ -697,6 +698,86 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 		$this->assertFalse($this->schema->hasIndex($table, 'email_unique'));
 		$this->assertTrue($this->schema->hasIndex($table, 'external_tenant'));
+	}
+
+	/**
+	 * @dataProvider replacementIndexes
+	 *
+	 * @param list<string> $originalColumns
+	 * @param list<string> $replacementColumns
+	 */
+	#[DataProvider('replacementIndexes')]
+	public function test_schema_replaces_indexes_and_skips_completed_retries(
+		?string $originalType,
+		array $originalColumns,
+		string $replacementType,
+		array $replacementColumns
+	): void {
+		$table   = new TestTable($this->unprefixedTable('index_retry'));
+		$initial = Blueprint::for($table);
+		$initial->string('status', 20);
+		$initial->string('category', 20);
+
+		if ($originalType === IndexType::UNIQUE) {
+			$initial->unique('lookup', ...$originalColumns);
+		} elseif ($originalType !== null) {
+			$initial->index('lookup', ...$originalColumns);
+		}
+
+		$this->schema->create($initial);
+		$this->database->insert($table, ['status' => 'draft', 'category' => 'report']);
+
+		$change = Blueprint::for($table);
+		$change->dropIndex('LOOKUP');
+
+		if ($replacementType === IndexType::UNIQUE) {
+			$change->unique('lookup', ...$replacementColumns);
+		} else {
+			$change->index('lookup', ...$replacementColumns);
+		}
+
+		$statements = [];
+		$recordDdl  = static function (string $sql) use (&$statements): string {
+			if (preg_match('/\A\s*(?:CREATE|ALTER|DROP)\b/i', $sql) === 1) {
+				$statements[] = $sql;
+			}
+
+			return $sql;
+		};
+		add_filter('query', $recordDdl);
+
+		try {
+			$this->schema->alter($change);
+			$alreadyMatches = $originalType === $replacementType && $originalColumns === $replacementColumns;
+			$this->assertCount($alreadyMatches ? 0 : 1, $statements);
+
+			$statements = [];
+			$this->schema->alter($change);
+			$this->assertSame([], $statements);
+		} finally {
+			remove_filter('query', $recordDdl);
+		}
+
+		$indexes = $this->database->rows('SHOW INDEX FROM %i WHERE Key_name = %s', $this->database->tableName($table), 'lookup');
+		$this->assertSame($replacementColumns, array_column($indexes, 'Column_name'));
+		$this->assertSame($replacementType === IndexType::UNIQUE ? 0 : 1, (int) $indexes[0]['Non_unique']);
+		$this->assertSame([
+			['status' => 'draft', 'category' => 'report'],
+		], $this->database->rows('SELECT * FROM %i', $this->database->tableName($table)));
+	}
+
+	/**
+	 * @return array<string, array{?string, list<string>, string, list<string>}>
+	 */
+	public static function replacementIndexes(): array {
+		return [
+			'add column to index' => [IndexType::KEY, ['status'], IndexType::KEY, ['status', 'category']],
+			'change uniqueness'   => [IndexType::UNIQUE, ['status'], IndexType::KEY, ['status']],
+			'add uniqueness'      => [IndexType::KEY, ['status'], IndexType::UNIQUE, ['status']],
+			'change column order' => [IndexType::KEY, ['category', 'status'], IndexType::KEY, ['status', 'category']],
+			'missing index'       => [null, [], IndexType::KEY, ['status']],
+			'already matches'     => [IndexType::KEY, ['status'], IndexType::KEY, ['status']],
+		];
 	}
 
 	public function test_schema_explicitly_adds_an_auto_increment_attribute(): void {

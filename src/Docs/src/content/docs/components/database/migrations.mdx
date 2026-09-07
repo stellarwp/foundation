@@ -362,6 +362,8 @@ Declarations without `change()` add a missing column. Mark a declaration with `c
 
 Foundation treats an existing addition and an absent removal as already completed. This makes the migration safe to retry when MySQL applied the DDL but Foundation could not write its ledger record. An existing column or index with a different requested definition fails verification instead of being silently accepted.
 
+To replace an index, declare `dropIndex()` and the new index definition under the same name in one blueprint. Foundation replaces the index when its definition differs and skips the replacement when it already matches, so retrying the migration does not rebuild a completed index.
+
 :::caution[Changing a column replaces its declaration]
 Foundation can preserve only attributes represented by `Column`. A `change()` operation can remove an attribute added through raw SQL or another tool when that attribute is absent from the migration declaration. Use trusted `Schema::execute()` SQL instead when the physical column contains behavior Foundation cannot describe.
 :::

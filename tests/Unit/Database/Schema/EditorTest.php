@@ -79,6 +79,31 @@ final class EditorTest extends TestCase
 		$this->assertSame([], $database->executed);
 	}
 
+	public function test_it_replaces_a_functional_index_with_a_column_index(): void {
+		$database = new FakeDatabase();
+		$editor   = new Editor($database, new Reconciler($database, new RecordingSchemaExecutor()));
+		$change   = Blueprint::for(new TestTable('reports'));
+		$change->dropIndex('lookup');
+		$change->index('lookup', 'status');
+
+		$database->rowResults = [
+			['table' => 'wp_reports'],
+			['Key_name' => 'lookup'],
+		];
+		$database->rowsResults = [[
+			array_replace(self::indexRow('lookup', 1, 1, 'status'), [
+				'Column_name' => null,
+				'Expression'  => 'lower(`status`)',
+			]),
+		], [self::indexRow('lookup', 1, 1, 'status')]];
+
+		$editor->alter($change);
+
+		$this->assertSame([
+			'ALTER TABLE `wp_reports` DROP INDEX `lookup`, ADD KEY `lookup` (`status`)',
+		], $database->executed);
+	}
+
 	public function test_it_rejects_a_change_to_a_missing_column(): void {
 		$database = new FakeDatabase();
 		$editor   = new Editor($database, new Reconciler($database, new RecordingSchemaExecutor()));

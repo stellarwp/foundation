@@ -101,6 +101,15 @@ final readonly class Reconciler
 	}
 
 	/**
+	 * Determine whether an index already has its requested definition.
+	 *
+	 * @throws DatabaseException When index metadata cannot be inspected.
+	 */
+	public function indexMatches(Table $table, Index $index): bool {
+		return $this->indexDifferences($table, [$index]) === [];
+	}
+
+	/**
 	 * Fail when requested columns or indexes do not match physical storage.
 	 *
 	 * @param array<string, ColumnProperties> $columnProperties

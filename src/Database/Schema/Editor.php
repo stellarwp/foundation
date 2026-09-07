@@ -45,13 +45,14 @@ final readonly class Editor
 		}
 
 		$this->reconciler->verifyTable($table);
+		$completedReplacements = $this->completedIndexReplacements($blueprint);
 
 		$clauses = [
-			...$this->indexRemovalClauses($blueprint),
+			...$this->indexRemovalClauses($blueprint, $completedReplacements),
 			...$this->columnRemovalClauses($blueprint),
 			...$this->columnAdditionClauses($blueprint),
 			...$this->columnChangeClauses($blueprint),
-			...$this->indexAdditionClauses($blueprint),
+			...$this->indexAdditionClauses($blueprint, $completedReplacements),
 		];
 
 		if ($clauses !== []) {
@@ -68,14 +69,45 @@ final readonly class Editor
 	}
 
 	/**
-	 * Build clauses for secondary indexes that still exist.
+	 * Find requested index replacements that already match the physical schema.
+	 *
+	 * @throws DatabaseException When index metadata cannot be inspected.
+	 *
+	 * @return list<string> Lowercase names of completed replacements.
+	 */
+	private function completedIndexReplacements(Blueprint $blueprint): array {
+		$completed = [];
+
+		foreach ($blueprint->indexes() as $index) {
+			if (! $this->replacesIndex($blueprint, $index)) {
+				continue;
+			}
+
+			if ($this->reconciler->indexMatches($blueprint->table(), $index)) {
+				$completed[] = strtolower($index->name);
+			}
+		}
+
+		return $completed;
+	}
+
+	/**
+	 * Build clauses for secondary indexes that still need removal.
+	 *
+	 * @param list<string> $completedReplacements Lowercase names of completed replacements.
+	 *
+	 * @throws DatabaseException When index existence cannot be inspected.
 	 *
 	 * @return list<string>
 	 */
-	private function indexRemovalClauses(Blueprint $blueprint): array {
+	private function indexRemovalClauses(Blueprint $blueprint, array $completedReplacements): array {
 		$clauses = [];
 
 		foreach ($blueprint->droppedIndexes() as $index) {
+			if (in_array(strtolower($index), $completedReplacements, true)) {
+				continue;
+			}
+
 			if ($this->database->indexExists($blueprint->table(), $index)) {
 				$clauses[] = 'DROP INDEX ' . $this->database->quoteIdentifier($index);
 			}
@@ -154,14 +186,22 @@ final readonly class Editor
 	}
 
 	/**
-	 * Build clauses for indexes not already present after a previous attempt.
+	 * Build clauses for indexes that still need adding or replacing.
+	 *
+	 * @param list<string> $completedReplacements Lowercase names of completed replacements.
+	 *
+	 * @throws DatabaseException When index metadata cannot be inspected or an existing addition is incompatible.
 	 *
 	 * @return list<string>
 	 */
-	private function indexAdditionClauses(Blueprint $blueprint): array {
+	private function indexAdditionClauses(Blueprint $blueprint, array $completedReplacements): array {
 		$clauses = [];
 
 		foreach ($blueprint->indexes() as $index) {
+			if (in_array(strtolower($index->name), $completedReplacements, true)) {
+				continue;
+			}
+
 			if ($this->replacesIndex($blueprint, $index)) {
 				$clauses[] = 'ADD ' . $index->sql();
 				continue;

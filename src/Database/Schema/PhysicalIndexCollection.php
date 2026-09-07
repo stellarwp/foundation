@@ -31,24 +31,25 @@ final readonly class PhysicalIndexCollection
 	 * @throws DatabaseException When the database returns invalid index metadata.
 	 */
 	public static function fromRows(array $rows, string $tableName): self {
-		/** @var array<string, array{name: string, type: string, columns: array<int, string>}> $indexes */
+		/** @var array<string, array{name: string, type: string, columns: array<int, string>, hasExpressions: bool}> $indexes */
 		$indexes = [];
 
 		foreach ($rows as $row) {
-			$name      = $row['Key_name'] ?? null;
-			$column    = $row['Column_name'] ?? null;
-			$indexType = $row['Index_type'] ?? null;
-			$collation = $row['Collation'] ?? null;
-			$nonUnique = filter_var($row['Non_unique'] ?? null, FILTER_VALIDATE_INT);
-			$sequence  = filter_var($row['Seq_in_index'] ?? null, FILTER_VALIDATE_INT, [
+			$name         = $row['Key_name'] ?? null;
+			$column       = $row['Column_name'] ?? null;
+			$expression   = $row['Expression'] ?? null;
+			$isExpression = $column === null && is_string($expression) && trim($expression) !== '';
+			$indexType    = $row['Index_type'] ?? null;
+			$collation    = $row['Collation'] ?? null;
+			$nonUnique    = filter_var($row['Non_unique'] ?? null, FILTER_VALIDATE_INT);
+			$sequence     = filter_var($row['Seq_in_index'] ?? null, FILTER_VALIDATE_INT, [
 				'options' => ['min_range' => 1],
 			]);
 
 			if (
 				! is_string($name)
 				|| $name === ''
-				|| ! is_string($column)
-				|| $column === ''
+				|| (! $isExpression && (! is_string($column) || $column === ''))
 				|| ! is_string($indexType)
 				|| $indexType === ''
 				|| ($collation !== null && (! is_string($collation) || ! in_array(strtoupper($collation), ['A', 'D'], true)))
@@ -70,10 +71,16 @@ final readonly class PhysicalIndexCollection
 			}
 
 			$indexes[$key] ??= [
-				'name'    => $name,
-				'type'    => $type,
-				'columns' => [],
+				'name'           => $name,
+				'type'           => $type,
+				'columns'        => [],
+				'hasExpressions' => false,
 			];
+
+			if ($isExpression) {
+				$column                          = '(' . $expression . ')';
+				$indexes[$key]['hasExpressions'] = true;
+			}
 
 			if (isset($indexes[$key]['columns'][$sequence])) {
 				throw self::invalidMetadata($tableName, $name);
@@ -95,7 +102,7 @@ final readonly class PhysicalIndexCollection
 				$column .= ' DESC';
 			}
 
-			$indexes[$key]['columns'][$sequence] = strtolower($column);
+			$indexes[$key]['columns'][$sequence] = $isExpression ? $column : strtolower($column);
 		}
 
 		$states = [];
@@ -110,7 +117,8 @@ final readonly class PhysicalIndexCollection
 			$states[$key] = new IndexState(
 				$index['name'],
 				$index['type'],
-				array_values($index['columns'])
+				array_values($index['columns']),
+				$index['hasExpressions']
 			);
 		}
 

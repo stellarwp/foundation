@@ -28,7 +28,8 @@ final readonly class IndexState
 	public function __construct(
 		public string $name,
 		private string $type,
-		private array $columns
+		private array $columns,
+		private bool $hasExpressions = false
 	) {
 	}
 
@@ -56,7 +57,8 @@ final readonly class IndexState
 	public function hasSameDefinitionAs(self $other): bool {
 		return strcasecmp($this->name, $other->name) === 0
 			&& $this->type                              === $other->type
-			&& $this->columns                           === $other->columns;
+			&& $this->columns                           === $other->columns
+			&& $this->hasExpressions                    === $other->hasExpressions;
 	}
 
 	/**
