@@ -49,7 +49,7 @@ Set one channel for the application:
 | --- | --- | --- |
 | `console` | A configured stream, with colored levels | Local development, CLI processes, or container logs |
 | `errorlog` | PHP's `error_log()` | The hosting platform collects the PHP error log |
-| `stack` | Both `console` and `errorlog` | The same records must reach the process stream and PHP error log |
+| `stack` | The selected channels; defaults to `console` and `errorlog` | Records should reach several destinations |
 | `null` | Nothing | Logging must be intentionally disabled, including in focused tests |
 
 :::caution[Choose a production channel explicitly]
@@ -82,6 +82,37 @@ return [
 ```
 
 The stream setting is used by `console` and by the console side of `stack`. Common values are `php://stdout` and `php://stderr`.
+
+### Combine channels and add a custom handler
+
+Set `log.channels.stack.channels` to the channel names you want to combine. The list replaces the supplied `console` and `errorlog` selection. Add a named channel with a `handler` class to include your own Monolog handler.
+
+In the application's root `config.php`, this example selects console, PHP error log, and an existing application `Audit_Handler`:
+
+```php title="config.php"
+use Plugin\Logging\Audit_Handler;
+
+return [
+	'log' => [
+		'channel' => $_ENV['APP_LOG_CHANNEL'] ?? 'stack',
+		'level'   => $_ENV['APP_LOG_LEVEL'] ?? 'info',
+		'channels' => [
+			'stack' => [
+				'channels' => [ 'console', 'errorlog', 'audit' ],
+			],
+			'audit' => [
+				'handler' => Audit_Handler::class,
+			],
+		],
+	],
+];
+```
+
+Foundation supplies the built-in channel definitions; configure only the settings you want to change. You can also define another stack name with its own `channels` list, or select `audit` directly with `APP_LOG_CHANNEL=audit`. Application services continue injecting `LoggerInterface`.
+
+Custom handlers implement Monolog's `HandlerInterface`. Foundation resolves them through the container, so their dependencies use ordinary application provider bindings. An optional `formatter` class selects a formatter for handlers implementing `FormattableHandlerInterface`; setting it to `null` keeps the handler's own formatter. Handlers extending Monolog's `AbstractHandler` receive `log.level`; implementations of the minimal `HandlerInterface` own their filtering behavior.
+
+List handler-backed channels as stack members. Handlers run in reverse list order, preserving Monolog's `pushHandler()` behavior; a handler with bubbling disabled stops delivery to earlier entries. An empty stack, or one whose only handler is an unavailable PHP error log, discards records.
 
 ### Choose the minimum level
 
@@ -116,7 +147,7 @@ private const array PROVIDERS = [
 ];
 ```
 
-`LogProvider` is an optional default. Applications that need rotating files, a remote log service, custom processors, or different failure behavior can omit it and bind `LoggerInterface` in their own provider.
+`LogProvider` is an optional default. Applications can configure additional Monolog handlers through named channels, or supply a complete replacement by binding `LoggerInterface` in their own provider.
 
 The configured application logger is a singleton. Handlers or processors added after resolution remain attached for the lifetime of that application container. A replacement application logger should normally be registered as a singleton as well; use a separate factory only when the feature intentionally needs independent logger instances.
 
@@ -128,6 +159,8 @@ An unavailable PHP `error_log()` function does not stop the application:
 - The `stack` channel keeps the console handler and skips the unavailable error-log handler.
 
 Invalid configuration is different. An unsupported level fails while `LogProvider` is registered, and an unsupported channel fails when `LoggerInterface` is first resolved. Use one of the documented values rather than silently losing records because of a typo.
+
+A stack member must name a configured handler-backed channel. An unknown member or one without a handler raises `ContainerException` when the logger resolves; correct the channel definition before retrying.
 
 ```php
 // error_log() is disabled: the application continues without that handler.
