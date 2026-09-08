@@ -63,7 +63,7 @@ Follow the database lock guide to register its providers, initialize the lock ta
 Install the Redis implementation and the supported Predis client:
 
 ```shell
-composer require stellarwp/foundation-lock-redis "predis/predis:>=3.0 <4.0"
+composer require stellarwp/foundation-lock-redis "predis/predis:>=3.3 <4.0"
 ```
 
 Set a stable application prefix and configure one writable Redis endpoint for locks. Foundation supports TCP, TLS, and Unix-socket connections. The required `lock.redis.parameters` setting accepts a Predis URI or parameter array; `lock.redis.options` accepts optional Predis client settings. Missing parameters raise `InvalidArgumentException` during provider registration; add the setting shown below before registering the provider.

@@ -16,7 +16,7 @@ composer require stellarwp/foundation-lock-redis
 Install one supported Redis client:
 
 ```shell
-composer require "predis/predis:>=3.0 <4.0"
+composer require "predis/predis:>=3.3 <4.0"
 ```
 
 Alternatively, install and enable the PhpRedis extension.

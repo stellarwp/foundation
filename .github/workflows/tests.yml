@@ -143,7 +143,7 @@ jobs:
 
       - name: Test minimum supported Predis version
         run: |
-          "${SLIC_BIN}" composer update predis/predis:3.0.0 --with-all-dependencies
+          "${SLIC_BIN}" composer update predis/predis:3.3.0 --with-all-dependencies
           "${SLIC_BIN}" run redis --ext DotReporter
 
       - name: Upload coverage report

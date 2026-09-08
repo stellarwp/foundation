@@ -14,7 +14,7 @@
     },
     "suggest": {
         "ext-redis": "Required to use PhpRedisConnection.",
-        "predis/predis": "Required to use PredisConnection (>=3.0 <4.0)."
+        "predis/predis": "Required to use PredisConnection (>=3.3 <4.0)."
     },
     "autoload": {
         "psr-4": {
