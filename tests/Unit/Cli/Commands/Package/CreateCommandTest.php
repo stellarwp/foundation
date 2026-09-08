@@ -159,7 +159,6 @@ final class CreateCommandTest extends TestCase
 			['composer', 'monorepo', 'merge'],
 		], $processRunner->commands);
 		$this->assertFileExists($rootPath . '/src/WPCli/composer.json');
-		$this->assertFileExists($rootPath . '/src/WPCli/.github/workflows/close-pull-request.yml');
 		$this->assertStringContainsString('"name": "stellarwp/foundation-wpcli"', (string) file_get_contents($rootPath . '/src/WPCli/composer.json'));
 	}
 

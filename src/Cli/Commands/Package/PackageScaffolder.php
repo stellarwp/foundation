@@ -82,11 +82,10 @@ final readonly class PackageScaffolder
 	 */
 	private function writeFiles(Package $package): array {
 		$files = [
-			'composer.json'                            => $this->composerJson($package),
-			'README.md'                                => $this->readme($package),
-			'.gitattributes'                           => $this->gitAttributes(),
-			'.gitignore'                               => $this->gitIgnore(),
-			'.github/workflows/close-pull-request.yml' => $this->closePullRequestWorkflow(),
+			'composer.json'  => $this->composerJson($package),
+			'README.md'      => $this->readme($package),
+			'.gitattributes' => $this->gitAttributes(),
+			'.gitignore'     => $this->gitIgnore(),
 		];
 
 		$createdFiles = [];
@@ -208,26 +207,5 @@ final readonly class PackageScaffolder
 		vendor/
 		composer.lock
 		GITIGNORE . PHP_EOL;
-	}
-
-	private function closePullRequestWorkflow(): string {
-		return <<<'WORKFLOW'
-		name: Close Pull Request
-
-		on:
-		  pull_request_target:
-		    types: [opened, reopened]
-
-		permissions:
-		  pull-requests: write
-
-		jobs:
-		  run:
-		    runs-on: ubuntu-latest
-		    steps:
-		      - uses: superbrothers/close-pull-request@v3
-		        with:
-		          comment: "This is a read-only repository. Please submit your PR on the https://github.com/stellarwp/foundation repository.<br><br>Thanks!"
-		WORKFLOW . PHP_EOL;
 	}
 }

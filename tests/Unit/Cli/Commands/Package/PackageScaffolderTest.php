@@ -43,15 +43,8 @@ final class PackageScaffolderTest extends TestCase
 			'README.md',
 			'.gitattributes',
 			'.gitignore',
-			'.github/workflows/close-pull-request.yml',
 		], $scaffold->createdFiles);
 		$this->assertFileExists($rootPath . '/src/WPCli/composer.json');
-		$workflow = file_get_contents($rootPath . '/src/WPCli/.github/workflows/close-pull-request.yml');
-
-		$this->assertIsString($workflow);
-		$this->assertStringContainsString('types: [opened, reopened]', $workflow);
-		$this->assertStringContainsString("permissions:\n  pull-requests: write", $workflow);
-
 		$composer = $this->packageComposer($rootPath, 'WPCli');
 
 		$this->assertArrayHasKey('StellarWP\\Foundation\\WPCli\\', $composer['autoload']['psr-4']);

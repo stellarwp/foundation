@@ -169,7 +169,6 @@ Each split package should include:
 - `README.md`
 - `.gitattributes`
 - `.gitignore`
-- `.github/workflows/close-pull-request.yml`
 
 Non-Composer split projects may use their ecosystem manifest instead of `composer.json`. For example, `src/Docs/` uses `package.json` and must remain discoverable by `.github/bin/repo-map.sh` so it splits to `stellarwp/foundation-docs`. All other required split-repository files and warning text still apply.
 
@@ -184,7 +183,7 @@ Each split package `README.md` must include this warning immediately after the p
 
 ### GitHub Repositories
 
-When creating a new split repository on GitHub, use the description `[READ ONLY] Subtree split of the Foundation <Component> component (see stellarwp/foundation)` and disable wikis, issues, projects, and pull requests.
+Use `composer run foundation -- package:create <Package>` to preview creation of a new split repository, then add `--apply` to create it. The command owns the standard `[READ ONLY]` description and disables wikis, issues, projects, and pull requests.
 
 ## PHP Feature Policy
 

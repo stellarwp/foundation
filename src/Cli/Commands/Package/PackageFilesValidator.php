@@ -5,8 +5,8 @@ namespace StellarWP\Foundation\Cli\Commands\Package;
 /**
  * Validates that a split package has the files required for repository creation.
  *
- * Use this before creating the external repository so missing package metadata,
- * read-only warnings, or pull-request closing workflow files are caught early.
+ * Use this before creating the external repository to identify missing package
+ * manifests, README files, and Git configuration files.
  */
 final class PackageFilesValidator
 {
@@ -17,7 +17,6 @@ final class PackageFilesValidator
 		'README.md',
 		'.gitattributes',
 		'.gitignore',
-		'.github/workflows/close-pull-request.yml',
 	];
 
 	/**
