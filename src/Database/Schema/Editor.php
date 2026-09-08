@@ -156,26 +156,24 @@ final readonly class Editor
 	/**
 	 * Build clauses for columns explicitly marked for modification.
 	 *
-	 * @throws DatabaseException When a column selected for modification is missing.
+	 * @throws DatabaseException When a column selected for modification is missing or cannot be inspected.
 	 *
 	 * @return list<string>
 	 */
 	private function columnChangeClauses(Blueprint $blueprint): array {
 		$clauses = [];
+		$table   = $blueprint->table();
 
 		foreach ($blueprint->changedColumns() as $column) {
-			if (! $this->database->columnExists($blueprint->table(), $column->name)) {
+			if (! $this->database->columnExists($table, $column->name)) {
 				throw new DatabaseException(sprintf(
 					'Cannot change missing column %s on %s.',
 					$column->name,
-					$this->database->tableName($blueprint->table())
+					$this->database->tableName($table)
 				));
 			}
 
-			$requestedState = Blueprint::for($blueprint->table());
-			$requestedState->column($column);
-
-			if ($this->reconciler->matches($requestedState)) {
+			if ($this->reconciler->columnMatches($table, $column)) {
 				continue;
 			}
 

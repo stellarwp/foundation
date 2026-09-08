@@ -66,16 +66,14 @@ final readonly class Reconciler
 	}
 
 	/**
-	 * Determine whether every declaration in a blueprint already matches physical storage.
+	 * Determine whether a column already has its requested definition.
 	 *
-	 * @throws DatabaseException When declared schema state cannot be inspected.
+	 * @throws DatabaseException When column metadata cannot be inspected.
 	 */
-	public function matches(Blueprint $blueprint): bool {
-		return $this->declarationDifferences(
-			$blueprint->table(),
-			$blueprint->columns(),
-			$blueprint->indexes(),
-			$this->inspectColumns($blueprint->table(), $blueprint->columns())
+	public function columnMatches(Table $table, Column $column): bool {
+		return $this->columnDifferences(
+			[$column],
+			$this->inspectColumns($table, [$column])
 		) === [];
 	}
 
