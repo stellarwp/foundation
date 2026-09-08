@@ -22,13 +22,19 @@ final class Application extends SymfonyApplication
 		parent::__construct('Foundation');
 
 		foreach ($commands as $command) {
-			foreach (array_merge([$command->getName()], $command->getAliases()) as $name) {
-				if ($name !== null && $this->has($name)) {
-					throw new RuntimeException(sprintf('Command identifier "%s" conflicts between %s and %s.', $name, $this->get($name)::class, $command::class));
-				}
+			$registeredCommands = $this->all();
+			$this->addCommands([$command]);
+
+			// Symfony detaches disabled commands instead of registering them.
+			if ($command->getApplication() !== $this) {
+				continue;
 			}
 
-			$this->addCommands([$command]);
+			foreach (array_merge([$command->getName()], $command->getAliases()) as $name) {
+				if ($name !== null && isset($registeredCommands[$name])) {
+					throw new RuntimeException(sprintf('Command identifier "%s" conflicts between %s and %s.', $name, $registeredCommands[$name]::class, $command::class));
+				}
+			}
 		}
 	}
 }
