@@ -199,6 +199,45 @@ final class PipelineTest extends TestCase
 			->thenReturn();
 	}
 
+	public function test_a_pipe_can_skip_later_pipes_and_the_destination(): void {
+		$result = $this->pipeline->send('input')
+			->through(
+				static fn (): string => 'skipped',
+				static fn (): never => throw new RuntimeException('Later pipe must not run.')
+			)
+			->then(static fn (): never => throw new RuntimeException('Destination must not run.'));
+
+		$this->assertSame('skipped', $result);
+	}
+
+	public function test_a_pipe_can_transform_the_destination_result(): void {
+		$result = $this->pipeline->send('input')
+			->through(static fn (string $value, Closure $next): string => '[' . $next($value) . ']')
+			->then(static fn (string $value): string => strtoupper($value));
+
+		$this->assertSame('[INPUT]', $result);
+	}
+
+	public function test_a_pipe_can_handle_a_downstream_failure(): void {
+		$failure = new RuntimeException('Destination failed.');
+		$caught  = null;
+
+		$result = $this->pipeline->send('input')
+			->through(static function (string $value, Closure $next) use (&$caught): string {
+				try {
+					return $next($value);
+				} catch (RuntimeException $exception) {
+					$caught = $exception;
+
+					return 'fallback';
+				}
+			})
+			->then(static fn (): never => throw $failure);
+
+		$this->assertSame($failure, $caught);
+		$this->assertSame('fallback', $result);
+	}
+
 	public function test_it_rejects_execution_before_a_value_is_sent(): void {
 		$this->expectException(PipelineNotStarted::class);
 		$this->expectExceptionMessage('Call send() before executing the pipeline.');

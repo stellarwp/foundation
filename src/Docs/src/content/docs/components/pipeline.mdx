@@ -291,6 +291,12 @@ static fn ( C $c ): Pipeline => $c->get( Pipeline::class )
 
 Both classes in this example expose `process( $value, Closure $next )`. Callables, including objects passed directly with an `__invoke()` method, are invoked directly regardless of `via()`. Use `through()` to replace the configured pipe list and `pipe()` to append additional pipes.
 
+### Customize execution behavior
+
+Use pipes to transform values, short-circuit execution, or wrap `$next( $value )` to transform its result or handle downstream failures. Inject any service dependencies into the pipe and configure its position through the provider.
+
+For a different execution implementation, implement `StellarWP\Foundation\Pipeline\Contracts\Pipeline` and bind it for the consuming service. The contract exposes `send()`, `then()`, and `thenReturn()`; configuration of the replacement belongs to its provider.
+
 ## Testing
 
 ### Test each pipe in isolation
@@ -329,6 +335,8 @@ Keep most tests on individual pipes. The pipeline package already owns the gener
 
 ## Upgrading to 2.0
 
-Pass the Foundation `Resolver` contract when constructing the concrete pipeline. The nullable constructor, `setContainer()`, and protected `getContainer()` lifecycle no longer exist. Subclasses should receive any additional collaborators through their own constructors instead of replacing the pipeline resolver after construction.
+Pass the Foundation `Resolver` contract when constructing the concrete pipeline. The nullable constructor, `setContainer()`, and protected `getContainer()` lifecycle no longer exist.
 
 Provider code should configure the concrete `Pipeline`, while consuming services should request `StellarWP\Foundation\Pipeline\Contracts\Pipeline`. Call `send()` before `then()` or `thenReturn()`; the supplied implementation now reports that invalid lifecycle with `PipelineNotStarted` instead of a generic uninitialized-property error.
+
+The concrete pipeline's execution state and helpers are private. Subclasses that used `carry()`, `prepareDestination()`, `parsePipeString()`, `pipes()`, `handleCarry()`, or `handleException()` must move that behavior into pipes or supply an implementation of the execution contract. Wrap `$next()` inside a pipe to process its result or catch downstream exceptions; use the consumer boundary when handling failures from the entire operation.
