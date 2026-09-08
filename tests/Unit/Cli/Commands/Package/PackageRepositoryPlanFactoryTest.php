@@ -14,7 +14,7 @@ final class PackageRepositoryPlanFactoryTest extends TestCase
 			component: 'Log',
 			directory: 'src/Log',
 			path: '/repo/src/Log',
-			composerPath: '/repo/src/Log/composer.json'
+			manifestPath: '/repo/src/Log/composer.json'
 		));
 
 		$this->assertSame('stellarwp', $plan->organization);

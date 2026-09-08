@@ -43,7 +43,7 @@ final readonly class PackageScaffolder
 			component: $component,
 			directory: 'src/' . $component,
 			path: $path,
-			composerPath: $path . '/composer.json'
+			manifestPath: $path . '/composer.json'
 		);
 
 		return new PackageScaffold($package, $this->writeFiles($package));

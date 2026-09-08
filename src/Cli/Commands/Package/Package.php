@@ -15,11 +15,14 @@ final readonly class Package
 		public string $component,
 		public string $directory,
 		public string $path,
-		public string $composerPath
+		public string $manifestPath
 	) {
 	}
 
+	/**
+	 * Return the split repository name for a Composer or npm package.
+	 */
 	public function repoName(): string {
-		return str_replace('stellarwp/', '', $this->name);
+		return str_replace(['@stellarwp/', 'stellarwp/'], '', $this->name);
 	}
 }

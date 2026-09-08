@@ -53,13 +53,40 @@ final class CreateCommandTest extends TestCase
 		);
 
 		$tester     = new CommandTester($command);
-		$statusCode = $tester->execute(['package' => 'Log']);
+		$statusCode = $tester->execute(['package' => 'src/Log']);
 
 		$this->assertSame(Command::SUCCESS, $statusCode);
 		$this->assertStringContainsString('Package: stellarwp/foundation-log', $tester->getDisplay());
 		$this->assertStringContainsString('Dry run. Run with --apply', $tester->getDisplay());
 		$this->assertStringContainsString("'gh' 'repo' 'create'", $tester->getDisplay());
 		$this->assertFalse($packageRepositoryCreator->created);
+	}
+
+	public function test_it_previews_an_existing_npm_package_without_scaffolding(): void {
+		$rootPath                 = dirname(__DIR__, 4) . '/Support/Fixtures/Cli/Package/npm-root';
+		$packageRepositoryCreator = new FakePackageRepositoryCreator();
+		$processRunner            = new FakeProcessRunner();
+		$command                  = new CreateCommand(
+			new PackageResolver($rootPath),
+			new PackageScaffolder($rootPath),
+			new PackageFilesValidator(),
+			new PackageRepositoryPlanFactory(),
+			$packageRepositoryCreator,
+			$processRunner
+		);
+		$command->setHelperSet($this->questionHelperSet());
+
+		$tester     = new CommandTester($command);
+		$statusCode = $tester->execute(['package' => 'src/ExamplePackage'], ['interactive' => false]);
+
+		$this->assertSame(Command::SUCCESS, $statusCode);
+		$this->assertStringContainsString('Package: @stellarwp/foundation-example-package', $tester->getDisplay());
+		$this->assertStringContainsString('Repository: stellarwp/foundation-example-package', $tester->getDisplay());
+		$this->assertStringContainsString("'gh' 'repo' 'create' 'stellarwp/foundation-example-package'", $tester->getDisplay());
+		$this->assertStringNotContainsString('scaffold', $tester->getDisplay());
+		$this->assertSame([], $processRunner->commands);
+		$this->assertFalse($packageRepositoryCreator->created);
+		$this->assertFileDoesNotExist($rootPath . '/src/ExamplePackage/composer.json');
 	}
 
 	public function test_it_creates_the_package_repository_when_apply_is_passed(): void {

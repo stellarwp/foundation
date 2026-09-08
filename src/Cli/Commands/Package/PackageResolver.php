@@ -2,13 +2,14 @@
 
 namespace StellarWP\Foundation\Cli\Commands\Package;
 
+use JsonException;
 use RuntimeException;
 
 /**
  * Finds Foundation split packages from user-friendly command input.
  *
  * Use this in package commands that accept a directory name, short package name,
- * repository name, or full Composer package name and need the matching package.
+ * repository name, or full Composer or npm package name and need the matching package.
  */
 final readonly class PackageResolver
 {
@@ -17,6 +18,12 @@ final readonly class PackageResolver
 	) {
 	}
 
+	/**
+	 * Resolve an existing split package by its name or directory.
+	 *
+	 * @throws RuntimeException When no Foundation package matches the input.
+	 * @throws JsonException    When a package manifest contains invalid JSON.
+	 */
 	public function resolve(string $input): Package {
 		$normalizedInput = $this->normalizeInput($input);
 
@@ -33,15 +40,21 @@ final readonly class PackageResolver
 	 * @return list<Package>
 	 */
 	private function packages(): array {
-		$composerPaths = glob($this->rootPath . '/src/*/composer.json') ?: [];
+		$manifestPaths = glob($this->rootPath . '/src/*/{composer,package}.json', GLOB_BRACE) ?: [];
 		$packages      = [];
 
-		foreach ($composerPaths as $composerPath) {
-			$packagePath = dirname($composerPath);
-			$composer    = json_decode((string) file_get_contents($composerPath), true, 512, JSON_THROW_ON_ERROR);
-			$name        = $composer['name'] ?? '';
+		foreach ($manifestPaths as $manifestPath) {
+			$packagePath = dirname($manifestPath);
 
-			if (! is_string($name) || ! str_starts_with($name, 'stellarwp/foundation-')) {
+			// A Composer package may also have an npm manifest for frontend tooling.
+			if (basename($manifestPath) === 'package.json' && is_file($packagePath . '/composer.json')) {
+				continue;
+			}
+
+			$manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+			$name     = $manifest['name'] ?? '';
+
+			if (! is_string($name) || ! preg_match('#^@?stellarwp/foundation-#', $name)) {
 				continue;
 			}
 
@@ -50,7 +63,7 @@ final readonly class PackageResolver
 				component: basename($packagePath),
 				directory: 'src/' . basename($packagePath),
 				path: $packagePath,
-				composerPath: $composerPath
+				manifestPath: $manifestPath
 			);
 		}
 
@@ -59,6 +72,9 @@ final readonly class PackageResolver
 
 	private function matches(Package $package, string $input): bool {
 		return in_array($input, [
+			$this->normalizeInput($package->directory),
+			$this->normalizeInput('./' . $package->directory),
+			$this->normalizeInput($package->path),
 			$this->normalizeInput($package->component),
 			$this->normalizeInput($package->name),
 			$this->normalizeInput($package->repoName()),
@@ -67,6 +83,6 @@ final readonly class PackageResolver
 	}
 
 	private function normalizeInput(string $input): string {
-		return strtolower(trim($input));
+		return strtolower(rtrim(trim($input), '/'));
 	}
 }

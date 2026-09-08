@@ -14,7 +14,6 @@ final class PackageFilesValidator
 	 * @var list<string>
 	 */
 	private const array REQUIRED_FILES = [
-		'composer.json',
 		'README.md',
 		'.gitattributes',
 		'.gitignore',
@@ -22,12 +21,14 @@ final class PackageFilesValidator
 	];
 
 	/**
+	 * List the missing manifest and shared split repository files.
+	 *
 	 * @return list<string>
 	 */
 	public function missingFiles(Package $package): array {
 		$missingFiles = [];
 
-		foreach (self::REQUIRED_FILES as $requiredFile) {
+		foreach ([basename($package->manifestPath), ...self::REQUIRED_FILES] as $requiredFile) {
 			if (! file_exists($package->path . '/' . $requiredFile)) {
 				$missingFiles[] = $requiredFile;
 			}

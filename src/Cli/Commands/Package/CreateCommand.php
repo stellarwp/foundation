@@ -38,7 +38,7 @@ final class CreateCommand extends Command
 
 	protected function configure(): void {
 		$this->setDescription('Create and configure a read-only GitHub sub-repository for a Foundation split package.')
-			->addArgument('package', InputArgument::REQUIRED, 'Package directory, package short name, or Composer package name.')
+			->addArgument('package', InputArgument::REQUIRED, 'Package directory, short name, repository name, or full Composer or npm package name.')
 			->addOption('apply', null, InputOption::VALUE_NONE, 'Run the generated GitHub actions. Without this option, the command is a dry run.');
 	}
 

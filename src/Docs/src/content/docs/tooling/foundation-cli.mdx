@@ -233,10 +233,16 @@ This small example has no application dependencies. When commands need services,
 `package:create` exists only for maintainers working inside the Foundation monorepo. It creates split-package scaffolding and configures read-only GitHub repositories; it is not a general package generator.
 :::
 
+Select an existing package by its directory (`src/Log`), short name (`Log`), repository name (`foundation-log`), or full manifest name (`stellarwp/foundation-log`). The Docs package is also discovered from its `package.json` and accepts `Docs`, `src/Docs`, `foundation-docs`, or `@stellarwp/foundation-docs`.
+
+Each directory represents one split package. When both manifests exist, `composer.json` determines the package identity for this command and the split workflow; `package.json` is used only when `composer.json` is absent.
+
+Invalid JSON in the selected manifest stops discovery. Correct the file before retrying.
+
 Preview the repository actions without changing GitHub:
 
 ```shell
-composer run foundation -- package:create Log
+composer run foundation -- package:create src/Log
 ```
 
 Pass `--apply` only after reviewing the generated actions:
@@ -245,4 +251,4 @@ Pass `--apply` only after reviewing the generated actions:
 composer run foundation -- package:create Log --apply
 ```
 
-The command can create `src/<Package>` scaffolding, asks for the Composer package name, and runs `composer monorepo merge` after local package creation.
+For a new PHP package, pass its short name. The command asks for confirmation before creating `src/<Package>` scaffolding, prompts for the Composer package name, and runs `composer monorepo merge` after local package creation.

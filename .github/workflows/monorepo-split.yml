@@ -24,7 +24,9 @@ jobs:
       # Dynamically build an array of JSON objects that each contain "name" and "directory" properties.
       - name: Set repo matrix
         id: set-matrix
-        run: echo "matrix=$(./.github/bin/repo-map.sh)" >> "$GITHUB_OUTPUT"
+        run: |
+          matrix=$(./.github/bin/repo-map.sh)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   split:
     needs: list-repos

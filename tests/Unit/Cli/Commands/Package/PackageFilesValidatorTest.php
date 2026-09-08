@@ -16,7 +16,7 @@ final class PackageFilesValidatorTest extends TestCase
 			component: 'Log',
 			directory: 'src/Log',
 			path: $path,
-			composerPath: $path . '/composer.json'
+			manifestPath: $path . '/composer.json'
 		));
 
 		$this->assertSame([
