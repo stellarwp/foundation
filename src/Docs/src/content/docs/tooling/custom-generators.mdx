@@ -1,15 +1,13 @@
 ---
 title: Create a custom generator
-description: Add a project-owned make command with configurable namespaces and Composer-aware output paths.
+description: Add a project-owned make command to the Foundation executable using a tooling provider.
 ---
 
-Create a project-specific generator when your team repeatedly writes the same class shape. This example adds `make:report` alongside Foundation's built-in commands.
-
-The command owns its `CONFIG_KEY` and `NAME`. Its provider uses that key to register the default namespace suffix. Foundation resolves project configuration and Composer output paths through the same services used by its built-in generators.
+Create a generator when your team repeatedly writes the same class shape. This example adds `make:report` to `vendor/bin/foundation` using a stub, a command class, and the project's tooling provider.
 
 ## Setup
 
-Install `stellarwp/foundation-cli` as a development dependency using the [Foundation CLI installation guide](/tooling/foundation-cli/#installation). This example assumes the project's Composer `autoload.psr-4` mapping is `Plugin\\` → `src/`. Keep these tooling providers in the custom executable's composition root.
+Install the CLI using the [Foundation CLI installation guide](/tooling/foundation-cli/#installation). This example assumes the project's Composer `autoload.psr-4` mapping is `Plugin\\` → `src/`. If you are new to providers, see [Register Service Providers](/start/register-service-providers/).
 
 ### Create the report stub
 
@@ -29,130 +27,70 @@ final class {{ class }} {
 }
 ```
 
-### Define the command
+### Define the generator
 
-Create `src/Cli/Commands/Make/Report/Report_Command.php`:
+Create `src/Tooling/Commands/Report_Command.php`:
 
 ```php title="Report_Command.php"
 <?php declare(strict_types=1);
 
-namespace Plugin\Cli\Commands\Make\Report;
+namespace Plugin\Tooling\Commands;
 
-use RuntimeException;
-use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
-use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
-use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
-use StellarWP\Foundation\Cli\Generation\StubRenderer;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
-use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
-use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputArgument;
-use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Output\OutputInterface;
+use StellarWP\Foundation\Cli\GeneratorCommand;
 
 /**
- * Generate report classes using the project's stub and namespace settings.
+ * Generate report classes from the project's report stub.
  */
-final class Report_Command extends Command {
+final class Report_Command extends GeneratorCommand {
 
 	public const string CONFIG_KEY = 'report';
 	public const string NAME = 'make:' . self::CONFIG_KEY;
+	public const string DEFAULT_NAMESPACE = 'Reports';
 
 	/**
-	 * Receive the services used to render and write report classes.
+	 * Select the project's report template.
 	 */
-	public function __construct(
-		private readonly ProjectDirectory $project_directory,
-		private readonly ComposerAutoloadResolver $autoload,
-		private readonly GeneratorLocationResolver $locations,
-		private readonly WordPressClassNameResolver $class_names,
-		private readonly StubRenderer $stubs,
-		private readonly GeneratedFileWriter $files
-	) {
-		parent::__construct( self::NAME );
-	}
-
-	protected function configure(): void {
-		$this->setDescription( 'Generate a report class.' )
-			->addArgument( 'name', InputArgument::REQUIRED, 'Report class name, e.g. Sales_Report.' )
-			->addOption( 'namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the report.' )
-			->addOption( 'path', null, InputOption::VALUE_REQUIRED, 'Output directory for the report.' );
-	}
-
-	protected function execute( InputInterface $input, OutputInterface $output ): int {
-		try {
-			$file = $this->generated_file( $input );
-			$this->files->write( $file );
-		} catch ( RuntimeException $exception ) {
-			$output->writeln( '<error>' . $exception->getMessage() . '</error>' );
-
-			return Command::FAILURE;
-		}
-
-		$output->writeln( '<info>Created:</info> ' . $file->relativePath );
-
-		return Command::SUCCESS;
-	}
-
-	/**
-	 * Render the report at its configured or explicitly selected location.
-	 *
-	 * @throws RuntimeException When the project, class name, namespace, or stub is invalid.
-	 */
-	private function generated_file( InputInterface $input ): GeneratedFile {
-		$project = $this->autoload->project();
-		$class = $this->class_names->className( (string) $input->getArgument( 'name' ) );
-		$namespace = $this->locations->namespaceFor( self::CONFIG_KEY, $project, (string) $input->getOption( 'namespace' ) );
-		$directory = $this->locations->directoryFor( $namespace, $project, (string) $input->getOption( 'path' ) );
-		$path = $directory . '/' . $class . '.php';
-		$stub = $this->project_directory->absolutePath( 'foundation/stubs/report/report.stub' );
-
-		return new GeneratedFile(
-			path: $path,
-			relativePath: $this->project_directory->relativePath( $path ),
-			contents: $this->stubs->render( $stub, [
-				'namespace' => $namespace,
-				'class' => $class,
-			] )
-		);
+	protected function stub(): string {
+		return 'foundation/stubs/report/report.stub';
 	}
 }
 ```
 
-The command's `CONFIG_KEY` is the only definition of `report` in its implementation. `NAME` derives the console command name from it, and `namespaceFor()` uses the same key for project settings. `GeneratedFileWriter` validates the generated PHP and refuses to overwrite an existing file.
+`NAME` identifies the console command. `CONFIG_KEY` selects its project settings, and `DEFAULT_NAMESPACE` is a suffix relative to the application's Composer namespace: `Reports` produces `Plugin\\Reports`. The stub path may be project-relative or absolute.
 
-### Register the command and its default
+The base supplies the name argument, `--namespace`, `--path`, PHP validation, and file creation. Keep its inherited constructor; define the constants and `stub()` in your generator.
 
-Create `src/Cli/Commands/Make/Report/Report_Provider.php`:
+### Register the command
 
-```php title="Report_Provider.php"
+Create `src/Tooling/Tooling_Provider.php`:
+
+```php title="Tooling_Provider.php"
 <?php declare(strict_types=1);
 
-namespace Plugin\Cli\Commands\Make\Report;
+namespace Plugin\Tooling;
 
+use Plugin\Tooling\Commands\Report_Command;
 use StellarWP\Foundation\Cli\CliProvider;
 use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 
 /**
- * Register the report generator and its default location.
+ * Register the project's developer commands.
  */
-final class Report_Provider extends Provider {
+final class Tooling_Provider extends Provider {
 
 	private bool $registered = false;
 
 	/**
-	 * Contribute report defaults before generator commands are resolved.
+	 * Wire the project's commands before the console application is resolved.
 	 */
 	public function register(): void {
 		if ( $this->registered ) {
 			return;
 		}
 
-		$this->container->singleton( Report_Command::class );
-		$this->container->mergeArrayVar( CliProvider::GENERATOR_NAMESPACES, [
-			Report_Command::CONFIG_KEY => 'Reports',
+		$this->container->mergeArrayVar( CliProvider::COMMANDS, static fn ( C $c ): array => [
+			$c->get( Report_Command::class ),
 		] );
 
 		$this->registered = true;
@@ -160,63 +98,33 @@ final class Report_Provider extends Provider {
 }
 ```
 
-`Reports` is a namespace suffix relative to the project's Composer root namespace, so the default here is `Plugin\\Reports`. Other features refer to `Report_Command::CONFIG_KEY` when they need this generator's namespace.
-
-### Create the executable
-
-Create `bin/your-plugin`:
-
-```php title="your-plugin"
-#!/usr/bin/env php
-<?php declare(strict_types=1);
-
-use Plugin\Cli\Commands\Make\Report\Report_Command;
-use Plugin\Cli\Commands\Make\Report\Report_Provider;
-use StellarWP\Foundation\Cli\Application;
-use StellarWP\Foundation\Cli\CliProvider;
-use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
-use StellarWP\Foundation\Container\ContainerFactory;
-
-$root = dirname( __DIR__ );
-require $root . '/vendor/autoload.php';
-chdir( $root );
-
-$config_path = $root . '/foundation/config.php';
-$config = is_file( $config_path ) ? require $config_path : [];
-
-$container = ( new ContainerFactory() )->create( new ArrayConfiguration( $config ) );
-$container->register( CliProvider::class );
-$container->register( Report_Provider::class );
-
-$application = $container->get( Application::class );
-$application->addCommands( [ $container->get( Report_Command::class ) ] );
-
-exit( $application->run() );
-```
-
-Register all tooling providers before resolving the application or generator commands. This lets every provider contribute its defaults before Foundation reads the generator settings.
+Foundation automatically loads this provider when its executable runs. Add future commands to the same collection and keep their dependency bindings in this provider. Command names and aliases must be unique; startup reports conflicting commands rather than replacing one.
 
 ## Usage
 
-Generate a report:
+Run from the project root:
 
 ```shell
-php bin/your-plugin make:report Sales_Report
+vendor/bin/foundation make:report Sales_Report
 ```
 
-With the example Composer mapping, this creates `src/Reports/Sales_Report.php` in `Plugin\\Reports`. The custom executable also includes Foundation's built-in commands:
+This creates `src/Reports/Sales_Report.php` in `Plugin\\Reports`. List commands or inspect the generator's options with:
 
 ```shell
-php bin/your-plugin list
-php bin/your-plugin make:database-table Reports_Table
+vendor/bin/foundation list
+vendor/bin/foundation help make:report
 ```
 
-### Configure the project default
+Generation refuses to overwrite existing files. Edit the existing class or choose another name. If a class name, namespace, or stub is invalid, correct the reported input and retry.
 
-To use `Plugin\\Exports` for reports, add this entry to the optional `foundation/config.php`:
+## Configuration
+
+### Change the generated namespace
+
+Add the following setting to the project's optional root `config.php`, alongside existing application settings:
 
 ```php title="config.php"
-<?php
+<?php declare(strict_types=1);
 
 return [
 	'generators' => [
@@ -227,20 +135,28 @@ return [
 ];
 ```
 
-The same `make:report` command now writes to `src/Exports/`. Merge this entry with any existing generator settings. The standard `vendor/bin/foundation` and this custom executable can share the file; each reads settings for its registered generators.
+The same command now creates classes in `src/Exports/`. Foundation loads this shared configuration once at startup. See [Configure the Container](/start/configure-the-container/) for environment values and configuration shared with the application.
 
 ### Override a single invocation
 
 ```shell
-php bin/your-plugin make:report Sales_Report --namespace='Plugin\Reports\Sales' --path=src/Reports/Sales
+vendor/bin/foundation make:report Sales_Report --namespace='Plugin\Reports\Sales' --path=src/Reports/Sales
 ```
 
-`--namespace` takes precedence over project configuration. Without `--path`, the output directory follows the most specific Composer PSR-4 mapping for that namespace. An explicit path chooses the directory for that invocation; keep Composer's mapping consistent with the generated namespace.
+`--namespace` takes precedence over project configuration. Without `--path`, the directory follows the most specific runtime Composer PSR-4 mapping. An explicit path selects the output directory for that invocation; keep Composer's mapping consistent with the generated namespace.
 
-If generation reports an existing file, edit that file or choose a new class name. For an invalid class name, namespace, or stub, correct the reported input and retry; the writer validates PHP before writing the output.
+### Customize the tooling setup
+
+See [Project tooling](/tooling/foundation-cli/#project-tooling) to select a custom provider file, keep tooling under development autoloading, or load prerequisite package providers.
+
+Commands that perform other tasks can extend Symfony's `Command` and contribute to the same `CliProvider::COMMANDS` collection. Supply their constructor dependencies using the normal [provider binding APIs](/start/register-service-providers/). Use an ordinary Symfony command for specialized generation workflows that need additional arguments, coordinated files, or source editing.
+
+### Package generated code
+
+Install the CLI with `--dev`. Generated application classes belong in normal Composer `autoload` mappings, and any packages they use belong in `require`. Exclude local tooling and stubs from production archives through the project's `.gitattributes` when appropriate.
 
 ## Testing
 
-Run the generator in a disposable project with your normal Composer namespace mapping. Check the default output location, a project-configured namespace, and an explicit override. Run the same command twice and confirm the second attempt fails while preserving the first file.
+Run the generator in a disposable project using its normal Composer mapping. Check the default output location, a configured namespace, and an explicit override. Run the same command twice and confirm the second attempt fails while preserving the first file.
 
-For automated command tests, use Symfony's `CommandTester` with the command resolved through your tooling container. A subprocess test of `bin/your-plugin` also verifies provider registration, project configuration loading, and application command registration together.
+For automated command tests, use Symfony's `CommandTester` with the command resolved through a tooling container. Test `vendor/bin/foundation` in a subprocess to verify provider lookup, configuration loading, and command registration together.

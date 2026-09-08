@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\Tests\Unit\Cli\Generation;
 
 use RuntimeException;
-use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
+use StellarWP\Foundation\Cli\Composer\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\StraussConfig;
 use StellarWP\Foundation\Tests\TestCase;

@@ -6,7 +6,7 @@ use RuntimeException;
 use StellarWP\Foundation\Cli\Commands\Make\Database\Factories\MigrationFileFactory;
 use StellarWP\Foundation\Cli\Commands\Make\Database\ValueObjects\GeneratedMigration;
 use StellarWP\Foundation\Cli\Commands\Make\Database\ValueObjects\ProviderRegistrationResult;
-use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
+use StellarWP\Foundation\Cli\Composer\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
 use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
@@ -29,8 +29,9 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 final class TableCommand extends Command
 {
-	public const string CONFIG_KEY = 'database-table';
-	public const string NAME       = 'make:' . self::CONFIG_KEY;
+	public const string CONFIG_KEY        = 'database-table';
+	public const string NAME              = 'make:' . self::CONFIG_KEY;
+	public const string DEFAULT_NAMESPACE = 'Database\\Tables';
 
 	/**
 	 * Create the table generator for a consuming project root.
@@ -39,6 +40,7 @@ final class TableCommand extends Command
 		private readonly ProjectDirectory $projectDirectory,
 		private readonly ComposerAutoloadResolver $autoloadResolver,
 		private readonly GeneratorLocationResolver $locations,
+		private readonly ProviderFileResolver $providerFiles,
 		private readonly WordPressClassNameResolver $classNameResolver,
 		private readonly StubResolver $stubResolver,
 		private readonly StubRenderer $stubRenderer,
@@ -135,7 +137,7 @@ final class TableCommand extends Command
 	private function initialMigration(InputInterface $input): GeneratedMigration {
 		$project        = $this->autoloadResolver->project();
 		$tableClass     = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
-		$tableNamespace = $this->locations->namespaceFor(self::CONFIG_KEY, $project, (string) $input->getOption('namespace'));
+		$tableNamespace = $this->locations->namespaceFor(self::CONFIG_KEY, self::DEFAULT_NAMESPACE, $project, (string) $input->getOption('namespace'));
 
 		return $this->migrationFactory->createTable(
 			name: 'Create_' . $tableClass,
@@ -191,7 +193,7 @@ final class TableCommand extends Command
 	private function generatedFile(InputInterface $input): GeneratedFile {
 		$className = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
 		$project   = $this->autoloadResolver->project();
-		$namespace = $this->locations->namespaceFor(self::CONFIG_KEY, $project, (string) $input->getOption('namespace'));
+		$namespace = $this->locations->namespaceFor(self::CONFIG_KEY, self::DEFAULT_NAMESPACE, $project, (string) $input->getOption('namespace'));
 		$path      = $this->locations->directoryFor($namespace, $project, (string) $input->getOption('path'));
 		$stub      = $this->stubResolver->resolve('database', 'table', DatabaseStubPath::table());
 		$relative  = $this->projectDirectory->relativePath($path . '/' . $className . '.php');
@@ -217,8 +219,8 @@ final class TableCommand extends Command
 	private function validateExplicitProviderUpdate(InputInterface $input, ?GeneratedMigration $migration): void {
 		$project      = $this->autoloadResolver->project();
 		$className    = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
-		$namespace    = $this->locations->namespaceFor(self::CONFIG_KEY, $project, (string) $input->getOption('namespace'));
-		$providerPath = $this->locations->databaseProvider($project, $this->nullableOption($input, 'provider'));
+		$namespace    = $this->locations->namespaceFor(self::CONFIG_KEY, self::DEFAULT_NAMESPACE, $project, (string) $input->getOption('namespace'));
+		$providerPath = $this->providerFiles->resolve($project, $this->nullableOption($input, 'provider'));
 
 		if (! $this->hasExplicitProvider($input)) {
 			return;
@@ -255,8 +257,8 @@ final class TableCommand extends Command
 	private function updateProvider(InputInterface $input, OutputInterface $output, ?GeneratedMigration $migration): ?string {
 		$project      = $this->autoloadResolver->project();
 		$className    = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
-		$namespace    = $this->locations->namespaceFor(self::CONFIG_KEY, $project, (string) $input->getOption('namespace'));
-		$providerPath = $this->locations->databaseProvider($project, $this->nullableOption($input, 'provider'));
+		$namespace    = $this->locations->namespaceFor(self::CONFIG_KEY, self::DEFAULT_NAMESPACE, $project, (string) $input->getOption('namespace'));
+		$providerPath = $this->providerFiles->resolve($project, $this->nullableOption($input, 'provider'));
 		$explicit     = $this->hasExplicitProvider($input);
 
 		if (! is_file($providerPath)) {
@@ -368,7 +370,7 @@ final class TableCommand extends Command
 	 * Determine whether the selected or conventional provider file exists.
 	 */
 	private function providerExists(InputInterface $input): bool {
-		return is_file($this->locations->databaseProvider($this->autoloadResolver->project(), $this->nullableOption($input, 'provider')));
+		return is_file($this->providerFiles->resolve($this->autoloadResolver->project(), $this->nullableOption($input, 'provider')));
 	}
 
 	/**

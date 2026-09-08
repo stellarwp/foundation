@@ -6,7 +6,7 @@ use PhpParser\Lexer;
 use PhpParser\ParserFactory;
 use StellarWP\Foundation\Cli\CliProvider;
 use StellarWP\Foundation\Cli\Commands\Make\WPCliCommand;
-use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
+use StellarWP\Foundation\Cli\Composer\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
 use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\Php\PhpSourceEditor;

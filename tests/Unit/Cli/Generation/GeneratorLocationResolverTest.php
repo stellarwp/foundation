@@ -5,7 +5,9 @@ namespace StellarWP\Foundation\Tests\Unit\Cli\Generation;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\ComposerProject;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\Psr4Namespace;
 use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
 use StellarWP\Foundation\Tests\TestCase;
 
@@ -21,9 +23,8 @@ final class GeneratorLocationResolverTest extends TestCase
 		$this->expectException(RuntimeException::class);
 		$this->expectExceptionMessage($message);
 
-		new GeneratorLocationResolver(new ProjectDirectory('/project'), new ArrayConfiguration($config), [
-			'wpcli-command' => 'Cli\\Commands',
-		]);
+		$locations = new GeneratorLocationResolver(new ProjectDirectory('/project'), new ArrayConfiguration($config));
+		$locations->namespaceFor('wpcli-command', 'Cli\\Commands', new ComposerProject([new Psr4Namespace('Plugin\\', 'src')], null));
 	}
 
 	/**

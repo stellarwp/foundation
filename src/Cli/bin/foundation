@@ -3,6 +3,7 @@
 
 use StellarWP\Foundation\Cli\Application;
 use StellarWP\Foundation\Cli\CliProvider;
+use StellarWP\Foundation\Cli\Tooling\ToolingProviderResolver;
 use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
 use StellarWP\Foundation\Container\ContainerFactory;
 
@@ -45,15 +46,20 @@ try {
 
 	require $autoload;
 
-	$configPath = (getcwd() ?: dirname(__DIR__, 3)) . '/foundation/config.php';
+	$configPath = (getcwd() ?: dirname(__DIR__, 3)) . '/config.php';
 	$config = is_file($configPath) ? (static fn (string $path): mixed => require $path)($configPath) : [];
 
 	if (! is_array($config)) {
-		throw new FoundationCliBootstrapException('foundation/config.php must return a configuration array.');
+		throw new FoundationCliBootstrapException('config.php must return a configuration array.');
 	}
 
 	$container = (new ContainerFactory())->create(new ArrayConfiguration($config));
 	$container->register(CliProvider::class);
+	foreach ($container->get(ToolingProviderResolver::class)->providers() as $provider) {
+		if (strcasecmp(ltrim($provider, '\\'), CliProvider::class) !== 0) {
+			$container->register($provider);
+		}
+	}
 
 	exit($container->get(Application::class)->run());
 } catch (FoundationCliBootstrapException $e) {

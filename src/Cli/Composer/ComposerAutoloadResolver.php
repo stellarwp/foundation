@@ -1,6 +1,6 @@
 <?php declare(strict_types=1);
 
-namespace StellarWP\Foundation\Cli\Generation;
+namespace StellarWP\Foundation\Cli\Composer;
 
 use JsonException;
 use RuntimeException;
@@ -11,42 +11,32 @@ use StellarWP\Foundation\Cli\Generation\ValueObjects\Psr4Namespace;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\StraussConfig;
 
 /**
- * Reads a project's Composer autoload configuration for generator defaults.
+ * Reads project Composer mappings for class generation and tooling provider lookup.
  *
- * Make commands use this to infer where application classes should be written
- * and which namespace they should use when the developer does not pass options.
+ * @internal
  */
 final readonly class ComposerAutoloadResolver
 {
+	/**
+	 * Receive the project directory containing composer.json.
+	 */
 	public function __construct(
 		private ProjectDirectory $projectDirectory
 	) {
 	}
 
+	/**
+	 * Resolve runtime generation namespaces and Strauss settings.
+	 *
+	 * @throws RuntimeException When Composer metadata or its runtime mappings are invalid.
+	 */
 	public function project(): ComposerProject {
 		$composer = $this->composer();
-		$psr4     = $composer['autoload']['psr-4'] ?? [];
 
-		if (! is_array($psr4) || $psr4 === []) {
+		if (($composer['autoload']['psr-4'] ?? []) === []) {
 			throw new RuntimeException('Could not find an autoload.psr-4 namespace in composer.json.');
 		}
-
-		$psr4Namespaces = [];
-
-		foreach ($psr4 as $namespace => $paths) {
-			if (! is_string($namespace) || $namespace === '') {
-				continue;
-			}
-
-			$namespace = (new PhpNamespace(trim($namespace, '\\')))->value . '\\';
-
-			foreach ($this->paths($paths) as $path) {
-				$psr4Namespaces[] = new Psr4Namespace(
-					namespace: $namespace,
-					path: trim($path, '/')
-				);
-			}
-		}
+		$psr4Namespaces = $this->mappings($composer, false);
 
 		return new ComposerProject(
 			psr4Namespaces: $psr4Namespaces,
@@ -54,10 +44,61 @@ final readonly class ComposerAutoloadResolver
 		);
 	}
 
+	/**
+	 * Read the project's PSR-4 mappings, optionally including development classes.
+	 *
+	 * @throws RuntimeException When Composer metadata or a namespace is invalid.
+	 *
+	 * @return list<Psr4Namespace>
+	 */
+	public function namespaces(bool $includeDevelopment = false): array {
+		return $this->mappings($this->composer(), $includeDevelopment);
+	}
+
+	/**
+	 * @param array<string, mixed> $composer
+	 *
+	 * @return list<Psr4Namespace>
+	 */
+	private function mappings(array $composer, bool $includeDevelopment): array {
+		$namespaces = [];
+
+		foreach ($includeDevelopment ? ['autoload', 'autoload-dev'] : ['autoload'] as $section) {
+			$psr4 = $composer[$section]['psr-4'] ?? [];
+
+			if (! is_array($psr4)) {
+				throw new RuntimeException(sprintf('The %s.psr-4 setting in composer.json must be an array.', $section));
+			}
+
+			foreach ($psr4 as $namespace => $paths) {
+				if (! is_string($namespace) || $namespace === '') {
+					continue;
+				}
+
+				$namespace = (new PhpNamespace(trim($namespace, '\\')))->value . '\\';
+				foreach ($this->paths($paths) as $path) {
+					$namespaces[] = new Psr4Namespace($namespace, $path);
+				}
+			}
+		}
+
+		return $namespaces;
+	}
+
+	/**
+	 * Read the default runtime namespace used by application generators.
+	 *
+	 * @throws RuntimeException When the project has no valid runtime mapping.
+	 */
 	public function firstPsr4Namespace(): Psr4Namespace {
 		return $this->project()->defaultPsr4Namespace();
 	}
 
+	/**
+	 * Read the configured prefix for generated Foundation imports.
+	 *
+	 * @throws RuntimeException When Composer metadata or the prefix is invalid.
+	 */
 	public function straussNamespacePrefix(): ?string {
 		return $this->straussConfig($this->composer())?->namespacePrefix;
 	}

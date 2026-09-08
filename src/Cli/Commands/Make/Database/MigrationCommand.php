@@ -5,9 +5,8 @@ namespace StellarWP\Foundation\Cli\Commands\Make\Database;
 use RuntimeException;
 use StellarWP\Foundation\Cli\Commands\Make\Database\Factories\MigrationFileFactory;
 use StellarWP\Foundation\Cli\Commands\Make\Database\ValueObjects\GeneratedMigration;
-use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
+use StellarWP\Foundation\Cli\Composer\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
-use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use Symfony\Component\Console\Command\Command;
@@ -24,8 +23,9 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 final class MigrationCommand extends Command
 {
-	public const string CONFIG_KEY = 'database-migration';
-	public const string NAME       = 'make:' . self::CONFIG_KEY;
+	public const string CONFIG_KEY        = 'database-migration';
+	public const string NAME              = 'make:' . self::CONFIG_KEY;
+	public const string DEFAULT_NAMESPACE = 'Database\\Migrations';
 
 	/**
 	 * Create the migration generator for a consuming project root.
@@ -33,7 +33,7 @@ final class MigrationCommand extends Command
 	public function __construct(
 		private readonly ProjectDirectory $projectDirectory,
 		private readonly ComposerAutoloadResolver $autoloadResolver,
-		private readonly GeneratorLocationResolver $locations,
+		private readonly ProviderFileResolver $providerFiles,
 		private readonly MigrationFileFactory $migrationFactory,
 		private readonly GeneratedFileWriter $fileWriter,
 		private readonly ProviderRegistrationEditor $providerUpdater
@@ -137,7 +137,7 @@ final class MigrationCommand extends Command
 	 */
 	private function validateExplicitProviderUpdate(InputInterface $input, GeneratedMigration $migration): void {
 		$project      = $this->autoloadResolver->project();
-		$providerPath = $this->locations->databaseProvider($project, $this->nullableOption($input, 'provider'));
+		$providerPath = $this->providerFiles->resolve($project, $this->nullableOption($input, 'provider'));
 
 		if (! $this->hasExplicitProvider($input)) {
 			return;
@@ -167,7 +167,7 @@ final class MigrationCommand extends Command
 	 */
 	private function updateProvider(InputInterface $input, OutputInterface $output, GeneratedMigration $migration): ?string {
 		$project      = $this->autoloadResolver->project();
-		$providerPath = $this->locations->databaseProvider($project, $this->nullableOption($input, 'provider'));
+		$providerPath = $this->providerFiles->resolve($project, $this->nullableOption($input, 'provider'));
 		$explicit     = $this->hasExplicitProvider($input);
 
 		if (! is_file($providerPath)) {
@@ -262,7 +262,7 @@ final class MigrationCommand extends Command
 	 * Determine whether the selected or conventional provider file exists.
 	 */
 	private function providerExists(InputInterface $input): bool {
-		return is_file($this->locations->databaseProvider($this->autoloadResolver->project(), $this->nullableOption($input, 'provider')));
+		return is_file($this->providerFiles->resolve($this->autoloadResolver->project(), $this->nullableOption($input, 'provider')));
 	}
 
 	/**

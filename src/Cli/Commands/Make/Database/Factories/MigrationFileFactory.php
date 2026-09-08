@@ -6,7 +6,7 @@ use RuntimeException;
 use StellarWP\Foundation\Cli\Commands\Make\Database\MigrationCommand;
 use StellarWP\Foundation\Cli\Commands\Make\Database\TableCommand;
 use StellarWP\Foundation\Cli\Commands\Make\Database\ValueObjects\GeneratedMigration;
-use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
+use StellarWP\Foundation\Cli\Composer\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
@@ -110,7 +110,7 @@ final readonly class MigrationFileFactory
 	private function context(string $name, ?string $namespace, ?string $path, ?string $id): array {
 		$className = $this->classNameResolver->className($name);
 		$project   = $this->autoloadResolver->project();
-		$namespace = $this->locations->namespaceFor(MigrationCommand::CONFIG_KEY, $project, $namespace);
+		$namespace = $this->locations->namespaceFor(MigrationCommand::CONFIG_KEY, MigrationCommand::DEFAULT_NAMESPACE, $project, $namespace);
 		$path      = $this->locations->directoryFor($namespace, $project, $path);
 		$id        = (new Id($id ?? $this->classNameResolver->migrationId($className)))->value;
 
@@ -164,7 +164,7 @@ final readonly class MigrationFileFactory
 
 			return [
 				'class'     => $tableClass,
-				'namespace' => $this->locations->namespaceFor(TableCommand::CONFIG_KEY, $project),
+				'namespace' => $this->locations->namespaceFor(TableCommand::CONFIG_KEY, TableCommand::DEFAULT_NAMESPACE, $project),
 			];
 		}
 

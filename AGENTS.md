@@ -87,6 +87,12 @@ Database migration generators must distinguish table ownership from a table depe
 
 ## CLI Tooling Boundary
 
+The monorepo's own maintenance commands are wired directly in `dev/bin/foundation`, invoked through `composer run foundation`. Keep the root `config.php` convention for consuming projects; do not add a monorepo configuration file to register Foundation's own tooling.
+
+The Foundation executable reads optional root `config.php` and automatically loads `<ProjectNamespace>\Tooling\Tooling_Provider` through Composer. A custom `cli.tooling_provider_path` selects a project-relative or absolute Composer-mapped provider file instead. Keep prerequisite package providers in `cli.providers`; register them before the project tooling provider and resolve commands afterward. Tooling providers configure developer commands, independently of application/WordPress bootstrap.
+
+Contribute Symfony command objects lazily through `CliProvider::COMMANDS`. Basic project generators extend `GeneratorCommand`, inherit its constructor, and define `NAME`, `CONFIG_KEY`, `DEFAULT_NAMESPACE`, and `stub()`. The command owns its defaults; do not introduce a separate registration map for them. Preserve these consumer shapes when changing generation infrastructure.
+
 `stellarwp/foundation-cli` is developer tooling and should normally be installed by split-package consumers with `composer require --dev stellarwp/foundation-cli`. It should not be packaged into production WordPress plugin zips when installed as a split package.
 
 The aggregate `stellarwp/foundation` package is an all-in-one convenience package and includes the CLI code and binary. For lean production archives, consuming projects should require only the split packages they need.

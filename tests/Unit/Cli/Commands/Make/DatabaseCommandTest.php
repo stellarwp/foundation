@@ -12,9 +12,10 @@ use StellarWP\Foundation\Cli\CliProvider;
 use StellarWP\Foundation\Cli\Commands\Make\Database\Factories\MigrationFileFactory;
 use StellarWP\Foundation\Cli\Commands\Make\Database\MigrationCommand;
 use StellarWP\Foundation\Cli\Commands\Make\Database\ProviderCommand;
+use StellarWP\Foundation\Cli\Commands\Make\Database\ProviderFileResolver;
 use StellarWP\Foundation\Cli\Commands\Make\Database\ProviderRegistrationEditor;
 use StellarWP\Foundation\Cli\Commands\Make\Database\TableCommand;
-use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
+use StellarWP\Foundation\Cli\Composer\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
 use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\Php\PhpSourceEditor;
@@ -2343,6 +2344,7 @@ PHP);
 		$projectDirectory = new ProjectDirectory($root);
 
 		return new TableCommand(
+			providerFiles: new ProviderFileResolver($projectDirectory, $this->generatorLocations($projectDirectory)),
 			projectDirectory: $projectDirectory,
 			autoloadResolver: new ComposerAutoloadResolver($projectDirectory),
 			locations: $this->generatorLocations($projectDirectory),
@@ -2359,9 +2361,9 @@ PHP);
 		$projectDirectory = new ProjectDirectory($root);
 
 		return new MigrationCommand(
+			providerFiles: new ProviderFileResolver($projectDirectory, $this->generatorLocations($projectDirectory)),
 			projectDirectory: $projectDirectory,
 			autoloadResolver: new ComposerAutoloadResolver($projectDirectory),
-			locations: $this->generatorLocations($projectDirectory),
 			migrationFactory: $this->migrationFactory($root),
 			fileWriter: $this->fileWriter(),
 			providerUpdater: $this->providerUpdater()

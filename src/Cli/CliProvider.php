@@ -10,14 +10,7 @@ use StellarWP\Foundation\Cli\Commands\Make\Database\ProviderCommand;
 use StellarWP\Foundation\Cli\Commands\Make\Database\ProviderRegistrationEditor;
 use StellarWP\Foundation\Cli\Commands\Make\Database\TableCommand;
 use StellarWP\Foundation\Cli\Commands\Make\WPCliCommand;
-use StellarWP\Foundation\Cli\Commands\Package\Contracts\PackageRepositoryCreator;
-use StellarWP\Foundation\Cli\Commands\Package\CreateCommand;
-use StellarWP\Foundation\Cli\Commands\Package\GitHubPackageRepositoryCreator;
-use StellarWP\Foundation\Cli\Commands\Package\PackageFilesValidator;
-use StellarWP\Foundation\Cli\Commands\Package\PackageRepositoryPlanFactory;
-use StellarWP\Foundation\Cli\Commands\Package\PackageResolver;
-use StellarWP\Foundation\Cli\Commands\Package\PackageScaffolder;
-use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
+use StellarWP\Foundation\Cli\Composer\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
 use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\Php\PhpSourceEditor;
@@ -39,10 +32,9 @@ use StellarWP\Foundation\Container\Contracts\Resolver as C;
 final class CliProvider extends Provider
 {
 	/**
-	 * Generator keys mapped to namespace suffixes relative to the project's root namespace.
-	 * Contribute defaults before resolving generator commands or the application.
+	 * Commands contributed lazily by project and package providers.
 	 */
-	public const string GENERATOR_NAMESPACES = self::class . '.generator_namespaces';
+	public const string COMMANDS = self::class . '.commands';
 
 	private const string ROOT_PATH = self::class . '.root_path';
 
@@ -59,7 +51,6 @@ final class CliProvider extends Provider
 		$this->registerRootPath();
 		$this->registerProcess();
 		$this->registerGeneration();
-		$this->registerPackageCommand();
 		$this->registerDatabaseCommands();
 		$this->registerWpCliCommand();
 		$this->registerApplication();
@@ -74,7 +65,7 @@ final class CliProvider extends Provider
 	}
 
 	/**
-	 * Register process execution used by repository maintenance commands.
+	 * Register the default process runner for CLI commands.
 	 */
 	private function registerProcess(): void {
 		$this->container->singleton(ShellProcessRunner::class);
@@ -85,10 +76,6 @@ final class CliProvider extends Provider
 	 * Register shared source generation and Composer discovery services.
 	 */
 	private function registerGeneration(): void {
-		$this->container->when(GeneratorLocationResolver::class)
-			->needs('$defaultNamespaces')
-			->give(static fn (C $c): array => $c->get(self::GENERATOR_NAMESPACES));
-
 		$this->container->when(ProjectDirectory::class)
 			->needs('$path')
 			->give(static fn (C $c): string => $c->get(self::ROOT_PATH));
@@ -106,51 +93,27 @@ final class CliProvider extends Provider
 	}
 
 	/**
-	 * Register the split-package creation command and its collaborators.
-	 */
-	private function registerPackageCommand(): void {
-		$this->container->when(PackageResolver::class)
-			->needs('$rootPath')
-			->give(static fn (C $c): string => $c->get(self::ROOT_PATH));
-
-		$this->container->when(PackageScaffolder::class)
-			->needs('$rootPath')
-			->give(static fn (C $c): string => $c->get(self::ROOT_PATH));
-
-		$this->container->singleton(PackageResolver::class);
-		$this->container->singleton(PackageScaffolder::class);
-		$this->container->singleton(PackageFilesValidator::class);
-		$this->container->singleton(PackageRepositoryPlanFactory::class);
-		$this->container->bind(PackageRepositoryCreator::class, GitHubPackageRepositoryCreator::class);
-		$this->container->singleton(CreateCommand::class);
-	}
-
-	/**
 	 * Register database provider, table, and migration generator commands.
 	 */
 	private function registerDatabaseCommands(): void {
-		$this->container->mergeArrayVar(self::GENERATOR_NAMESPACES, [
-			ProviderCommand::CONFIG_KEY  => 'Database',
-			TableCommand::CONFIG_KEY     => 'Database\\Tables',
-			MigrationCommand::CONFIG_KEY => 'Database\\Migrations',
-		]);
-
 		$this->container->singleton(MigrationCommand::class);
 		$this->container->singleton(MigrationFileFactory::class);
 		$this->container->singleton(ProviderCommand::class);
 		$this->container->singleton(ProviderRegistrationEditor::class);
 		$this->container->singleton(TableCommand::class);
+		$this->container->mergeArrayVar(self::COMMANDS, static fn (C $c): array => [
+			$c->get(MigrationCommand::class),
+			$c->get(ProviderCommand::class),
+			$c->get(TableCommand::class),
+		]);
 	}
 
 	/**
 	 * Register the WP-CLI command generator.
 	 */
 	private function registerWpCliCommand(): void {
-		$this->container->mergeArrayVar(self::GENERATOR_NAMESPACES, [
-			WPCliCommand::CONFIG_KEY => 'Cli\\Commands',
-		]);
-
 		$this->container->singleton(WPCliCommand::class);
+		$this->container->mergeArrayVar(self::COMMANDS, static fn (C $c): array => [$c->get(WPCliCommand::class)]);
 	}
 
 	/**
@@ -159,13 +122,7 @@ final class CliProvider extends Provider
 	private function registerApplication(): void {
 		$this->container->when(Application::class)
 			->needs('$commands')
-			->give(static fn (C $c): array => [
-				$c->get(CreateCommand::class),
-				$c->get(MigrationCommand::class),
-				$c->get(ProviderCommand::class),
-				$c->get(TableCommand::class),
-				$c->get(WPCliCommand::class),
-			]);
+			->give(static fn (C $c): array => $c->get(self::COMMANDS));
 
 		$this->container->singleton(Application::class);
 	}

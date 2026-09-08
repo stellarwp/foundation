@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\Cli\Commands\Make;
 
 use RuntimeException;
-use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
+use StellarWP\Foundation\Cli\Composer\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
 use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
@@ -26,8 +26,9 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 final class WPCliCommand extends Command
 {
-	public const string CONFIG_KEY = 'wpcli-command';
-	public const string NAME       = 'make:' . self::CONFIG_KEY;
+	public const string CONFIG_KEY        = 'wpcli-command';
+	public const string NAME              = 'make:' . self::CONFIG_KEY;
+	public const string DEFAULT_NAMESPACE = 'Cli\\Commands';
 
 	public function __construct(
 		private readonly ProjectDirectory $projectDirectory,
@@ -78,7 +79,7 @@ final class WPCliCommand extends Command
 	private function generatedFile(InputInterface $input): GeneratedFile {
 		$className   = $this->classNameResolver->commandClass((string) $input->getArgument('name'));
 		$project     = $this->autoloadResolver->project();
-		$namespace   = $this->locations->namespaceFor(self::CONFIG_KEY, $project, (string) $input->getOption('namespace'));
+		$namespace   = $this->locations->namespaceFor(self::CONFIG_KEY, self::DEFAULT_NAMESPACE, $project, (string) $input->getOption('namespace'));
 		$path        = $this->locations->directoryFor($namespace, $project, (string) $input->getOption('path'));
 		$stub        = $this->stubResolver->resolve('wpcli', 'command', WPCliStubPath::command());
 		$relative    = $this->projectDirectory->relativePath($path . '/' . $className . '.php');

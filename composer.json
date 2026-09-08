@@ -73,6 +73,7 @@
     },
     "autoload-dev": {
         "psr-4": {
+            "StellarWP\\Foundation\\Dev\\": "dev/",
             "StellarWP\\Foundation\\Tests\\Feature\\": "tests/Feature/",
             "StellarWP\\Foundation\\Tests\\Integration\\": "tests/integration/",
             "StellarWP\\Foundation\\Tests\\Redis\\": "tests/redis/",
@@ -97,7 +98,7 @@
         }
     },
     "scripts": {
-        "foundation": "@php src/Cli/bin/foundation",
+        "foundation": "@php dev/bin/foundation",
         "monorepo": "@php vendor/bin/monorepo-builder",
         "test": "@php vendor/bin/phpunit -c phpunit.xml.dist --colors=always -d memory_limit=2G",
         "test:unit": "@test --testsuite Unit",
