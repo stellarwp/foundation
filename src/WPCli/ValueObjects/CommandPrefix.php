@@ -10,6 +10,8 @@ use InvalidArgumentException;
 final readonly class CommandPrefix
 {
 	/**
+	 * Validate and retain the root command name shared by Foundation commands.
+	 *
 	 * @throws InvalidArgumentException When the prefix is empty or contains surrounding whitespace.
 	 */
 	public function __construct(

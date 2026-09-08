@@ -46,7 +46,7 @@ Create `src/Admin_Notice/Notice.php`. The notice receives the capability supplie
 ```php title="Notice.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Admin_Notice;
+namespace Plugin\Admin_Notice;
 
 use InvalidArgumentException;
 
@@ -93,7 +93,7 @@ In `src/Admin_Notice/Provider.php`, alias the Foundation base provider because i
 ```php title="Provider.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Admin_Notice;
+namespace Plugin\Admin_Notice;
 
 use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
 
@@ -130,10 +130,10 @@ As a provider grows, add methods named for the feature or capability they config
 Register the feature in the ordered provider list in `src/App.php`:
 
 ```php title="App.php"
-use StellarWP\Foundation\Container\Contracts\Providable;
-use YourPlugin\Admin_Notice;
+use StellarWP\Foundation\Container\Contracts\Provider;
+use Plugin\Admin_Notice;
 
-/** @var list<class-string<Providable>> */
+/** @var list<class-string<Provider>> */
 private const array PROVIDERS = [
 	Admin_Notice\Provider::class,
 ];
@@ -142,7 +142,3 @@ private const array PROVIDERS = [
 Register infrastructure providers before feature providers that consume them. Avoid resolving application services while providers are still registering; complete the container graph before WordPress invokes its feature entrypoints.
 
 For a larger feature, its top-level `Provider` may register internal providers so `App` only needs to know the feature entrypoint. Keep that provider as a pure composition boundary: if it registers other providers, it should not also contain bindings, configuration, hooks, or feature behavior. Providers shared across features still belong in the application's ordered provider list.
-
-## Continue
-
-[Scope Foundation to the application](/start/scope-foundation/) before using shared WordPress resources.

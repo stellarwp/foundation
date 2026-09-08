@@ -1,0 +1,11 @@
+<?php declare(strict_types=1);
+
+namespace {{ namespace }};
+
+/**
+ * Describe this report's purpose.
+ */
+final class {{ class }} {
+
+	// Add the report's application dependencies and behavior here.
+}

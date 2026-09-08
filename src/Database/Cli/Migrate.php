@@ -2,10 +2,8 @@
 
 namespace StellarWP\Foundation\Database\Cli;
 
-use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\WPCli\Command;
-use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 use WP_CLI;
 
 use function WP_CLI\Utils\format_items;
@@ -24,77 +22,31 @@ final class Migrate extends Command
 	private const string FLAG_YES        = 'yes';
 
 	public function __construct(
-		protected Container $container,
-		CommandPrefix $commandPrefix,
 		private readonly Migrator $migrator
 	) {
-		parent::__construct($this->container, $commandPrefix);
 	}
 
 	/**
+	 * Dispatch the selected migration operation or display migration status.
+	 *
 	 * @param list<mixed>         $args
 	 * @param array<string,mixed> $assocArgs
 	 */
 	public function runCommand(array $args = [], array $assocArgs = []): int {
-		$run        = (bool) get_flag_value($assocArgs, self::FLAG_RUN, false);
-		$rollback   = (bool) get_flag_value($assocArgs, self::FLAG_ROLLBACK, false);
-		$refresh    = (bool) get_flag_value($assocArgs, self::FLAG_REFRESH, false);
-		$dropStore  = (bool) get_flag_value($assocArgs, self::FLAG_DROP_STORE, false);
-		$initialize = (bool) get_flag_value($assocArgs, self::FLAG_INITIALIZE, false);
+		$operation = $this->selectedOperation($assocArgs);
 
-		$this->assertSingleOperation([
-			self::FLAG_RUN        => $run,
-			self::FLAG_ROLLBACK   => $rollback,
-			self::FLAG_REFRESH    => $refresh,
-			self::FLAG_DROP_STORE => $dropStore,
-			self::FLAG_INITIALIZE => $initialize,
-		]);
-
-		if (($run || $rollback || $refresh || $dropStore) && ! $this->migrator->isInitialized()) {
-			WP_CLI::error(sprintf(
-				'Migration storage is not initialized. Run `wp %s --initialize` first.',
-				$this->command()
-			));
+		if ($operation !== null && $operation !== self::FLAG_INITIALIZE && ! $this->migrator->isInitialized()) {
+			WP_CLI::error($this->uninitializedMessage());
 		}
 
-		if ($dropStore) {
-			WP_CLI::confirm('Drop only the migration ledger? Application tables and shared lock storage remain, but all migrations will appear pending afterward.', $assocArgs);
-			$this->migrator->dropStore();
-			WP_CLI::success('The migration ledger was dropped. Application tables were not changed, and shared lock storage remains available.');
-
-			return self::SUCCESS;
-		}
-
-		if ($initialize) {
-			$this->migrator->initialize();
-			WP_CLI::success('Foundation migration storage is initialized.');
-
-			return self::SUCCESS;
-		}
-
-		if ($refresh) {
-			WP_CLI::confirm('Are you sure you want to roll back and rerun all Foundation database migrations?', $assocArgs);
-			$result = $this->migrator->refresh();
-			WP_CLI::success(sprintf('Rolled back %d migrations and ran %d migrations.', count($result->rolledBack), count($result->ran)));
-
-			return self::SUCCESS;
-		}
-
-		if ($rollback) {
-			$result = $this->migrator->rollback();
-			WP_CLI::success(sprintf('Rolled back %d migrations.', count($result->rolledBack)));
-
-			return self::SUCCESS;
-		}
-
-		if ($run) {
-			$result = $this->migrator->run();
-			WP_CLI::success(sprintf('Ran %d migrations.', count($result->ran)));
-
-			return self::SUCCESS;
-		}
-
-		$this->showStatus();
+		match ($operation) {
+			self::FLAG_RUN        => $this->runMigrations(),
+			self::FLAG_ROLLBACK   => $this->rollbackMigrations(),
+			self::FLAG_REFRESH    => $this->refreshMigrations($assocArgs),
+			self::FLAG_DROP_STORE => $this->dropStore($assocArgs),
+			self::FLAG_INITIALIZE => $this->initializeStore(),
+			default               => $this->showStatus(),
+		};
 
 		return self::SUCCESS;
 	}
@@ -156,16 +108,13 @@ final class Migrate extends Command
 
 	private function showStatus(): void {
 		if (! $this->migrator->isInitialized()) {
-			WP_CLI::warning(sprintf(
-				'Migration storage is not initialized. Run `wp %s --initialize` first.',
-				$this->command()
-			));
+			WP_CLI::warning($this->uninitializedMessage());
 		}
 
 		format_items('table', array_map(
 			static fn ($status): array => [
 				'migration' => $status->migration,
-				'status'    => ! $status->available ? 'unavailable' : ($status->ran ? 'ran' : 'pending'),
+				'status'    => $status->state(),
 				'batch'     => $status->batch ?? '',
 				'ran_at'    => $status->ranAt?->format('Y-m-d H:i:s') ?? '',
 			],
@@ -179,18 +128,80 @@ final class Migrate extends Command
 	}
 
 	/**
-	 * @param array<string, bool> $operations
+	 * Select the one migration operation requested by the command flags.
+	 *
+	 * @param array<string, mixed> $assocArgs
 	 */
-	private function assertSingleOperation(array $operations): void {
-		$selected = array_keys(array_filter($operations));
+	private function selectedOperation(array $assocArgs): ?string {
+		$operations = [
+			self::FLAG_RUN,
+			self::FLAG_ROLLBACK,
+			self::FLAG_REFRESH,
+			self::FLAG_DROP_STORE,
+			self::FLAG_INITIALIZE,
+		];
+		$selected = array_values(array_filter(
+			$operations,
+			static fn (string $operation): bool => (bool) get_flag_value($assocArgs, $operation, false)
+		));
 
-		if (count($selected) <= 1) {
-			return;
+		if (count($selected) > 1) {
+			WP_CLI::error(sprintf(
+				'Only one migration operation can be used at a time. Received: --%s.',
+				implode(', --', $selected)
+			));
 		}
 
-		WP_CLI::error(sprintf(
-			'Only one migration operation can be used at a time. Received: --%s.',
-			implode(', --', $selected)
-		));
+		return $selected[0] ?? null;
+	}
+
+	private function initializeStore(): void {
+		$this->migrator->initialize();
+		WP_CLI::success('Foundation migration storage is initialized.');
+	}
+
+	/**
+	 * Confirm and remove only the migration ledger.
+	 *
+	 * @param array<string, mixed> $assocArgs
+	 */
+	private function dropStore(array $assocArgs): void {
+		WP_CLI::confirm('Drop only the migration ledger? Application tables and shared lock storage remain, but all migrations will appear pending afterward.', $assocArgs);
+		$this->migrator->dropStore();
+		WP_CLI::success('The migration ledger was dropped. Application tables were not changed, and shared lock storage remains available.');
+	}
+
+	/**
+	 * Confirm, roll back, and rerun all configured migrations.
+	 *
+	 * @param array<string, mixed> $assocArgs
+	 */
+	private function refreshMigrations(array $assocArgs): void {
+		WP_CLI::confirm('Are you sure you want to roll back and rerun all Foundation database migrations?', $assocArgs);
+		$result = $this->migrator->refresh();
+
+		WP_CLI::success(sprintf('Rolled back %d migrations and ran %d migrations.', count($result->rolledBack), count($result->ran)));
+	}
+
+	private function rollbackMigrations(): void {
+		$result = $this->migrator->rollback();
+
+		WP_CLI::success(sprintf('Rolled back %d migrations.', count($result->rolledBack)));
+	}
+
+	private function runMigrations(): void {
+		$result = $this->migrator->run();
+
+		WP_CLI::success(sprintf('Ran %d migrations.', count($result->ran)));
+	}
+
+	private function uninitializedMessage(): string {
+		$command = $this->registeredCommandName();
+
+		if ($command === null) {
+			return 'Migration storage is not initialized. Run this command with --initialize first.';
+		}
+
+		return sprintf('Migration storage is not initialized. Run `wp %s --initialize` first.', $command);
 	}
 }

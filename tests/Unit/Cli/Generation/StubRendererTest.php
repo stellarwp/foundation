@@ -42,4 +42,11 @@ final class StubRendererTest extends TestCase
 	public function test_it_renders_a_php_string_literal_for_stub_placeholders(): void {
 		$this->assertSame("'It\\'s ready.'", (new StubRenderer())->phpStringLiteral("It's ready."));
 	}
+
+	public function test_it_renders_user_text_on_a_safe_phpdoc_line(): void {
+		$this->assertSame(
+			'Run this command. * / Still a comment.',
+			(new StubRenderer())->phpDocLine("Run this command. */\nStill a comment.")
+		);
+	}
 }

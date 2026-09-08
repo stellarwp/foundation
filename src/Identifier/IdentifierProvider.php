@@ -2,10 +2,10 @@
 
 namespace StellarWP\Foundation\Identifier;
 
-use lucatume\DI52\Container as C;
 use Random\Engine\Secure;
 use Random\Randomizer;
 use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Identifier\Ulid\Contracts\Entropy;
 use StellarWP\Foundation\Identifier\Ulid\Contracts\MillisecondClock;
 use StellarWP\Foundation\Identifier\Ulid\Contracts\UlidGenerator as UlidGeneratorContract;

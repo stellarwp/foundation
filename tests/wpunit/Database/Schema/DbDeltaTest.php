@@ -30,47 +30,13 @@ final class DbDeltaTest extends WPTestCase
 		parent::tearDown();
 	}
 
-	public function test_it_executes_and_verifies_the_schema_definition(): void {
+	public function test_it_executes_the_schema_definition_once(): void {
 		$dbDelta = PHPMockery::mock('StellarWP\Foundation\Database\Schema', 'dbDelta');
 		$dbDelta->with([self::SQL], true)->once()->andReturn([]);
-		$dbDelta->with([self::SQL], false)->once()->andReturn([]);
 
 		(new DbDelta())->execute(self::SQL);
 
 		$this->addToAssertionCount(1);
-	}
-
-	public function test_it_fails_when_schema_changes_remain_pending(): void {
-		$dbDelta = PHPMockery::mock('StellarWP\Foundation\Database\Schema', 'dbDelta');
-		$dbDelta->with([self::SQL], true)->once()->andReturn([]);
-		$dbDelta->with([self::SQL], false)->once()->andReturn([
-			'wp_example.name' => 'Added column wp_example.name',
-		]);
-
-		$this->expectException(DatabaseException::class);
-		$this->expectExceptionMessage('Database schema reconciliation did not complete: Added column wp_example.name');
-
-		(new DbDelta())->execute(self::SQL);
-	}
-
-	public function test_it_ignores_wordpress_62_created_table_dry_run_false_positives(): void {
-		$table = $GLOBALS['wpdb']->prefix . 'foundation_dbdelta_existing';
-		$sql   = sprintf('CREATE TABLE `%s` (id bigint)', $table);
-
-		$GLOBALS['wpdb']->query(sprintf('CREATE TABLE `%s` (id bigint)', $table));
-
-		$dbDelta = PHPMockery::mock('StellarWP\Foundation\Database\Schema', 'dbDelta');
-		$dbDelta->with([$sql], true)->once()->andReturn([]);
-		$dbDelta->with([$sql], false)->once()->andReturn([
-			'`' . $table . '`' => 'Created table `' . $table . '`',
-		]);
-
-		try {
-			(new DbDelta())->execute($sql);
-			$this->addToAssertionCount(1);
-		} finally {
-			$GLOBALS['wpdb']->query(sprintf('DROP TABLE IF EXISTS `%s`', $table));
-		}
 	}
 
 	public function test_it_translates_wordpress_database_errors(): void {

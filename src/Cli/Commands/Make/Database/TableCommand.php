@@ -5,18 +5,16 @@ namespace StellarWP\Foundation\Cli\Commands\Make\Database;
 use RuntimeException;
 use StellarWP\Foundation\Cli\Commands\Make\Database\Factories\MigrationFileFactory;
 use StellarWP\Foundation\Cli\Commands\Make\Database\ValueObjects\GeneratedMigration;
-use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
+use StellarWP\Foundation\Cli\Commands\Make\Database\ValueObjects\ProviderRegistrationResult;
+use StellarWP\Foundation\Cli\Composer\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
+use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\ComposerProject;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\PhpNamespace;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\Psr4Namespace;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Database\DatabaseStubPath;
-use StellarWP\Foundation\Database\Migration\ValueObjects\Id;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -26,12 +24,14 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * Generates a WordPress-style table class for Foundation Database migrations.
  *
- * Use this from a consuming WordPress project when a feature needs a table
- * definition that can be applied by a Foundation migration.
+ * Use this from a consuming WordPress project when a feature needs a stable
+ * table identity for migrations and table-scoped database operations.
  */
 final class TableCommand extends Command
 {
-	private const string NAME = 'make:database-table';
+	public const string CONFIG_KEY        = 'database-table';
+	public const string NAME              = 'make:' . self::CONFIG_KEY;
+	public const string DEFAULT_NAMESPACE = 'Database\\Tables';
 
 	/**
 	 * Create the table generator for a consuming project root.
@@ -39,6 +39,8 @@ final class TableCommand extends Command
 	public function __construct(
 		private readonly ProjectDirectory $projectDirectory,
 		private readonly ComposerAutoloadResolver $autoloadResolver,
+		private readonly GeneratorLocationResolver $locations,
+		private readonly ProviderFileResolver $providerFiles,
 		private readonly WordPressClassNameResolver $classNameResolver,
 		private readonly StubResolver $stubResolver,
 		private readonly StubRenderer $stubRenderer,
@@ -55,13 +57,12 @@ final class TableCommand extends Command
 	protected function configure(): void {
 		$this->setDescription('Generate a Foundation database table class.')
 			->addArgument('name', InputArgument::REQUIRED, 'Table class name, e.g. Reports_Table, Reports, or reports.')
-			->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the generated table class.')
-			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Directory where the table class should be written.')
-			->addOption('provider', null, InputOption::VALUE_REQUIRED, 'Database provider file to update when it exists.')
-			->addOption('id', null, InputOption::VALUE_REQUIRED, 'Stable table identifier: nonblank, unpadded, non-integer-like, and at most 191 bytes.')
-			->addOption('table-name', null, InputOption::VALUE_REQUIRED, 'Unprefixed WordPress table name.')
-			->addOption('migration', 'm', InputOption::VALUE_NONE, 'Also create the table\'s initial migration.')
-			->addOption('migration-id', null, InputOption::VALUE_REQUIRED, 'Stable identifier for the initial migration. Requires --migration.');
+			->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the generated table, e.g. Plugin\Database\Tables.')
+			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Output directory for the generated table, e.g. src/Database/Tables.')
+			->addOption('provider', null, InputOption::VALUE_REQUIRED, 'Database provider file to update, e.g. src/Database/Provider.php.')
+			->addOption('table-name', null, InputOption::VALUE_REQUIRED, 'Unprefixed WordPress table name using letters, numbers, and underscores, e.g. report_entries.')
+			->addOption('migration', 'm', InputOption::VALUE_NONE, 'Also create the table\'s initial migration. Rolling it back drops the complete table and its data.')
+			->addOption('migration-id', null, InputOption::VALUE_REQUIRED, 'Stable identifier that determines execution order, e.g. 2026_09_04_143200_create_reports_table. Requires --migration.');
 	}
 
 	/**
@@ -105,7 +106,7 @@ final class TableCommand extends Command
 		$output->writeln('');
 
 		if ($migration === null) {
-			$output->writeln('<comment>Add this table to a migration with Schema::createOrUpdate() and Schema::drop().</comment>');
+			$output->writeln('<comment>Create a migration that defines this table with Blueprint and Schema::create().</comment>');
 		} elseif ($providerPath === null && ! $this->providerExists($input)) {
 			$output->writeln(sprintf(
 				'<comment>Register %s and %s with your database provider.</comment>',
@@ -136,7 +137,7 @@ final class TableCommand extends Command
 	private function initialMigration(InputInterface $input): GeneratedMigration {
 		$project        = $this->autoloadResolver->project();
 		$tableClass     = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
-		$tableNamespace = $this->namespace($input, $project->defaultPsr4Namespace());
+		$tableNamespace = $this->locations->namespaceFor(self::CONFIG_KEY, self::DEFAULT_NAMESPACE, $project, (string) $input->getOption('namespace'));
 
 		return $this->migrationFactory->createTable(
 			name: 'Create_' . $tableClass,
@@ -192,25 +193,20 @@ final class TableCommand extends Command
 	private function generatedFile(InputInterface $input): GeneratedFile {
 		$className = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
 		$project   = $this->autoloadResolver->project();
-		$namespace = $this->namespace($input, $project->defaultPsr4Namespace());
-		$path      = $this->path($input, $namespace, $project);
+		$namespace = $this->locations->namespaceFor(self::CONFIG_KEY, self::DEFAULT_NAMESPACE, $project, (string) $input->getOption('namespace'));
+		$path      = $this->locations->directoryFor($namespace, $project, (string) $input->getOption('path'));
 		$stub      = $this->stubResolver->resolve('database', 'table', DatabaseStubPath::table());
 		$relative  = $this->projectDirectory->relativePath($path . '/' . $className . '.php');
 		$table     = $this->tableName($input, $className);
-		$idOption  = $input->getOption('id');
-		$id        = (new Id(is_string($idOption) ? $idOption : $table . '_table'))->value;
 
 		return new GeneratedFile(
 			path: $path . '/' . $className . '.php',
 			relativePath: $relative,
 			contents: $this->stubRenderer->render($stub, [
-				'namespace'                            => $namespace,
-				'class'                                => $className,
-				'id_php'                               => $this->stubRenderer->phpStringLiteral($id),
-				'table_php'                            => $this->stubRenderer->phpStringLiteral($table),
-				'foundation_database_contract'         => $project->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Database'),
-				'foundation_database_table'            => $project->foundationClass('StellarWP\\Foundation\\Database\\Table\\Table'),
-				'foundation_database_table_definition' => $project->foundationClass('StellarWP\\Foundation\\Database\\Table\\TableDefinition'),
+				'namespace'                 => $namespace,
+				'class'                     => $className,
+				'table_php'                 => $this->stubRenderer->phpStringLiteral($table),
+				'foundation_database_table' => $project->foundationClass('StellarWP\\Foundation\\Database\\Table\\Table'),
 			])
 		);
 	}
@@ -221,20 +217,20 @@ final class TableCommand extends Command
 	 * @throws RuntimeException When the provider cannot accept the generated registrations.
 	 */
 	private function validateExplicitProviderUpdate(InputInterface $input, ?GeneratedMigration $migration): void {
+		$project      = $this->autoloadResolver->project();
+		$className    = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
+		$namespace    = $this->locations->namespaceFor(self::CONFIG_KEY, self::DEFAULT_NAMESPACE, $project, (string) $input->getOption('namespace'));
+		$providerPath = $this->providerFiles->resolve($project, $this->nullableOption($input, 'provider'));
+
 		if (! $this->hasExplicitProvider($input)) {
 			return;
 		}
-
-		$project      = $this->autoloadResolver->project();
-		$className    = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
-		$namespace    = $this->namespace($input, $project->defaultPsr4Namespace());
-		$providerPath = $this->providerPath($input, $project);
 
 		if (! is_file($providerPath)) {
 			throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->projectDirectory->relativePath($providerPath)));
 		}
 
-		$status = $migration === null
+		$result = $migration === null
 			? $this->providerUpdater->checkTable($providerPath, $className, $namespace)
 			: $this->providerUpdater->checkTableAndMigration(
 				$providerPath,
@@ -244,11 +240,11 @@ final class TableCommand extends Command
 				$migration->namespace
 			);
 
-		if ($status !== ProviderRegistrationEditor::UPDATED && $status !== ProviderRegistrationEditor::ALREADY_REGISTERED) {
+		if (! $result->succeeded()) {
 			throw new RuntimeException(sprintf(
 				'Could not update database provider "%s": %s.',
 				$this->projectDirectory->relativePath($providerPath),
-				$this->providerUpdateFailure($status)
+				$result->failureReason() ?? 'provider could not be updated'
 			));
 		}
 	}
@@ -261,8 +257,8 @@ final class TableCommand extends Command
 	private function updateProvider(InputInterface $input, OutputInterface $output, ?GeneratedMigration $migration): ?string {
 		$project      = $this->autoloadResolver->project();
 		$className    = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
-		$namespace    = $this->namespace($input, $project->defaultPsr4Namespace());
-		$providerPath = $this->providerPath($input, $project);
+		$namespace    = $this->locations->namespaceFor(self::CONFIG_KEY, self::DEFAULT_NAMESPACE, $project, (string) $input->getOption('namespace'));
+		$providerPath = $this->providerFiles->resolve($project, $this->nullableOption($input, 'provider'));
 		$explicit     = $this->hasExplicitProvider($input);
 
 		if (! is_file($providerPath)) {
@@ -273,7 +269,7 @@ final class TableCommand extends Command
 			return null;
 		}
 
-		$status = $migration === null
+		$result = $migration === null
 			? $this->providerUpdater->addTable($providerPath, $className, $namespace)
 			: $this->providerUpdater->addTableAndMigration(
 				$providerPath,
@@ -283,23 +279,23 @@ final class TableCommand extends Command
 				$migration->namespace
 			);
 
-		if ($status !== ProviderRegistrationEditor::UPDATED && $status !== ProviderRegistrationEditor::ALREADY_REGISTERED && $explicit) {
+		if (! $result->succeeded() && $explicit) {
 			throw new RuntimeException(sprintf(
 				'Could not update database provider "%s": %s.',
 				$this->projectDirectory->relativePath($providerPath),
-				$this->providerUpdateFailure($status)
+				$result->failureReason() ?? 'provider could not be updated'
 			));
 		}
 
-		if ($status !== ProviderRegistrationEditor::UPDATED && $status !== ProviderRegistrationEditor::ALREADY_REGISTERED) {
+		if (! $result->succeeded()) {
 			$classes = $migration === null
 				? $className
 				: $className . ' and ' . $migration->class;
 
-			$this->writeProviderWarning($output, $providerPath, $status, $classes);
+			$this->writeProviderWarning($output, $providerPath, $result, $classes);
 		}
 
-		return $status === ProviderRegistrationEditor::UPDATED ? $providerPath : null;
+		return $result->wasUpdated() ? $providerPath : null;
 	}
 
 	/**
@@ -320,11 +316,11 @@ final class TableCommand extends Command
 	/**
 	 * Report a non-fatal conventional-provider update failure.
 	 */
-	private function writeProviderWarning(OutputInterface $output, string $providerPath, string $status, string $className): void {
+	private function writeProviderWarning(OutputInterface $output, string $providerPath, ProviderRegistrationResult $result, string $className): void {
 		$output->writeln(sprintf(
 			'<comment>Provider not updated:</comment> %s (%s). Register %s manually.',
 			$this->projectDirectory->relativePath($providerPath),
-			$this->providerUpdateFailure($status),
+			$result->failureReason() ?? 'provider could not be updated',
 			$className
 		));
 	}
@@ -332,7 +328,7 @@ final class TableCommand extends Command
 	/**
 	 * Resolve the stable unprefixed table name stored in generated source.
 	 *
-	 * @throws RuntimeException When --table-name is explicitly blank.
+	 * @throws RuntimeException When --table-name cannot be used as an unprefixed WordPress table name.
 	 */
 	private function tableName(InputInterface $input, string $className): string {
 		$value = $input->getOption('table-name');
@@ -341,11 +337,15 @@ final class TableCommand extends Command
 			return $this->classNameResolver->tableName($className);
 		}
 
-		if (! is_string($value) || trim($value) === '') {
-			throw new RuntimeException('The --table-name option cannot be blank.');
+		if (! is_string($value) || $value === '' || trim($value) !== $value) {
+			throw new RuntimeException('The --table-name option cannot be blank or contain surrounding whitespace.');
 		}
 
-		return trim($value);
+		if (preg_match('/\A[A-Za-z0-9_]+\z/', $value) !== 1) {
+			throw new RuntimeException('The --table-name option may contain only ASCII letters, numbers, and underscores.');
+		}
+
+		return $value;
 	}
 
 	/**
@@ -355,65 +355,6 @@ final class TableCommand extends Command
 		$value = $input->getOption($option);
 
 		return is_string($value) ? $value : null;
-	}
-
-	/**
-	 * Resolve an explicit table namespace or derive the conventional namespace.
-	 *
-	 * @throws RuntimeException When the explicit namespace is invalid.
-	 */
-	private function namespace(InputInterface $input, Psr4Namespace $autoload): string {
-		$namespace = $input->getOption('namespace');
-
-		if (is_string($namespace) && trim($namespace) !== '') {
-			return (new PhpNamespace(trim($namespace, '\\')))->value;
-		}
-
-		return trim($autoload->namespace, '\\') . '\\Database\\Tables';
-	}
-
-	/**
-	 * Resolve an explicit output path or map the namespace through Composer PSR-4 metadata.
-	 *
-	 * @throws RuntimeException When the namespace has no PSR-4 mapping and no path was supplied.
-	 */
-	private function path(InputInterface $input, string $namespace, ComposerProject $project): string {
-		$path = $input->getOption('path');
-
-		if (is_string($path) && trim($path) !== '') {
-			return $this->projectDirectory->absolutePath($path);
-		}
-
-		$autoload = $project->psr4NamespaceFor($namespace);
-
-		if ($autoload === null) {
-			throw new RuntimeException(sprintf(
-				'Namespace "%s" is outside the Composer PSR-4 namespaces in composer.json. Pass --path to choose an output directory.',
-				$namespace
-			));
-		}
-
-		return $this->projectDirectory->absolutePath($autoload->pathFor($namespace));
-	}
-
-	/**
-	 * Resolve the explicit provider path or the project's conventional database provider.
-	 */
-	private function providerPath(InputInterface $input, ComposerProject $project): string {
-		$provider = $input->getOption('provider');
-
-		if (is_string($provider) && trim($provider) !== '') {
-			return $this->projectDirectory->absolutePath($provider);
-		}
-
-		$namespace = trim($project->defaultPsr4Namespace()->namespace, '\\') . '\\Database';
-		$autoload  = $project->psr4NamespaceFor($namespace);
-
-		if ($autoload === null) {
-			return $this->projectDirectory->absolutePath('src/Database/Provider.php');
-		}
-
-		return $this->projectDirectory->absolutePath($autoload->pathFor($namespace) . '/Provider.php');
 	}
 
 	/**
@@ -429,24 +370,7 @@ final class TableCommand extends Command
 	 * Determine whether the selected or conventional provider file exists.
 	 */
 	private function providerExists(InputInterface $input): bool {
-		return is_file($this->providerPath($input, $this->autoloadResolver->project()));
-	}
-
-	/**
-	 * Translate an editor status into an actionable console message.
-	 */
-	private function providerUpdateFailure(string $status): string {
-		return match ($status) {
-			ProviderRegistrationEditor::NOT_FOUND        => 'file does not exist or is not readable',
-			ProviderRegistrationEditor::READ_FAILED      => 'file could not be read',
-			ProviderRegistrationEditor::NOT_WRITABLE     => 'file is not writable',
-			ProviderRegistrationEditor::MISSING_ANCHOR   => 'file does not contain a generated database provider registration point',
-			ProviderRegistrationEditor::MISSING_MARKER   => 'file does not contain the generated database provider markers',
-			ProviderRegistrationEditor::IMPORT_COLLISION => 'another class declaration or import uses the same short class name',
-			ProviderRegistrationEditor::PARSE_FAILED     => 'file could not be parsed as PHP',
-			ProviderRegistrationEditor::WRITE_FAILED     => 'file could not be written',
-			default                                      => 'provider could not be updated',
-		};
+		return is_file($this->providerFiles->resolve($this->autoloadResolver->project(), $this->nullableOption($input, 'provider')));
 	}
 
 	/**

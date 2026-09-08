@@ -4,13 +4,25 @@ namespace StellarWP\Foundation\Tests\Redis\LockRedis;
 
 use DateTimeImmutable;
 use Predis\Client;
+use Predis\ClientInterface;
 use Redis;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\Contracts\Configuration;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
+use StellarWP\Foundation\Lock\InMemoryLock;
+use StellarWP\Foundation\Lock\LockOperation;
 use StellarWP\Foundation\Lock\LockToken;
 use StellarWP\Foundation\Lock\SystemClock;
 use StellarWP\Foundation\LockRedis\Connections\PhpRedisConnection;
 use StellarWP\Foundation\LockRedis\Connections\PredisConnection;
+use StellarWP\Foundation\LockRedis\Contracts\Connection;
+use StellarWP\Foundation\LockRedis\LockRedisProvider;
+use StellarWP\Foundation\LockRedis\PredisConnectionProvider;
 use StellarWP\Foundation\LockRedis\RedisLock;
+use StellarWP\Foundation\Tests\Support\Fixtures\Lock\Catalog_Importer;
+use StellarWP\Foundation\Tests\Support\Fixtures\Lock\Catalog_Synchronizer;
 use StellarWP\Foundation\Tests\Support\Fixtures\LockRedis\RecordingConnection;
 use StellarWP\Foundation\Tests\TestCase;
 
@@ -111,6 +123,93 @@ final class RedisLockIntegrationTest extends TestCase
 		$this->expectException(LockUnavailableException::class);
 
 		(new PredisConnection($this->predis))->evaluate('not valid lua', [], []);
+	}
+
+	public function test_predis_connection_provider_uses_its_dedicated_client(): void {
+		$shared_client      = $this->mock(ClientInterface::class);
+		$unreachable_client = new Client('tcp://127.0.0.1:1');
+
+		$this->container->singleton(Client::class, $unreachable_client);
+		$this->container->singleton(ClientInterface::class, $shared_client);
+		$this->registerRedisProviders();
+
+		$lock  = $this->container->get(RedisLock::class);
+		$token = $lock->acquire('provider:sync', 10);
+
+		$this->assertInstanceOf(LockToken::class, $token);
+		$this->assertSame($shared_client, $this->container->get(ClientInterface::class));
+		$this->assertSame($unreachable_client, $this->container->get(Client::class));
+		$this->assertInstanceOf(PredisConnection::class, $this->container->get(Connection::class));
+		$this->assertTrue($lock->release($token));
+	}
+
+	public function test_the_application_consumer_coordinates_through_the_selected_redis_backend(): void {
+		$this->registerRedisProviders();
+		$this->container->singleton(Lock::class, static fn (C $c): RedisLock => $c->get(RedisLock::class));
+		$importer = new Catalog_Importer();
+		$this->container->singleton(Catalog_Importer::class, $importer);
+		$consumer    = $this->container->get(Catalog_Synchronizer::class);
+		$other_owner = $this->phpRedisLock->acquire('catalog:42:sync', 30);
+		$this->assertInstanceOf(LockToken::class, $other_owner);
+
+		try {
+			$this->assertFalse($consumer->synchronize(42));
+			$this->assertSame([], $importer->imported_site_ids);
+		} finally {
+			$this->phpRedisLock->release($other_owner);
+		}
+
+		$this->assertTrue($consumer->synchronize(42));
+		$this->assertSame([42], $importer->imported_site_ids);
+		$this->assertFalse($this->phpRedisLock->isAcquired('catalog:42:sync'));
+	}
+
+	public function test_a_feature_can_use_redis_while_another_backend_remains_the_default(): void {
+		$default_lock = new InMemoryLock(new SystemClock());
+		$this->container->singleton(Lock::class, $default_lock);
+		$this->registerRedisProviders();
+		$this->container->when(Catalog_Synchronizer::class)
+			->needs(LockOperation::class)
+			->give(static fn (C $c): LockOperation => new LockOperation($c->get(RedisLock::class)));
+		$importer = new Catalog_Importer();
+		$this->container->singleton(Catalog_Importer::class, $importer);
+		$consumer = $this->container->get(Catalog_Synchronizer::class);
+
+		$this->assertNotNull($default_lock->acquire('catalog:42:sync', 300));
+		$this->assertSame($default_lock, $this->container->get(Lock::class));
+		$this->assertFalse($this->container->get(LockOperation::class)->run(
+			'catalog:42:sync',
+			300,
+			function (): void {
+				$this->fail('The application default must still observe its occupied lock.');
+			}
+		));
+		$this->assertTrue($consumer->synchronize(42));
+
+		$other_owner = $this->phpRedisLock->acquire('catalog:42:sync', 30);
+		$this->assertInstanceOf(LockToken::class, $other_owner);
+
+		try {
+			$this->assertFalse($consumer->synchronize(42));
+			$this->assertSame([42], $importer->imported_site_ids);
+		} finally {
+			$this->phpRedisLock->release($other_owner);
+		}
+	}
+
+	private function registerRedisProviders(): void {
+		$this->container->singleton(Configuration::class, new ArrayConfiguration([
+			'lock' => ['redis' => [
+				'prefix'     => $this->prefix,
+				'parameters' => [
+					'host'     => (string) ($_ENV['REDIS_HOST'] ?? 'redis'),
+					'port'     => (int) ($_ENV['REDIS_PORT'] ?? 6379),
+					'database' => (int) ($_ENV['REDIS_TEST_DATABASE'] ?? 15),
+				],
+			]],
+		]));
+		$this->container->register(PredisConnectionProvider::class);
+		$this->container->register(LockRedisProvider::class);
 	}
 
 	public function test_phpredis_errors_fail_closed(): void {

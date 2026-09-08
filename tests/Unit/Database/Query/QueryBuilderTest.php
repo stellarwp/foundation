@@ -7,6 +7,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use StellarWP\Foundation\Database\Query\Query;
 use StellarWP\Foundation\Database\Query\QueryBuilder;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeQueryGateway;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestTable;
 use StellarWP\Foundation\Tests\TestCase;
 
@@ -29,6 +30,15 @@ final class QueryBuilderTest extends TestCase
 			"SELECT `id`, `title` FROM `wp_reports` AS `r` WHERE `status` = 'published' ORDER BY `id` DESC LIMIT 10 OFFSET 5",
 			$query->toPreparedSql()
 		);
+	}
+
+	public function test_it_only_requires_query_capabilities(): void {
+		$gateway = new FakeQueryGateway();
+		$query   = new QueryBuilder($gateway, $this->table('reports'));
+
+		$this->assertSame('SELECT * FROM `wp_reports`', $query->toSql());
+		$this->assertSame([], $query->get());
+		$this->assertSame(['SELECT * FROM `wp_reports`'], $gateway->queries);
 	}
 
 	public function test_it_quotes_qualified_columns_and_select_wildcards_by_segment(): void {
@@ -182,7 +192,7 @@ final class QueryBuilderTest extends TestCase
 	}
 
 	private function table(string $name): TestTable {
-		return new TestTable($name . '_table', $name);
+		return new TestTable($name);
 	}
 
 	private function query(string $table, ?FakeDatabase $database = null, ?string $alias = null): QueryBuilder {

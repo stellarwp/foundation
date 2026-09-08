@@ -2,17 +2,21 @@
 
 namespace StellarWP\Foundation\Database\Schema;
 
-use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Database;
-use StellarWP\Foundation\Database\Contracts\SchemaExecutor;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
+use StellarWP\Foundation\Database\Schema\Contracts\SchemaExecutor;
+use StellarWP\Foundation\Database\Schema\ValueObjects\IndexState;
+use StellarWP\Foundation\Database\Table\Blueprint;
 use StellarWP\Foundation\Database\Table\Column;
-use StellarWP\Foundation\Database\Table\IndexType;
-use StellarWP\Foundation\Database\Table\TableDefinition;
+use StellarWP\Foundation\Database\Table\Index;
 
 /**
  * Reconciles a physical WordPress database table with its declared definition.
+ *
+ * @internal Use the public Schema contract for application schema operations.
+ *
+ * @phpstan-type ColumnProperties array{type: string, nullable: bool, default: mixed, extra: string, comment: string, collation: ?string}
  */
 final readonly class Reconciler
 {
@@ -26,19 +30,152 @@ final readonly class Reconciler
 	}
 
 	/**
-	 * Create or update the table, then verify properties dbDelta may leave unapplied.
+	 * Create or reconcile the declarations in a table blueprint through dbDelta.
 	 *
-	 * @throws DatabaseException        When WordPress cannot reconcile the table definition.
-	 * @throws InvalidArgumentException When the table definition is invalid.
+	 * @throws DatabaseException When WordPress cannot apply or verify the declared schema.
 	 */
-	public function reconcile(Table $table): void {
-		$definition = $table->definition();
-		$definition->assertValid();
+	public function reconcile(Blueprint $blueprint): void {
+		$table = $blueprint->table();
+		$this->executor->execute($this->createTableSql($table, $blueprint));
+		$this->applyBinaryDefaults($table, $blueprint);
 
-		$this->executor->execute($this->createTableSql($table, $definition));
-		$this->reconcileComplexDefaults($table, $definition);
-		$this->reconcileColumnProperties($table, $definition);
-		$this->assertIndexesMatch($table, $definition);
+		$columnProperties = $this->reconcileColumnComments($table, $blueprint);
+
+		$this->assertMatches($blueprint, $columnProperties);
+	}
+
+	/**
+	 * Verify only the columns and indexes requested by a migration blueprint.
+	 *
+	 * Physical columns and indexes absent from the blueprint belong to other
+	 * migrations or external owners and do not participate in this check.
+	 *
+	 * @throws DatabaseException When declared schema state is missing, incompatible, or cannot be inspected.
+	 */
+	public function verify(Blueprint $blueprint): void {
+		$this->assertMatches($blueprint, $this->inspectColumns($blueprint->table(), $blueprint->columns()));
+	}
+
+	/**
+	 * Verify that a table uses the charset and collation configured by WordPress.
+	 *
+	 * @throws DatabaseException When table metadata is missing, invalid, or incompatible.
+	 */
+	public function verifyTable(Table $table): void {
+		$this->throwForDifferences($table, $this->tableCharsetDifferences($table));
+	}
+
+	/**
+	 * Determine whether a column already has its requested definition.
+	 *
+	 * @throws DatabaseException When column metadata cannot be inspected.
+	 */
+	public function columnMatches(Table $table, Column $column): bool {
+		return $this->columnDifferences(
+			[$column],
+			$this->inspectColumns($table, [$column])
+		) === [];
+	}
+
+	/**
+	 * Verify one existing column before an alteration treats it as completed work.
+	 *
+	 * @throws DatabaseException When the column differs from the requested declaration or cannot be inspected.
+	 */
+	public function verifyColumn(Table $table, Column $column): void {
+		$this->throwForDifferences(
+			$table,
+			$this->columnDifferences([$column], $this->inspectColumns($table, [$column]))
+		);
+	}
+
+	/**
+	 * Verify one existing index before an alteration treats it as completed work.
+	 *
+	 * @throws DatabaseException When the index differs from the requested declaration or cannot be inspected.
+	 */
+	public function verifyIndex(Table $table, Index $index): void {
+		$this->throwForDifferences($table, $this->indexDifferences($table, [$index]));
+	}
+
+	/**
+	 * Determine whether an index already has its requested definition.
+	 *
+	 * @throws DatabaseException When index metadata cannot be inspected.
+	 */
+	public function indexMatches(Table $table, Index $index): bool {
+		return $this->indexDifferences($table, [$index]) === [];
+	}
+
+	/**
+	 * Fail when requested columns or indexes do not match physical storage.
+	 *
+	 * @param array<string, ColumnProperties> $columnProperties
+	 *
+	 * @throws DatabaseException When requested schema state is missing or incompatible.
+	 */
+	private function assertMatches(Blueprint $blueprint, array $columnProperties): void {
+		$table = $blueprint->table();
+
+		$this->throwForDifferences(
+			$table,
+			$this->differences($table, $blueprint->columns(), $blueprint->indexes(), $columnProperties)
+		);
+	}
+
+	/**
+	 * Return differences between requested declarations and physical storage.
+	 *
+	 * @param list<Column>                    $columns
+	 * @param list<Index>                     $indexes
+	 * @param array<string, ColumnProperties> $columnProperties
+	 *
+	 * @throws DatabaseException When requested index state cannot be inspected.
+	 *
+	 * @return list<string>
+	 */
+	private function differences(Table $table, array $columns, array $indexes, array $columnProperties): array {
+		return [
+			...$this->tableCharsetDifferences($table),
+			...$this->declarationDifferences($table, $columns, $indexes, $columnProperties),
+		];
+	}
+
+	/**
+	 * Return requested column and index differences without reinspecting table defaults.
+	 *
+	 * @param list<Column>                    $columns
+	 * @param list<Index>                     $indexes
+	 * @param array<string, ColumnProperties> $columnProperties
+	 *
+	 * @throws DatabaseException When requested index state cannot be inspected.
+	 *
+	 * @return list<string>
+	 */
+	private function declarationDifferences(Table $table, array $columns, array $indexes, array $columnProperties): array {
+		return [
+			...$this->columnDifferences($columns, $columnProperties),
+			...$this->indexDifferences($table, $indexes),
+		];
+	}
+
+	/**
+	 * Throw a schema exception containing every requested-state difference.
+	 *
+	 * @param list<string> $differences
+	 *
+	 * @throws DatabaseException When requested schema state is missing or incompatible.
+	 */
+	private function throwForDifferences(Table $table, array $differences): void {
+		if ($differences === []) {
+			return;
+		}
+
+		throw new DatabaseException(sprintf(
+			'Database schema operation did not apply the requested state for %s: %s.',
+			$this->database->tableName($table),
+			implode('; ', $differences)
+		));
 	}
 
 	/**
@@ -46,14 +183,14 @@ final readonly class Reconciler
 	 *
 	 * @throws DatabaseException When the physical table name is invalid.
 	 */
-	private function createTableSql(Table $table, TableDefinition $definition): string {
+	private function createTableSql(Table $table, Blueprint $blueprint): string {
 		$parts = [];
 
-		foreach ($definition->columns() as $column) {
+		foreach ($blueprint->columns() as $column) {
 			$parts[] = '  ' . $column->sql();
 		}
 
-		foreach ($definition->indexes() as $index) {
+		foreach ($blueprint->indexes() as $index) {
 			$parts[] = '  ' . $index->sql();
 		}
 
@@ -70,8 +207,8 @@ final readonly class Reconciler
 	 *
 	 * @throws DatabaseException When a default cannot be reconciled.
 	 */
-	private function reconcileComplexDefaults(Table $table, TableDefinition $definition): void {
-		foreach ($definition->columns() as $column) {
+	private function applyBinaryDefaults(Table $table, Blueprint $blueprint): void {
+		foreach ($blueprint->columns() as $column) {
 			$default = $column->defaultSql();
 
 			if ($default === null || ! str_starts_with($default, "X'")) {
@@ -88,17 +225,20 @@ final readonly class Reconciler
 	}
 
 	/**
-	 * Reconcile comments and verify properties that dbDelta does not reliably reconcile.
+	 * Apply comment changes that dbDelta does not reliably reconcile and retain
+	 * the final physical properties for verification.
 	 *
 	 * MySQL requires the complete column declaration when changing or removing a
 	 * comment, so every supported attribute is rendered from the declared column.
 	 *
-	 * @throws DatabaseException When column metadata is missing, invalid, cannot be replaced, or differs from the definition.
+	 * @throws DatabaseException When column metadata is missing, invalid, or cannot be replaced.
+	 *
+	 * @return array<string, ColumnProperties>
 	 */
-	private function reconcileColumnProperties(Table $table, TableDefinition $definition): void {
-		$differences = [];
+	private function reconcileColumnComments(Table $table, Blueprint $blueprint): array {
+		$columnProperties = [];
 
-		foreach ($definition->columns() as $column) {
+		foreach ($blueprint->columns() as $column) {
 			$properties = $this->columnProperties($table, $column);
 			$comment    = $column->commentText() ?? '';
 
@@ -110,6 +250,55 @@ final readonly class Reconciler
 				));
 
 				$properties = $this->columnProperties($table, $column);
+			}
+
+			$columnProperties[$column->name] = $properties;
+		}
+
+		return $columnProperties;
+	}
+
+	/**
+	 * Inspect every column declared by the blueprint for post-operation verification.
+	 *
+	 * @param list<Column> $columns
+	 *
+	 * @throws DatabaseException When column metadata is missing or invalid.
+	 *
+	 * @return array<string, ColumnProperties>
+	 */
+	private function inspectColumns(Table $table, array $columns): array {
+		$properties = [];
+
+		foreach ($columns as $column) {
+			$properties[$column->name] = $this->columnProperties($table, $column);
+		}
+
+		return $properties;
+	}
+
+	/**
+	 * Return every column property that still differs from the declared schema.
+	 *
+	 * @param list<Column>                    $columns
+	 * @param array<string, ColumnProperties> $columnProperties
+	 *
+	 * @return list<string>
+	 */
+	private function columnDifferences(array $columns, array $columnProperties): array {
+		$differences = [];
+
+		foreach ($columns as $column) {
+			$properties = $columnProperties[$column->name];
+			$comment    = $column->commentText() ?? '';
+
+			if ($this->normalizeColumnType($properties['type']) !== $this->normalizeColumnType($column->typeSql())) {
+				$differences[] = sprintf(
+					'column %s expected type %s, found %s',
+					$column->name,
+					$column->typeSql(),
+					$properties['type']
+				);
 			}
 
 			if ($properties['nullable'] !== $column->nullable) {
@@ -150,15 +339,18 @@ final readonly class Reconciler
 					$properties['comment'] === '' ? 'none' : $properties['comment']
 				);
 			}
+
+			if (! $this->collationMatches($properties['collation'])) {
+				$differences[] = sprintf(
+					'column %s expected collation %s, found %s',
+					$column->name,
+					$this->expectedCollationDescription(),
+					(string) $properties['collation']
+				);
+			}
 		}
 
-		if ($differences !== []) {
-			throw new DatabaseException(sprintf(
-				'Database schema reconciliation did not apply the definition for %s: %s.',
-				$this->database->tableName($table),
-				implode('; ', $differences)
-			));
-		}
+		return $differences;
 	}
 
 	/**
@@ -166,7 +358,7 @@ final readonly class Reconciler
 	 *
 	 * @throws DatabaseException When column metadata is missing or invalid.
 	 *
-	 * @return array{nullable: bool, default: mixed, extra: string, comment: string}
+	 * @return ColumnProperties
 	 */
 	private function columnProperties(Table $table, Column $column): array {
 		$row = $this->database->row(
@@ -183,16 +375,21 @@ final readonly class Reconciler
 			));
 		}
 
-		$nullable = $row['Null'] ?? null;
-		$extra    = $row['Extra'] ?? null;
-		$comment  = $row['Comment'] ?? '';
+		$type      = $row['Type'] ?? null;
+		$nullable  = $row['Null'] ?? null;
+		$extra     = $row['Extra'] ?? null;
+		$comment   = $row['Comment'] ?? '';
+		$collation = $row['Collation'] ?? null;
 
 		if (
-			! is_string($nullable)
+			! is_string($type)
+			|| $type === ''
+			|| ! is_string($nullable)
 			|| ! in_array(strtoupper($nullable), ['YES', 'NO'], true)
 			|| ! array_key_exists('Default', $row)
 			|| ! is_string($extra)
 			|| ! is_string($comment)
+			|| ($collation !== null && (! is_string($collation) || $collation === ''))
 		) {
 			throw new DatabaseException(sprintf(
 				'Database returned invalid column metadata for %s.%s.',
@@ -202,192 +399,217 @@ final readonly class Reconciler
 		}
 
 		return [
-			'nullable' => strtoupper($nullable) === 'YES',
-			'default'  => $row['Default'],
-			'extra'    => $extra,
-			'comment'  => $comment,
+			'type'      => $type,
+			'nullable'  => strtoupper($nullable) === 'YES',
+			'default'   => $row['Default'],
+			'extra'     => $extra,
+			'comment'   => $comment,
+			'collation' => $collation,
 		];
 	}
 
 	/**
-	 * Verify that every declared index, and no undeclared index, exists with the expected type and ordered columns.
+	 * Return a difference when the table default cannot represent WordPress text safely.
 	 *
-	 * @throws DatabaseException When index metadata is invalid or differs from the definition.
+	 * @throws DatabaseException When table metadata is missing or invalid.
+	 *
+	 * @return list<string>
 	 */
-	private function assertIndexesMatch(Table $table, TableDefinition $definition): void {
-		$expected    = $this->expectedIndexes($definition);
-		$actual      = $this->physicalIndexes($table);
+	private function tableCharsetDifferences(Table $table): array {
+		$expected = $this->expectedCharsetCollation();
+
+		if ($expected === null) {
+			return [];
+		}
+
+		$tableName = $this->database->tableName($table);
+		$row       = $this->database->row('SHOW TABLE STATUS WHERE Name = %s', $tableName);
+		$actual    = $row['Collation'] ?? null;
+
+		if (! is_string($actual) || $actual === '') {
+			throw new DatabaseException(sprintf('Database returned invalid table metadata for %s.', $tableName));
+		}
+
+		if ($this->collationMatches($actual)) {
+			return [];
+		}
+
+		return [sprintf(
+			'table expected collation %s, found %s',
+			$this->expectedCollationDescription(),
+			$actual
+		)];
+	}
+
+	/**
+	 * Parse the charset and optional explicit collation configured by WordPress.
+	 *
+	 * @return array{charset: string, collation: ?string}|null
+	 */
+	private function expectedCharsetCollation(): ?array {
+		$clause = $this->database->charsetCollate();
+
+		if (preg_match('/\bCHARACTER\s+SET\s+([A-Za-z0-9_]+)/i', $clause, $charset) !== 1) {
+			return null;
+		}
+
+		$collation = preg_match('/\bCOLLATE\s+([A-Za-z0-9_]+)/i', $clause, $matches) === 1
+			? strtolower($matches[1])
+			: null;
+
+		return [
+			'charset'   => strtolower($charset[1]),
+			'collation' => $collation,
+		];
+	}
+
+	/**
+	 * Determine whether a physical collation satisfies WordPress configuration.
+	 */
+	private function collationMatches(?string $actual): bool {
+		if ($actual === null) {
+			return true;
+		}
+
+		$expected = $this->expectedCharsetCollation();
+
+		if ($expected === null) {
+			return true;
+		}
+
+		$actual = strtolower($actual);
+
+		return $expected['collation'] === null
+			? str_starts_with($actual, $expected['charset'] . '_')
+			: $actual === $expected['collation'];
+	}
+
+	/**
+	 * Describe the configured collation requirement in reconciliation errors.
+	 */
+	private function expectedCollationDescription(): string {
+		$expected = $this->expectedCharsetCollation();
+
+		if ($expected === null) {
+			return 'configured by WordPress';
+		}
+
+		return $expected['collation'] ?? $expected['charset'] . '_*';
+	}
+
+	/**
+	 * Return every missing or incompatible declared index difference.
+	 *
+	 * @param list<Index> $indexes
+	 *
+	 * @throws DatabaseException When the database returns invalid index metadata.
+	 *
+	 * @return list<string>
+	 */
+	private function indexDifferences(Table $table, array $indexes): array {
+		$expected    = $this->expectedIndexes($indexes);
 		$differences = [];
+
+		if ($expected === []) {
+			return [];
+		}
+
+		$actual = $this->physicalIndexes($table, array_keys($expected));
 
 		foreach ($expected as $name => $index) {
 			if (! isset($actual[$name])) {
-				$differences[] = sprintf('index %s expected %s, found missing', $index['name'], $this->describeIndex($index));
+				$differences[] = sprintf('index %s expected %s, found missing', $index->name, $index->describe());
 				continue;
 			}
 
-			if ($index['type'] !== $actual[$name]['type'] || $index['columns'] !== $actual[$name]['columns']) {
+			if (! $index->hasSameDefinitionAs($actual[$name])) {
 				$differences[] = sprintf(
 					'index %s expected %s, found %s',
-					$index['name'],
-					$this->describeIndex($index),
-					$this->describeIndex($actual[$name])
+					$index->name,
+					$index->describe(),
+					$actual[$name]->describe()
 				);
 			}
-
-			unset($actual[$name]);
 		}
 
-		foreach ($actual as $index) {
-			$differences[] = sprintf('unexpected index %s found %s', $index['name'], $this->describeIndex($index));
-		}
-
-		if ($differences !== []) {
-			throw new DatabaseException(sprintf(
-				'Database schema reconciliation did not apply the definition for %s: %s.',
-				$this->database->tableName($table),
-				implode('; ', $differences)
-			));
-		}
+		return $differences;
 	}
 
 	/**
 	 * Normalize the indexes declared by a table definition for comparison with database metadata.
 	 *
-	 * @return array<string, array{name: string, type: string, columns: list<string>}>
+	 * @param list<Index> $definitions
+	 *
+	 * @return array<string, IndexState>
 	 */
-	private function expectedIndexes(TableDefinition $definition): array {
+	private function expectedIndexes(array $definitions): array {
 		$indexes = [];
 
-		foreach ($definition->indexes() as $index) {
-			$name = $index->type === IndexType::PRIMARY ? 'PRIMARY' : $index->name;
+		foreach ($definitions as $index) {
+			$state = IndexState::fromDefinition($index);
 
-			$indexes[strtolower($name)] = [
-				'name'    => $name,
-				'type'    => $index->type,
-				'columns' => array_map(strtolower(...), $index->columns),
-			];
+			$indexes[strtolower($state->name)] = $state;
 		}
 
 		return $indexes;
+	}
+
+	/**
+	 * Normalize semantically irrelevant integer display widths before comparison.
+	 */
+	private function normalizeColumnType(string $type): string {
+		$type = trim($type);
+
+		if (preg_match('/\A([a-z]+)(.*)\z/is', $type, $parts) !== 1) {
+			return $type;
+		}
+
+		$name   = strtolower($parts[1]);
+		$suffix = $parts[2];
+
+		if ($name === 'integer') {
+			$name = 'int';
+		}
+
+		if ($name === 'bool' || $name === 'boolean') {
+			$name   = 'tinyint';
+			$suffix = '(1)' . $suffix;
+		}
+
+		if (in_array($name, ['tinyint', 'smallint', 'mediumint', 'int', 'bigint'], true)) {
+			$suffix = preg_replace('/\A\(\d+\)/', '', $suffix) ?? $suffix;
+
+			return trim($name . ' ' . strtolower(trim($suffix)));
+		}
+
+		return $name . $suffix;
 	}
 
 	/**
 	 * Read and normalize the physical indexes reported by MariaDB or MySQL.
 	 *
+	 * @param list<string> $expectedNames
+	 *
 	 * @throws DatabaseException When the database returns invalid index metadata.
 	 *
-	 * @return array<string, array{name: string, type: string, columns: list<string>}>
+	 * @return array<string, IndexState>
 	 */
-	private function physicalIndexes(Table $table): array {
-		/** @var array<string, array{name: string, type: string, columns: array<int, string>}> $indexes */
-		$indexes = [];
+	private function physicalIndexes(Table $table, array $expectedNames): array {
+		$tableName = $this->database->tableName($table);
+		$expected  = array_fill_keys(array_map(strtolower(...), $expectedNames), true);
+		$rows      = array_values(array_filter(
+			$this->database->rows('SHOW INDEX FROM %i', $tableName),
+			static function (array $row) use ($expected): bool {
+				$name = $row['Key_name'] ?? null;
 
-		foreach ($this->database->rows('SHOW INDEX FROM %i', $this->database->tableName($table)) as $row) {
-			$name      = $row['Key_name'] ?? null;
-			$column    = $row['Column_name'] ?? null;
-			$indexType = $row['Index_type'] ?? null;
-			$collation = $row['Collation'] ?? null;
-			$nonUnique = filter_var($row['Non_unique'] ?? null, FILTER_VALIDATE_INT);
-			$sequence  = filter_var($row['Seq_in_index'] ?? null, FILTER_VALIDATE_INT, [
-				'options' => ['min_range' => 1],
-			]);
-
-			if (
-				! is_string($name)
-				|| $name === ''
-				|| ! is_string($column)
-				|| $column === ''
-				|| ! is_string($indexType)
-				|| $indexType === ''
-				|| ($collation !== null && (! is_string($collation) || ! in_array(strtoupper($collation), ['A', 'D'], true)))
-				|| ! in_array($nonUnique, [0, 1], true)
-				|| ! is_int($sequence)
-			) {
-				throw new DatabaseException(sprintf(
-					'Database returned invalid index metadata for %s.',
-					$this->database->tableName($table)
-				));
+				return is_string($name) && isset($expected[strtolower($name)]);
 			}
+		));
 
-			$key               = strtolower($name);
-			$semanticIndexType = strtoupper($indexType);
-			$type              = strcasecmp($name, 'PRIMARY') === 0
-				? IndexType::PRIMARY
-				: (in_array($semanticIndexType, ['FULLTEXT', 'SPATIAL', 'RTREE'], true)
-					? strtolower($semanticIndexType)
-					: ($nonUnique === 0 ? IndexType::UNIQUE : IndexType::KEY));
-
-			if (isset($indexes[$key]) && $indexes[$key]['type'] !== $type) {
-				throw new DatabaseException(sprintf(
-					'Database returned invalid index metadata for %s.%s.',
-					$this->database->tableName($table),
-					$name
-				));
-			}
-
-			$indexes[$key] ??= [
-				'name'    => $name,
-				'type'    => $type,
-				'columns' => [],
-			];
-
-			if (isset($indexes[$key]['columns'][$sequence])) {
-				throw new DatabaseException(sprintf(
-					'Database returned invalid index metadata for %s.%s.',
-					$this->database->tableName($table),
-					$name
-				));
-			}
-
-			$subPart = $row['Sub_part'] ?? null;
-
-			if ($subPart !== null) {
-				$subPart = filter_var($subPart, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-
-				if (! is_int($subPart)) {
-					throw new DatabaseException(sprintf(
-						'Database returned invalid index metadata for %s.%s.',
-						$this->database->tableName($table),
-						$name
-					));
-				}
-
-				$column .= '(' . $subPart . ')';
-			}
-
-			if (strtoupper((string) $collation) === 'D') {
-				$column .= ' DESC';
-			}
-
-			$indexes[$key]['columns'][$sequence] = strtolower($column);
-		}
-
-		foreach ($indexes as &$index) {
-			ksort($index['columns']);
-
-			if (array_keys($index['columns']) !== range(1, count($index['columns']))) {
-				throw new DatabaseException(sprintf(
-					'Database returned invalid index metadata for %s.%s.',
-					$this->database->tableName($table),
-					$index['name']
-				));
-			}
-
-			$index['columns'] = array_values($index['columns']);
-		}
-
-		unset($index);
-
-		return $indexes;
-	}
-
-	/**
-	 * Format one normalized index for a reconciliation error.
-	 *
-	 * @param array{name: string, type: string, columns: list<string>} $index
-	 */
-	private function describeIndex(array $index): string {
-		return sprintf('%s (%s)', strtoupper($index['type']), implode(', ', $index['columns']));
+		return PhysicalIndexCollection::fromRows(
+			$rows,
+			$tableName
+		)->all();
 	}
 
 	/**

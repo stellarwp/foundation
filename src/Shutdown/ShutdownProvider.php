@@ -2,15 +2,12 @@
 
 namespace StellarWP\Foundation\Shutdown;
 
-use lucatume\DI52\Container;
-use StellarWP\Foundation\Container\ContainerAdapter;
 use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Shutdown\Contracts\ShutdownRunner;
 
 /**
  * Registers the default shutdown runner and task contribution point.
- *
- * @property-read ContainerAdapter $container
  */
 final class ShutdownProvider extends Provider
 {
@@ -18,17 +15,21 @@ final class ShutdownProvider extends Provider
 
 	private bool $registered = false;
 
+	/**
+	 * Register contributed shutdown tasks and connect the shared runner to WordPress.
+	 */
 	public function register(): void {
-		// DI52 may register the provider repeatedly, but its definitions and WordPress hook must be added only once.
+		// Repeated provider registration must not duplicate definitions or the WordPress hook.
 		if ($this->registered) {
 			return;
 		}
 
 		$this->registered = true;
+		$this->container->mergeArrayVar(self::TASKS, []);
 
 		$this->container->when(Runner::class)
 			->needs('$tasks')
-			->give(static fn (Container $container): array => $container->getVar(self::TASKS, []));
+			->give(static fn (C $c): array => $c->get(self::TASKS));
 
 		$this->container->singletonDecorators(ShutdownRunner::class, [
 			ResponseFinishingRunner::class,

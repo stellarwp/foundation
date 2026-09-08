@@ -221,7 +221,7 @@ final readonly class PhpSourceEditor
 			return false;
 		}
 
-		return $this->findNode(
+		return (new NodeFinder())->findFirst(
 			$statements,
 			fn (Node $node): bool => $this->isContainerSingleton($node, $fullyQualifiedClass)
 		) !== null;
@@ -748,63 +748,6 @@ final readonly class PhpSourceEditor
 		}
 
 		return $indent . '    ';
-	}
-
-	/**
-	 * Search statements depth-first and return the first node accepted by a predicate.
-	 *
-	 * @param array<Node\Stmt>     $statements
-	 * @param callable(Node): bool $predicate
-	 */
-	private function findNode(array $statements, callable $predicate): ?Node {
-		foreach ($statements as $statement) {
-			$match = $this->findMatchingNode($statement, $predicate);
-
-			if ($match instanceof Node) {
-				return $match;
-			}
-		}
-
-		return null;
-	}
-
-	/**
-	 * Search one syntax node and its descendants depth-first.
-	 *
-	 * @param callable(Node): bool $predicate
-	 */
-	private function findMatchingNode(Node $node, callable $predicate): ?Node {
-		if ($predicate($node)) {
-			return $node;
-		}
-
-		foreach ($node->getSubNodeNames() as $name) {
-			$value = $node->{$name};
-
-			if ($value instanceof Node) {
-				$match = $this->findMatchingNode($value, $predicate);
-
-				if ($match instanceof Node) {
-					return $match;
-				}
-			}
-
-			if (is_array($value)) {
-				foreach ($value as $item) {
-					if (! $item instanceof Node) {
-						continue;
-					}
-
-					$match = $this->findMatchingNode($item, $predicate);
-
-					if ($match instanceof Node) {
-						return $match;
-					}
-				}
-			}
-		}
-
-		return null;
 	}
 
 	/**

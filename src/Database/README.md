@@ -3,7 +3,7 @@
 > [!WARNING]
 > **This is a read-only repository!** For pull requests or issues, see [stellarwp/foundation](https://github.com/stellarwp/foundation).
 
-Foundation Database provides WordPress-backed table definitions, versioned
+Foundation Database provides WordPress-backed table gateways, versioned
 migrations, a small query API, database-backed locks, and a WP-CLI deployment
 workflow built on `wpdb` and `dbDelta()`.
 

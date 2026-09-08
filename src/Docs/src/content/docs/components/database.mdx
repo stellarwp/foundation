@@ -61,7 +61,7 @@ Set a stable application prefix in the root `config.php` for a standalone plugin
 
 return [
 	'foundation' => [
-		'prefix' => 'your-plugin',
+		'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? 'your-plugin',
 	],
 ];
 ```
@@ -79,6 +79,8 @@ Complete WordPress applications that own the entire installation can keep the ze
 
 Keep the prefix stable after migrations have run. Changing it points the application at a different ledger and lock table, making every configured migration appear pending.
 
+Application table names are chosen by the developer. When [generating a table](/components/database/migrations/#create-and-change-a-table) for a standalone plugin, use a stable name unique to that plugin, such as `--table-name=your_plugin_reports`. WordPress adds its site prefix to produce `wp_your_plugin_reports`; `foundation.prefix` scopes the migration infrastructure listed above.
+
 ### Override individual resources
 
 Package-specific settings in the root `config.php` override values derived from `foundation.prefix`:
@@ -86,7 +88,7 @@ Package-specific settings in the root `config.php` override values derived from 
 ```php title="config.php"
 return [
 	'foundation' => [
-		'prefix' => 'your-plugin',
+		'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? 'your-plugin',
 	],
 	'database' => [
 		'migrations_table' => $_ENV['FOUNDATION_DATABASE_MIGRATIONS_TABLE'] ?? '',
@@ -122,8 +124,8 @@ foreach ( $site_ids as $site_id ) {
 
 Each `initialize()`, `run()`, `rollback()`, `refresh()`, and `dropStore()` operation captures the active blog ID when it starts. Foundation confirms that context before renewing the migration lock, writing to the ledger, and releasing the lock.
 
-:::caution[Do not leave a migration in another blog context]
-A migration may temporarily call `switch_to_blog()` only if it restores the original blog before returning. If the context changes during an operation, Foundation aborts and leaves the original lock to expire instead of risking a write to another site's ledger or lock table.
+:::caution[Do not switch blogs inside a migration]
+A migration must not call `switch_to_blog()`, even if it would restore the original blog before returning. Foundation can detect a changed context at its lock and ledger boundaries, but it cannot detect a temporary switch that modifies another site's schema and returns to the original site. Switch blogs only around complete `Migrator` operations as shown above.
 :::
 
 WP-CLI can also select each site without an in-process loop:
@@ -144,12 +146,12 @@ Foundation Database currently manages site-specific migration state. It does not
 In `src/App.php`, register `WPCliProvider` before `DatabaseProvider`, then register application providers that contribute migrations or select the database lock:
 
 ```php title="App.php"
-use StellarWP\Foundation\Container\Contracts\Providable;
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Database;
 use StellarWP\Foundation\WPCli;
-use YourPlugin\Database as ApplicationDatabase;
+use Plugin\Database as ApplicationDatabase;
 
-/** @var list<class-string<Providable>> */
+/** @var list<class-string<Provider>> */
 private const array PROVIDERS = [
 	WPCli\WPCliProvider::class,
 	Database\DatabaseProvider::class,

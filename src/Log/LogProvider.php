@@ -2,7 +2,7 @@
 
 namespace StellarWP\Foundation\Log;
 
-use lucatume\DI52\Container;
+use InvalidArgumentException;
 use Monolog\Formatter\LineFormatter;
 use Monolog\Handler\AbstractHandler;
 use Monolog\Handler\ErrorLogHandler;
@@ -12,124 +12,122 @@ use Monolog\Logger;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
 use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use StellarWP\Foundation\Container\Exceptions\ContainerException;
 use StellarWP\Foundation\Log\Formatters\ColoredLineFormatter;
 use StellarWP\Foundation\Log\Handlers\NullHandler;
+use UnhandledMatchError;
 
 /**
- * Default logging provider for consumers that want Foundation to wire logging for them.
- *
- * This provider is intentionally conservative: if the configured logging transport is
- * unavailable, the application should keep running. Consumers that need different
- * channels, handlers, or failure behavior can register their own provider instead.
+ * Registers the configured PSR-3 logger with built-in or application-defined channels.
  */
 final class LogProvider extends Provider
 {
-	public const string LOG_LEVEL        = self::class . '.log_level';
-	public const string CHANNEL_ERRORLOG = 'errorlog';
-	private const string CHANNEL_CONSOLE = 'console';
-	private const string CHANNEL_NULL    = 'null';
-	private const string CHANNEL_STACK   = 'stack';
-	public const array  CHANNELS         = [
+	private const string CHANNEL_ERRORLOG = 'errorlog';
+	private const string CHANNEL_CONSOLE  = 'console';
+	private const string CHANNEL_NULL     = 'null';
+	private const string CHANNEL_STACK    = 'stack';
+	private const array CHANNELS          = [
 		self::CHANNEL_CONSOLE  => [
-			'class'     => StreamHandler::class,
+			'handler'   => StreamHandler::class,
 			'formatter' => ColoredLineFormatter::class,
 		],
 		self::CHANNEL_ERRORLOG => [
-			'class'     => ErrorLogHandler::class,
+			'handler'   => ErrorLogHandler::class,
 			'formatter' => LineFormatter::class,
 		],
 		self::CHANNEL_STACK    => [
-			self::CHANNEL_CONSOLE,
-			self::CHANNEL_ERRORLOG,
+			'channels' => [self::CHANNEL_CONSOLE, self::CHANNEL_ERRORLOG],
 		],
 		self::CHANNEL_NULL     => [
-			'class' => NullHandler::class,
+			'handler' => NullHandler::class,
 		],
 	];
 
 	/**
-	 * {@inheritDoc}
+	 * Register the application logger with its configured channel and level.
+	 *
+	 * @throws ContainerException  When service bindings cannot be registered.
+	 * @throws UnhandledMatchError When the configured log level is unsupported.
 	 */
 	public function register(): void {
-		$this->container->singleton(self::LOG_LEVEL, LogLevel::fromName($this->config->get('log.level', 'debug')));
+		$level = LogLevel::fromName($this->config->get('log.level', 'debug'));
 
 		$this->container->when(ColoredLineFormatter::class)
 			->needs('$dateFormat')
 			->give('Y-m-d H:i:s.v e');
 
-		$channel = $this->config->get('log.channel');
-
 		$this->container->singleton(
-			StreamHandler::class,
-			fn ($c) => new StreamHandler(
-				$this->config->get("log.channels.$channel.with.stream", 'php://stdout'),
-				$c->get(self::LOG_LEVEL)
-			)
-		);
-
-		$this->container->bind(
 			LoggerInterface::class,
-			static function (Container $c) use ($channel): LoggerInterface {
-				$handler = self::CHANNELS[$channel] ?? false;
-
-				if (! $handler) {
-					throw new RuntimeException(
-						sprintf(
-							'Invalid log channel. Valid options are: %s',
-							implode(',', array_keys(self::CHANNELS))
-						)
-					);
-				}
-
-				$logger = new Logger($channel);
-
-				/**
-				 * @var array<array{handler: AbstractHandler, formatter: string|class-string}> $handlers
-				 */
-				$handlers = [];
-
-				// Single handler channel.
-				if (! empty($handler['class'])) {
-					if ($channel === self::CHANNEL_ERRORLOG && ! self::isErrorLogAvailable()) {
-						$handler = self::CHANNELS[self::CHANNEL_NULL];
-					}
-
-					$handlers[] = [
-						'handler'   => $c->get($handler['class']),
-						'formatter' => $handler['formatter'] ?? '',
-					];
-				} else {
-					// We are on a stack channel, which uses multiple existing handlers.
-					foreach ($handler as $stackChannel) {
-						if ($stackChannel === self::CHANNEL_ERRORLOG && ! self::isErrorLogAvailable()) {
-							continue;
-						}
-
-						$handlers[] = [
-							'handler'   => $c->get(self::CHANNELS[$stackChannel]['class']),
-							'formatter' => self::CHANNELS[$stackChannel]['formatter'],
-						];
-					}
-				}
-
-				/** @var array{handler: AbstractHandler, formatter: string|class-string} $registeredHandler */
-				foreach ($handlers as $registeredHandler) {
-					if (! empty($registeredHandler['formatter']) && $registeredHandler['handler'] instanceof FormattableHandlerInterface) {
-						$registeredHandler['handler']->setFormatter($c->get($registeredHandler['formatter']));
-					}
-
-					// Set the configured log level for each handler.
-					$registeredHandler['handler']->setLevel($c->get(self::LOG_LEVEL));
-
-					$logger->pushHandler($registeredHandler['handler']);
-				}
-
-				return $logger;
-			}
+			fn (C $c): LoggerInterface => $this->createLogger($c, $level)
 		);
 	}
 
-	private static function isErrorLogAvailable(): bool {
-		return function_exists('error_log');
+	/**
+	 * Build the selected logger from its channels' destinations and formatting.
+	 *
+	 * @param LogLevel::* $level
+	 *
+	 * @throws InvalidArgumentException When a configured stream is neither a path nor a resource.
+	 * @throws RuntimeException         When a channel is invalid or channels share a handler instance.
+	 * @throws ContainerException       When a configured handler or formatter cannot be resolved.
+	 */
+	private function createLogger(C $c, int $level): Logger {
+		$channel  = $this->config->get('log.channel');
+		$channels = self::CHANNELS;
+
+		foreach ($this->config->get('log.channels', []) as $name => $definition) {
+			$channels[$name] = array_replace($channels[$name] ?? [], $definition);
+		}
+
+		$selected = $channels[$channel] ?? null;
+
+		if ($selected === null) {
+			throw new RuntimeException(sprintf(
+				'Invalid log channel. Valid options are: %s',
+				implode(',', array_keys($channels))
+			));
+		}
+
+		$logger = new Logger($channel);
+
+		foreach ($selected['channels'] ?? [$channel] as $name) {
+			$definition = $channels[$name] ?? [];
+
+			if (! isset($definition['handler'])) {
+				throw new RuntimeException(sprintf('Log channel "%s" must define a handler.', $name));
+			}
+
+			if ($definition['handler'] === ErrorLogHandler::class && ! function_exists('error_log')) {
+				if (isset($selected['channels'])) {
+					continue;
+				}
+
+				$definition = self::CHANNELS[self::CHANNEL_NULL];
+			}
+
+			$handler = $definition['handler'] === StreamHandler::class
+				? new StreamHandler($definition['with']['stream'] ?? 'php://stdout', $level)
+				: $c->get($definition['handler']);
+
+			if (in_array($handler, $logger->getHandlers(), true)) {
+				throw new RuntimeException(sprintf(
+					'Log channel "%s" shares a handler instance with another stack entry. Use separate handler bindings or a single shared channel.',
+					$name
+				));
+			}
+
+			if (isset($definition['formatter']) && $handler instanceof FormattableHandlerInterface) {
+				$handler->setFormatter($c->get($definition['formatter']));
+			}
+
+			if ($handler instanceof AbstractHandler) {
+				$handler->setLevel($level);
+			}
+
+			$logger->pushHandler($handler);
+		}
+
+		return $logger;
 	}
 }

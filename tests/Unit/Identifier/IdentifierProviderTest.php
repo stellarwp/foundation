@@ -2,7 +2,7 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Identifier;
 
-use lucatume\DI52\Container as C;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Identifier\Contracts\IdentifierGenerator;
 use StellarWP\Foundation\Identifier\IdentifierProvider;
 use StellarWP\Foundation\Identifier\Ulid\Contracts\Entropy;

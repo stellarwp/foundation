@@ -12,6 +12,8 @@ final readonly class Id
 	public const int MAX_BYTES = 191;
 
 	/**
+	 * Validate and retain an identifier that can be stored safely in the ledger.
+	 *
 	 * @throws InvalidMigrationId When the identifier is blank, padded, integer-like, or too long for the ledger.
 	 */
 	public function __construct(

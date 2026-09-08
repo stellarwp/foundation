@@ -7,10 +7,14 @@ use StellarWP\Foundation\Database\Contracts\Database;
 use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
+use StellarWP\Foundation\Database\Schema\Editor;
 use StellarWP\Foundation\Database\Schema\Reconciler;
+use StellarWP\Foundation\Database\Table\Blueprint;
 
 /**
  * WordPress schema operations backed by wpdb and dbDelta.
+ *
+ * @internal Depend on {@see SchemaContract}; the provider owns this implementation.
  */
 final readonly class Schema implements SchemaContract
 {
@@ -19,18 +23,37 @@ final readonly class Schema implements SchemaContract
 	 */
 	public function __construct(
 		private Database $database,
-		private Reconciler $reconciler
+		private Reconciler $reconciler,
+		private Editor $editor
 	) {
 	}
 
 	/**
-	 * Reconcile a table's physical schema with its current definition.
+	 * Create a missing table or verify an existing table without replaying historical DDL.
 	 *
-	 * @throws DatabaseException        When WordPress cannot reconcile the table definition.
+	 * @throws DatabaseException        When WordPress cannot create the table or its existing state is incompatible.
 	 * @throws InvalidArgumentException When the table definition is invalid.
 	 */
-	public function createOrUpdate(Table $table): void {
-		$this->reconciler->reconcile($table);
+	public function create(Blueprint $blueprint): void {
+		$blueprint->assertValidForCreate();
+
+		if ($this->database->tableExists($blueprint->table())) {
+			$this->reconciler->verify($blueprint);
+
+			return;
+		}
+
+		$this->reconciler->reconcile($blueprint);
+	}
+
+	/**
+	 * Apply explicit additions, modifications, and removals to an existing table.
+	 *
+	 * @throws DatabaseException        When the table is missing or a schema change cannot be applied or verified.
+	 * @throws InvalidArgumentException When the alteration blueprint is invalid.
+	 */
+	public function alter(Blueprint $blueprint): void {
+		$this->editor->alter($blueprint);
 	}
 
 	/**
@@ -58,19 +81,6 @@ final readonly class Schema implements SchemaContract
 	 */
 	public function hasIndex(Table $table, string $index): bool {
 		return $this->database->indexExists($table, $index);
-	}
-
-	/**
-	 * Remove a named secondary index from a table.
-	 *
-	 * @throws DatabaseException When the table name is invalid or the statement cannot be executed.
-	 */
-	public function dropIndex(Table $table, string $index): void {
-		$this->database->execute(sprintf(
-			'ALTER TABLE %s DROP INDEX %s',
-			$this->database->quoteIdentifier($this->database->tableName($table)),
-			$this->database->quoteIdentifier($index)
-		));
 	}
 
 	/**

@@ -5,7 +5,7 @@ namespace StellarWP\Foundation\Tests\Unit\Database\Migration;
 use DateTimeImmutable;
 use StellarWP\Foundation\Database\Contracts\Migration;
 use StellarWP\Foundation\Database\Contracts\Schema;
-use StellarWP\Foundation\Database\Exceptions\MigrationFailed;
+use StellarWP\Foundation\Database\Migration\Exceptions\MigrationFailed;
 use StellarWP\Foundation\Database\Migration\Lease;
 use StellarWP\Foundation\Database\Migration\Session;
 use StellarWP\Foundation\Lock\Contracts\Lock;

@@ -78,9 +78,9 @@ vendor/bin/foundation make:database-provider
 vendor/bin/foundation make:database-table Reports_Table --migration
 ```
 
-The `--migration` flag creates and registers the table's initial migration in the same operation. Table `--namespace` and `--path` options affect only the table class; the migration uses its conventional namespace and path. Use `--migration-id=<id>` only when the generated timestamp identifier must be replaced.
+The `--migration` flag creates and registers the table's initial migration in the same operation. Table `--namespace` and `--path` options affect only the table class; the migration uses its project-configured namespace and path, falling back to the Foundation convention. Use an explicit identifier such as `--migration-id=2026_09_04_143200_create_reports_table` only when the generated timestamp identifier must be replaced. The explicit ID determines that migration's position in Foundation's ascending execution order.
 
-Use `--table-name=<name>` when the table's unprefixed WordPress name should differ from the name derived from its class. On `make:database-migration`, `--table=<class>` instead selects the existing table class whose schema should be reconciled.
+Use `--table-name=<name>` when the table's unprefixed WordPress name should differ from the name derived from its class. On `make:database-migration`, `--table=<class>` instead selects the existing table class that an alteration migration changes.
 
 Generated database classes require the runtime package:
 
@@ -95,10 +95,10 @@ The migration generator selects one of three modes:
 | Invocation | Generated behavior | Override stub |
 | --- | --- | --- |
 | `make:database-migration Create_Reports_Table --create=Reports_Table` | Creates the explicitly selected table; `down()` drops the table | `create-table-migration.stub` |
-| `make:database-migration Add_Status_To_Reports --table=Reports_Table` | Reconciles the table's current definition; `down()` throws `IrreversibleMigration` until replaced | `reconcile-table-migration.stub` |
+| `make:database-migration Add_Status_To_Reports --table=Reports_Table` | Starts an explicit alteration blueprint; `down()` throws `IrreversibleMigration` until replaced | `alter-table-migration.stub` |
 | `make:database-migration Backfill_Report_Status` | Generates a generic migration; add service or table dependencies manually | `migration.stub` |
 
-The `--create` and `--table` options are mutually exclusive. Each accepts a class from the default `Database\\Tables` namespace or a fully qualified table class. Migration names never select destructive behavior by themselves.
+The `--create` and `--table` options are mutually exclusive. Each accepts a short class name from the configured table namespace (`Database\\Tables` by default), or a fully qualified table class. Migration names never select destructive behavior by themselves.
 
 <LinkCard
   title="Create Database Migrations"
@@ -117,9 +117,57 @@ vendor/bin/foundation help make:database-table
 vendor/bin/foundation help make:database-migration
 ```
 
-The generators use the first `autoload.psr-4` entry in the project's `composer.json` to determine the default namespace and source path. Explicit `--namespace` and `--path` options override those defaults.
+Without project overrides, generators use the first `autoload.psr-4` entry in the project's `composer.json` as their root namespace. Output directories follow the most specific Composer mapping for the selected namespace. Explicit `--namespace` and `--path` options override those defaults.
 
 ## Customize generation
+
+### Configure generator locations
+
+Set project-wide namespaces in the project's root `config.php`, alongside existing application settings. The file is optional; include only the generators whose defaults you want to change:
+
+```php title="config.php"
+<?php
+
+return [
+	'generators' => [
+		'wpcli-command' => [
+			'namespace' => 'Plugin\\Commands',
+		],
+		'database-provider' => [
+			'namespace' => 'Plugin\\Persistence',
+		],
+		'database-table' => [
+			'namespace' => 'Plugin\\Persistence\\Tables',
+		],
+		'database-migration' => [
+			'namespace' => 'Plugin\\Persistence\\Migrations',
+		],
+	],
+];
+```
+
+Run Foundation from the project root. It loads this file once when the CLI starts; use a PHP array that can be loaded independently of WordPress.
+
+Namespaces are fully qualified application namespaces. With `Plugin\\` mapped to `src/` in Composer, the example produces:
+
+| Generator | Directory |
+| --- | --- |
+| `make:wpcli-command` | `src/Commands/` |
+| `make:database-provider` | `src/Persistence/` |
+| `make:database-table` | `src/Persistence/Tables/` |
+| `make:database-migration` | `src/Persistence/Migrations/` |
+
+An explicit `--namespace` takes precedence over the configured namespace. Without either, the conventional suffixes are `Cli\\Commands`, `Database`, `Database\\Tables`, and `Database\\Migrations`, respectively. An explicit `--path` chooses the output directory for that invocation; it does not change the namespace or update Composer autoload mappings.
+
+Table and migration generators look for `Provider.php` in the configured database-provider namespace. Generate that provider first to enable automatic registration. Use `--provider` to select another provider file, including a provider generated with a custom class name. Paired migrations from `make:database-table --migration` use the migration setting independently of table options; short `--create` and `--table` references use the table setting.
+
+Invalid settings for the selected generator or missing Composer mappings stop generation before files are written. Correct the setting or mapping before retrying. If the provider namespace has no mapping, correct `generators.database-provider.namespace` or its Composer mapping, or select an existing provider file with `--provider`.
+
+If Foundation scaffolding should be excluded from your production archive, add `foundation/` to the project's `.gitattributes` export exclusions.
+
+### Create a custom generator
+
+Follow [Create a custom generator](/tooling/custom-generators/) for a complete stub, generator class, and automatically loaded tooling provider. The generator owns its command name, configuration key, and default namespace.
 
 ### Override package stubs
 
@@ -133,7 +181,7 @@ foundation/stubs/
     provider.stub
     table.stub
     create-table-migration.stub
-    reconcile-table-migration.stub
+    alter-table-migration.stub
     migration.stub
 ```
 
@@ -141,7 +189,7 @@ Copy the package's default stub before customizing it so required placeholders r
 
 ### Generate Strauss-compatible imports
 
-When the consuming project's `composer.json` defines `extra.strauss.namespace_prefix`, generators apply that prefix to Foundation imports. For example, a configured `YourPlugin\\` prefix changes:
+When the consuming project's `composer.json` defines `extra.strauss.namespace_prefix`, generators apply that prefix to Foundation imports. For example, a configured `Plugin\\` prefix changes:
 
 ```php
 use StellarWP\Foundation\WPCli\Command;
@@ -150,94 +198,87 @@ use StellarWP\Foundation\WPCli\Command;
 to:
 
 ```php
-use YourPlugin\StellarWP\Foundation\WPCli\Command;
+use Plugin\StellarWP\Foundation\WPCli\Command;
 ```
 
 This keeps generated classes compatible when Strauss prefixes dependencies without updating project call sites. Handwritten imports remain the application's responsibility.
 
-## Build a project-specific CLI
+## Project tooling
 
-The installed `vendor/bin/foundation` executable contains Foundation's commands. A project that needs its own Symfony Console commands can create a separate executable using `StellarWP\Foundation\Cli\Application`.
+Foundation looks for `<ProjectNamespace>\Tooling\Tooling_Provider` using the first runtime PSR-4 namespace in the project's `composer.json`. With `Plugin\\` mapped to `src/`, create `src/Tooling/Tooling_Provider.php`. Composer determines the physical file location.
 
-In `src/Cli/Cache_Clear_Command.php`:
+Use this one provider to register your developer commands and their dependency bindings. Commands contributed to `CliProvider::COMMANDS` become available through `vendor/bin/foundation`. Follow [Create a custom generator](/tooling/custom-generators/) for a complete example.
 
-```php title="Cache_Clear_Command.php"
+The tooling provider runs in the Foundation CLI's container. Application providers still run through your application's composition root. Both can read the same root `config.php`; keep configuration loadable independently of WordPress, such as arrays populated from environment values.
+
+### Use a custom provider path
+
+To place your tooling provider elsewhere, move it to the desired Composer-mapped location and update its namespace and class name accordingly. For example, `dev/Console/Project_Tooling_Provider.php` can declare `Plugin\Dev\Console\Project_Tooling_Provider` with `Plugin\\Dev\\` mapped to `dev/` in `autoload-dev`.
+
+Select the file in the project's root `config.php`:
+
+```php title="config.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Cli;
+return [
+	'cli' => [
+		'tooling_provider_path' => 'dev/Console/Project_Tooling_Provider.php',
+	],
+];
+```
 
-use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Output\OutputInterface;
+Relative paths start at the project root; absolute paths also work. The selected file must contain its matching Composer-autoloadable provider class. This setting replaces the conventional lookup. An invalid path or provider stops startup; correct it and retry, or remove the setting to restore the convention.
 
-final class Cache_Clear_Command extends Command {
+### Keep tooling in development autoloading
 
-	public function __construct() {
-		parent::__construct( 'cache:clear' );
-	}
+To move the conventional provider and commands into `dev/Tooling/` while preserving their namespace, add a more specific mapping in the project's `composer.json`:
 
-	protected function execute( InputInterface $input, OutputInterface $output ): int {
-		$output->writeln( 'Cache cleared.' );
-
-		return Command::SUCCESS;
-	}
+```json title="composer.json"
+{
+  "autoload": {
+    "psr-4": {
+      "Plugin\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Plugin\\Tooling\\": "dev/Tooling/"
+    }
+  }
 }
 ```
 
-In `src/Cli/Command_Provider.php`:
+Regenerate the autoloader after changing mappings:
 
-```php title="Command_Provider.php"
-<?php declare(strict_types=1);
-
-namespace YourPlugin\Cli;
-
-use StellarWP\Foundation\Cli\Contracts\CommandProvider;
-
-final class Command_Provider implements CommandProvider {
-
-	public function __construct(
-		private readonly Cache_Clear_Command $command
-	) {
-	}
-
-	public function commands(): iterable {
-		yield $this->command;
-	}
-}
+```shell
+composer dump-autoload
 ```
 
-Then create the project's executable, for example `bin/your-plugin`:
+Foundation still finds `Plugin\Tooling\Tooling_Provider` automatically. Generated application classes continue to use runtime `autoload` mappings. Install `stellarwp/foundation-cli` with `--dev`, and keep generated classes' runtime dependencies in `require`.
 
-```php title="your-plugin"
-#!/usr/bin/env php
-<?php declare(strict_types=1);
+### Load prerequisite providers
 
-use StellarWP\Foundation\Cli\Application;
-use YourPlugin\Cli\Cache_Clear_Command;
-use YourPlugin\Cli\Command_Provider;
+If commands need services from additional package providers, list their fully qualified class names under `cli.providers` in root `config.php`. Foundation registers its own `CliProvider`, those prerequisites in the listed order, and then the selected project tooling provider before constructing commands. A provider listed more than once is registered once.
 
-require dirname( __DIR__ ) . '/vendor/autoload.php';
-
-$application = new Application( commandProviders: [
-	new Command_Provider( new Cache_Clear_Command() ),
-] );
-
-exit( $application->run() );
-```
-
-This small example has no application dependencies. When commands need services, construct the command provider through the project's container instead of creating dependencies inside command classes.
+Keep service bindings lazy so commands resolve after all providers have registered. Commands that need application services must have those dependencies wired into the tooling container.
 
 ## Foundation monorepo maintenance
 
-:::danger[Not a consuming-project command]
-`package:create` exists only for maintainers working inside the Foundation monorepo. It creates split-package scaffolding and configures read-only GitHub repositories; it is not a general package generator.
-:::
+Run `package:create` through `composer run foundation` inside the Foundation monorepo. It creates split-package scaffolding and configures read-only GitHub repositories for maintainers.
+
+Select an existing package by its directory (`src/Log`), short name (`Log`), repository name (`foundation-log`), or full manifest name (`stellarwp/foundation-log`). The Docs package is also discovered from its `package.json` and accepts `Docs`, `src/Docs`, `foundation-docs`, or `@stellarwp/foundation-docs`.
+
+Each directory represents one split package. When both manifests exist, `composer.json` determines the package identity for this command and the split workflow; `package.json` is used only when `composer.json` is absent.
+
+Invalid JSON in the selected manifest stops discovery. Correct the file before retrying.
 
 Preview the repository actions without changing GitHub:
 
 ```shell
-composer run foundation -- package:create Log
+composer run foundation -- package:create src/Log
 ```
+
+The generated actions disable issues, wikis, projects, and pull requests on the split repository.
 
 Pass `--apply` only after reviewing the generated actions:
 
@@ -245,4 +286,4 @@ Pass `--apply` only after reviewing the generated actions:
 composer run foundation -- package:create Log --apply
 ```
 
-The command can create `src/<Package>` scaffolding, asks for the Composer package name, and runs `composer monorepo merge` after local package creation.
+For a new PHP package, pass its short name. The command asks for confirmation before creating `src/<Package>` scaffolding, prompts for the Composer package name, and runs `composer monorepo merge` after local package creation.

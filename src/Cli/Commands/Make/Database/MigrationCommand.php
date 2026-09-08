@@ -5,9 +5,8 @@ namespace StellarWP\Foundation\Cli\Commands\Make\Database;
 use RuntimeException;
 use StellarWP\Foundation\Cli\Commands\Make\Database\Factories\MigrationFileFactory;
 use StellarWP\Foundation\Cli\Commands\Make\Database\ValueObjects\GeneratedMigration;
-use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
+use StellarWP\Foundation\Cli\Composer\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\ComposerProject;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use Symfony\Component\Console\Command\Command;
@@ -24,7 +23,9 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 final class MigrationCommand extends Command
 {
-	private const string NAME = 'make:database-migration';
+	public const string CONFIG_KEY        = 'database-migration';
+	public const string NAME              = 'make:' . self::CONFIG_KEY;
+	public const string DEFAULT_NAMESPACE = 'Database\\Migrations';
 
 	/**
 	 * Create the migration generator for a consuming project root.
@@ -32,6 +33,7 @@ final class MigrationCommand extends Command
 	public function __construct(
 		private readonly ProjectDirectory $projectDirectory,
 		private readonly ComposerAutoloadResolver $autoloadResolver,
+		private readonly ProviderFileResolver $providerFiles,
 		private readonly MigrationFileFactory $migrationFactory,
 		private readonly GeneratedFileWriter $fileWriter,
 		private readonly ProviderRegistrationEditor $providerUpdater
@@ -44,14 +46,14 @@ final class MigrationCommand extends Command
 	 */
 	protected function configure(): void {
 		$this->setDescription('Create a new Foundation database migration.')
-			->setHelp('Use --create for a table owned by this migration, --table to reconcile an existing table, or neither for a generic migration. The table options are mutually exclusive and accept short or fully qualified class names.')
+			->setHelp('Use --create for a new table, --table for explicit changes to an existing table, or neither for a generic migration. The table options are mutually exclusive and accept short or fully qualified class names.')
 			->addArgument('name', InputArgument::REQUIRED, 'Migration class name, e.g. Create_Reports_Table, Bump_Version, or create-reports-table.')
-			->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the generated migration class.')
-			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Directory where the migration class should be written.')
-			->addOption('provider', null, InputOption::VALUE_REQUIRED, 'Database provider file to update when it exists.')
-			->addOption('id', null, InputOption::VALUE_REQUIRED, 'Stable migration identifier: nonblank, unpadded, non-integer-like, and at most 191 bytes.')
-			->addOption('create', null, InputOption::VALUE_REQUIRED, 'Short or fully qualified table class created and dropped by this migration.')
-			->addOption('table', null, InputOption::VALUE_REQUIRED, 'Short or fully qualified existing table class reconciled by this migration.');
+			->addOption('namespace', null, InputOption::VALUE_REQUIRED, 'Namespace for the generated migration, e.g. Plugin\Database\Migrations.')
+			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Output directory for the generated migration, e.g. src/Database/Migrations.')
+			->addOption('provider', null, InputOption::VALUE_REQUIRED, 'Database provider file to update, e.g. src/Database/Provider.php.')
+			->addOption('id', null, InputOption::VALUE_REQUIRED, 'Stable identifier that determines execution order, e.g. 2026_09_04_143200_create_reports_table.')
+			->addOption('create', null, InputOption::VALUE_REQUIRED, 'Table class created and dropped by this migration, e.g. Reports_Table or Plugin\Database\Tables\Reports_Table.')
+			->addOption('table', null, InputOption::VALUE_REQUIRED, 'Existing table class altered by this migration, e.g. Reports_Table or Plugin\Database\Tables\Reports_Table.');
 	}
 
 	/**
@@ -100,7 +102,7 @@ final class MigrationCommand extends Command
 	}
 
 	/**
-	 * Build the migration artifact selected by the generic, create, or reconcile mode.
+	 * Build the migration artifact selected by the generic, create, or alter mode.
 	 *
 	 * @throws RuntimeException When options or project metadata are invalid.
 	 */
@@ -122,7 +124,7 @@ final class MigrationCommand extends Command
 		}
 
 		if ($table !== null) {
-			return $this->migrationFactory->reconcileTable($name, $table, $namespace, $path, $id);
+			return $this->migrationFactory->alterTable($name, $table, $namespace, $path, $id);
 		}
 
 		return $this->migrationFactory->generic($name, $namespace, $path, $id);
@@ -134,27 +136,27 @@ final class MigrationCommand extends Command
 	 * @throws RuntimeException When the provider cannot accept the migration registration.
 	 */
 	private function validateExplicitProviderUpdate(InputInterface $input, GeneratedMigration $migration): void {
+		$project      = $this->autoloadResolver->project();
+		$providerPath = $this->providerFiles->resolve($project, $this->nullableOption($input, 'provider'));
+
 		if (! $this->hasExplicitProvider($input)) {
 			return;
 		}
-
-		$project      = $this->autoloadResolver->project();
-		$providerPath = $this->providerPath($input, $project);
 
 		if (! is_file($providerPath)) {
 			throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->projectDirectory->relativePath($providerPath)));
 		}
 
-		$status = $this->providerUpdater->checkMigration($providerPath, $migration->class, $migration->namespace);
+		$result = $this->providerUpdater->checkMigration($providerPath, $migration->class, $migration->namespace);
 
-		if ($status === ProviderRegistrationEditor::UPDATED || $status === ProviderRegistrationEditor::ALREADY_REGISTERED) {
+		if ($result->succeeded()) {
 			return;
 		}
 
 		throw new RuntimeException(sprintf(
 			'Could not update database provider "%s": %s.',
 			$this->projectDirectory->relativePath($providerPath),
-			$this->providerUpdateFailure($status)
+			$result->failureReason() ?? 'provider could not be updated'
 		));
 	}
 
@@ -165,7 +167,7 @@ final class MigrationCommand extends Command
 	 */
 	private function updateProvider(InputInterface $input, OutputInterface $output, GeneratedMigration $migration): ?string {
 		$project      = $this->autoloadResolver->project();
-		$providerPath = $this->providerPath($input, $project);
+		$providerPath = $this->providerFiles->resolve($project, $this->nullableOption($input, 'provider'));
 		$explicit     = $this->hasExplicitProvider($input);
 
 		if (! is_file($providerPath)) {
@@ -176,13 +178,13 @@ final class MigrationCommand extends Command
 			return null;
 		}
 
-		$status = $this->providerUpdater->addMigration($providerPath, $migration->class, $migration->namespace);
+		$result = $this->providerUpdater->addMigration($providerPath, $migration->class, $migration->namespace);
 
-		if ($status === ProviderRegistrationEditor::UPDATED) {
+		if ($result->wasUpdated()) {
 			return $providerPath;
 		}
 
-		if ($status === ProviderRegistrationEditor::ALREADY_REGISTERED) {
+		if ($result->succeeded()) {
 			return null;
 		}
 
@@ -190,14 +192,14 @@ final class MigrationCommand extends Command
 			throw new RuntimeException(sprintf(
 				'Could not update database provider "%s": %s.',
 				$this->projectDirectory->relativePath($providerPath),
-				$this->providerUpdateFailure($status)
+				$result->failureReason() ?? 'provider could not be updated'
 			));
 		}
 
 		$output->writeln(sprintf(
 			'<comment>Provider not updated:</comment> %s (%s). Register %s manually.',
 			$this->projectDirectory->relativePath($providerPath),
-			$this->providerUpdateFailure($status),
+			$result->failureReason() ?? 'provider could not be updated',
 			$migration->class
 		));
 
@@ -248,26 +250,6 @@ final class MigrationCommand extends Command
 	}
 
 	/**
-	 * Resolve the explicit provider path or the project's conventional database provider.
-	 */
-	private function providerPath(InputInterface $input, ComposerProject $project): string {
-		$provider = $input->getOption('provider');
-
-		if (is_string($provider) && trim($provider) !== '') {
-			return $this->projectDirectory->absolutePath($provider);
-		}
-
-		$namespace = trim($project->defaultPsr4Namespace()->namespace, '\\') . '\\Database';
-		$autoload  = $project->psr4NamespaceFor($namespace);
-
-		if ($autoload === null) {
-			return $this->projectDirectory->absolutePath('src/Database/Provider.php');
-		}
-
-		return $this->projectDirectory->absolutePath($autoload->pathFor($namespace) . '/Provider.php');
-	}
-
-	/**
 	 * Determine whether the developer explicitly selected a provider file.
 	 */
 	private function hasExplicitProvider(InputInterface $input): bool {
@@ -280,24 +262,7 @@ final class MigrationCommand extends Command
 	 * Determine whether the selected or conventional provider file exists.
 	 */
 	private function providerExists(InputInterface $input): bool {
-		return is_file($this->providerPath($input, $this->autoloadResolver->project()));
-	}
-
-	/**
-	 * Translate an editor status into an actionable console message.
-	 */
-	private function providerUpdateFailure(string $status): string {
-		return match ($status) {
-			ProviderRegistrationEditor::NOT_FOUND        => 'file does not exist or is not readable',
-			ProviderRegistrationEditor::READ_FAILED      => 'file could not be read',
-			ProviderRegistrationEditor::NOT_WRITABLE     => 'file is not writable',
-			ProviderRegistrationEditor::MISSING_ANCHOR   => 'file does not contain a generated database provider registration point',
-			ProviderRegistrationEditor::MISSING_MARKER   => 'file does not contain the generated database provider markers',
-			ProviderRegistrationEditor::IMPORT_COLLISION => 'another class declaration or import uses the same short class name',
-			ProviderRegistrationEditor::PARSE_FAILED     => 'file could not be parsed as PHP',
-			ProviderRegistrationEditor::WRITE_FAILED     => 'file could not be written',
-			default                                      => 'provider could not be updated',
-		};
+		return is_file($this->providerFiles->resolve($this->autoloadResolver->project(), $this->nullableOption($input, 'provider')));
 	}
 
 	/**
