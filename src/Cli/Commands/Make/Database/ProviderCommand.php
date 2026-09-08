@@ -5,13 +5,11 @@ namespace StellarWP\Foundation\Cli\Commands\Make\Database;
 use RuntimeException;
 use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
+use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\ComposerProject;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\PhpNamespace;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\Psr4Namespace;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Database\DatabaseStubPath;
 use Symfony\Component\Console\Command\Command;
@@ -28,11 +26,13 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 final class ProviderCommand extends Command
 {
-	private const string NAME = 'make:database-provider';
+	public const string CONFIG_KEY = 'database-provider';
+	public const string NAME       = 'make:' . self::CONFIG_KEY;
 
 	public function __construct(
 		private readonly ProjectDirectory $projectDirectory,
 		private readonly ComposerAutoloadResolver $autoloadResolver,
+		private readonly GeneratorLocationResolver $locations,
 		private readonly WordPressClassNameResolver $classNameResolver,
 		private readonly StubResolver $stubResolver,
 		private readonly StubRenderer $stubRenderer,
@@ -75,8 +75,8 @@ final class ProviderCommand extends Command
 	private function generatedFile(InputInterface $input): GeneratedFile {
 		$className = $this->classNameResolver->className((string) $input->getArgument('name'));
 		$project   = $this->autoloadResolver->project();
-		$namespace = $this->namespace($input, $project->defaultPsr4Namespace());
-		$path      = $this->path($input, $namespace, $project);
+		$namespace = $this->locations->namespaceFor(self::CONFIG_KEY, $project, (string) $input->getOption('namespace'));
+		$path      = $this->locations->directoryFor($namespace, $project, (string) $input->getOption('path'));
 		$stub      = $this->stubResolver->resolve('database', 'provider', DatabaseStubPath::provider());
 		$relative  = $this->projectDirectory->relativePath($path . '/' . $className . '.php');
 
@@ -91,35 +91,6 @@ final class ProviderCommand extends Command
 				'foundation_service_provider'   => $project->foundationClass('StellarWP\\Foundation\\Container\\Contracts\\Provider'),
 			])
 		);
-	}
-
-	private function namespace(InputInterface $input, Psr4Namespace $autoload): string {
-		$namespace = $input->getOption('namespace');
-
-		if (is_string($namespace) && trim($namespace) !== '') {
-			return (new PhpNamespace(trim($namespace, '\\')))->value;
-		}
-
-		return trim($autoload->namespace, '\\') . '\\Database';
-	}
-
-	private function path(InputInterface $input, string $namespace, ComposerProject $project): string {
-		$path = $input->getOption('path');
-
-		if (is_string($path) && trim($path) !== '') {
-			return $this->projectDirectory->absolutePath($path);
-		}
-
-		$autoload = $project->psr4NamespaceFor($namespace);
-
-		if ($autoload === null) {
-			throw new RuntimeException(sprintf(
-				'Namespace "%s" is outside the Composer PSR-4 namespaces in composer.json. Pass --path to choose an output directory.',
-				$namespace
-			));
-		}
-
-		return $this->projectDirectory->absolutePath($autoload->pathFor($namespace));
 	}
 
 	private function runtimeDependencyWarning(): ?string {

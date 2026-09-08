@@ -1,0 +1,25 @@
+#!/usr/bin/env php
+<?php declare(strict_types=1);
+
+use Plugin\Cli\Commands\Make\Report\Report_Command;
+use Plugin\Cli\Commands\Make\Report\Report_Provider;
+use StellarWP\Foundation\Cli\Application;
+use StellarWP\Foundation\Cli\CliProvider;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
+
+$root = dirname( __DIR__ );
+require $root . '/vendor/autoload.php';
+chdir( $root );
+
+$config_path = $root . '/foundation/config.php';
+$config = is_file( $config_path ) ? require $config_path : [];
+
+$container = ( new ContainerFactory() )->create( new ArrayConfiguration( $config ) );
+$container->register( CliProvider::class );
+$container->register( Report_Provider::class );
+
+$application = $container->get( Application::class );
+$application->addCommands( [ $container->get( Report_Command::class ) ] );
+
+exit( $application->run() );

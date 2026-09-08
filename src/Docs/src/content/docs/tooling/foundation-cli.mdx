@@ -78,7 +78,7 @@ vendor/bin/foundation make:database-provider
 vendor/bin/foundation make:database-table Reports_Table --migration
 ```
 
-The `--migration` flag creates and registers the table's initial migration in the same operation. Table `--namespace` and `--path` options affect only the table class; the migration uses its conventional namespace and path. Use an explicit identifier such as `--migration-id=2026_09_04_143200_create_reports_table` only when the generated timestamp identifier must be replaced. The explicit ID determines that migration's position in Foundation's ascending execution order.
+The `--migration` flag creates and registers the table's initial migration in the same operation. Table `--namespace` and `--path` options affect only the table class; the migration uses its project-configured namespace and path, falling back to the Foundation convention. Use an explicit identifier such as `--migration-id=2026_09_04_143200_create_reports_table` only when the generated timestamp identifier must be replaced. The explicit ID determines that migration's position in Foundation's ascending execution order.
 
 Use `--table-name=<name>` when the table's unprefixed WordPress name should differ from the name derived from its class. On `make:database-migration`, `--table=<class>` instead selects the existing table class that an alteration migration changes.
 
@@ -98,7 +98,7 @@ The migration generator selects one of three modes:
 | `make:database-migration Add_Status_To_Reports --table=Reports_Table` | Starts an explicit alteration blueprint; `down()` throws `IrreversibleMigration` until replaced | `alter-table-migration.stub` |
 | `make:database-migration Backfill_Report_Status` | Generates a generic migration; add service or table dependencies manually | `migration.stub` |
 
-The `--create` and `--table` options are mutually exclusive. Each accepts a class from the default `Database\\Tables` namespace or a fully qualified table class. Migration names never select destructive behavior by themselves.
+The `--create` and `--table` options are mutually exclusive. Each accepts a short class name from the configured table namespace (`Database\\Tables` by default), or a fully qualified table class. Migration names never select destructive behavior by themselves.
 
 <LinkCard
   title="Create Database Migrations"
@@ -117,9 +117,57 @@ vendor/bin/foundation help make:database-table
 vendor/bin/foundation help make:database-migration
 ```
 
-The generators use the first `autoload.psr-4` entry in the project's `composer.json` to determine the default namespace and source path. Explicit `--namespace` and `--path` options override those defaults.
+Without project overrides, generators use the first `autoload.psr-4` entry in the project's `composer.json` as their root namespace. Output directories follow the most specific Composer mapping for the selected namespace. Explicit `--namespace` and `--path` options override those defaults.
 
 ## Customize generation
+
+### Configure generator locations
+
+Set project-wide namespaces in `foundation/config.php`. The file is optional; include only the generators whose defaults you want to change:
+
+```php title="config.php"
+<?php
+
+return [
+	'generators' => [
+		'wpcli-command' => [
+			'namespace' => 'Plugin\\Commands',
+		],
+		'database-provider' => [
+			'namespace' => 'Plugin\\Persistence',
+		],
+		'database-table' => [
+			'namespace' => 'Plugin\\Persistence\\Tables',
+		],
+		'database-migration' => [
+			'namespace' => 'Plugin\\Persistence\\Migrations',
+		],
+	],
+];
+```
+
+Run Foundation from the project root. It loads this file once when the CLI starts; use a PHP array that can be loaded independently of WordPress.
+
+Namespaces are fully qualified application namespaces. With `Plugin\\` mapped to `src/` in Composer, the example produces:
+
+| Generator | Directory |
+| --- | --- |
+| `make:wpcli-command` | `src/Commands/` |
+| `make:database-provider` | `src/Persistence/` |
+| `make:database-table` | `src/Persistence/Tables/` |
+| `make:database-migration` | `src/Persistence/Migrations/` |
+
+An explicit `--namespace` takes precedence over the configured namespace. Without either, the conventional suffixes are `Cli\\Commands`, `Database`, `Database\\Tables`, and `Database\\Migrations`, respectively. An explicit `--path` chooses the output directory for that invocation; it does not change the namespace or update Composer autoload mappings.
+
+Table and migration generators look for `Provider.php` in the configured database-provider namespace. Generate that provider first to enable automatic registration. Use `--provider` to select another provider file, including a provider generated with a custom class name. Paired migrations from `make:database-table --migration` use the migration setting independently of table options; short `--create` and `--table` references use the table setting.
+
+Invalid namespace settings for registered generators or missing Composer mappings stop generation before files are written. Correct the setting or mapping before retrying. If the provider namespace has no mapping, correct `generators.database-provider.namespace` or its Composer mapping, or select an existing provider file with `--provider`.
+
+If Foundation scaffolding should be excluded from your production archive, add `foundation/` to the project's `.gitattributes` export exclusions.
+
+### Create a custom generator
+
+Follow [Create a custom generator](/tooling/custom-generators/) for a complete command, provider, stub, and executable. The command owns its `CONFIG_KEY` and `NAME`; its provider references that constant when contributing namespace defaults.
 
 ### Override package stubs
 

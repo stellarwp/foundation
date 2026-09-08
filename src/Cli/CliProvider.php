@@ -19,6 +19,7 @@ use StellarWP\Foundation\Cli\Commands\Package\PackageResolver;
 use StellarWP\Foundation\Cli\Commands\Package\PackageScaffolder;
 use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
+use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\Php\PhpSourceEditor;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
@@ -37,12 +38,24 @@ use StellarWP\Foundation\Container\Contracts\Resolver as C;
  */
 final class CliProvider extends Provider
 {
+	/**
+	 * Generator keys mapped to namespace suffixes relative to the project's root namespace.
+	 * Contribute defaults before resolving generator commands or the application.
+	 */
+	public const string GENERATOR_NAMESPACES = self::class . '.generator_namespaces';
+
 	private const string ROOT_PATH = self::class . '.root_path';
+
+	private bool $registered = false;
 
 	/**
 	 * Register the CLI application and every built-in command feature.
 	 */
 	public function register(): void {
+		if ($this->registered) {
+			return;
+		}
+
 		$this->registerRootPath();
 		$this->registerProcess();
 		$this->registerGeneration();
@@ -50,6 +63,7 @@ final class CliProvider extends Provider
 		$this->registerDatabaseCommands();
 		$this->registerWpCliCommand();
 		$this->registerApplication();
+		$this->registered = true;
 	}
 
 	/**
@@ -71,12 +85,17 @@ final class CliProvider extends Provider
 	 * Register shared source generation and Composer discovery services.
 	 */
 	private function registerGeneration(): void {
+		$this->container->when(GeneratorLocationResolver::class)
+			->needs('$defaultNamespaces')
+			->give(static fn (C $c): array => $c->get(self::GENERATOR_NAMESPACES));
+
 		$this->container->when(ProjectDirectory::class)
 			->needs('$path')
 			->give(static fn (C $c): string => $c->get(self::ROOT_PATH));
 
 		$this->container->singleton(WordPressClassNameResolver::class);
 		$this->container->singleton(ComposerAutoloadResolver::class);
+		$this->container->singleton(GeneratorLocationResolver::class);
 		$this->container->singleton(GeneratedFileWriter::class);
 		$this->container->singleton(Lexer::class);
 		$this->container->singleton(ParserFactory::class);
@@ -110,6 +129,12 @@ final class CliProvider extends Provider
 	 * Register database provider, table, and migration generator commands.
 	 */
 	private function registerDatabaseCommands(): void {
+		$this->container->mergeArrayVar(self::GENERATOR_NAMESPACES, [
+			ProviderCommand::CONFIG_KEY  => 'Database',
+			TableCommand::CONFIG_KEY     => 'Database\\Tables',
+			MigrationCommand::CONFIG_KEY => 'Database\\Migrations',
+		]);
+
 		$this->container->singleton(MigrationCommand::class);
 		$this->container->singleton(MigrationFileFactory::class);
 		$this->container->singleton(ProviderCommand::class);
@@ -121,6 +146,10 @@ final class CliProvider extends Provider
 	 * Register the WP-CLI command generator.
 	 */
 	private function registerWpCliCommand(): void {
+		$this->container->mergeArrayVar(self::GENERATOR_NAMESPACES, [
+			WPCliCommand::CONFIG_KEY => 'Cli\\Commands',
+		]);
+
 		$this->container->singleton(WPCliCommand::class);
 	}
 

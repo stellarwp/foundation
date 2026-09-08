@@ -7,7 +7,7 @@ use StellarWP\Foundation\Cli\Commands\Make\Database\Factories\MigrationFileFacto
 use StellarWP\Foundation\Cli\Commands\Make\Database\ValueObjects\GeneratedMigration;
 use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\ComposerProject;
+use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use Symfony\Component\Console\Command\Command;
@@ -24,7 +24,8 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 final class MigrationCommand extends Command
 {
-	private const string NAME = 'make:database-migration';
+	public const string CONFIG_KEY = 'database-migration';
+	public const string NAME       = 'make:' . self::CONFIG_KEY;
 
 	/**
 	 * Create the migration generator for a consuming project root.
@@ -32,6 +33,7 @@ final class MigrationCommand extends Command
 	public function __construct(
 		private readonly ProjectDirectory $projectDirectory,
 		private readonly ComposerAutoloadResolver $autoloadResolver,
+		private readonly GeneratorLocationResolver $locations,
 		private readonly MigrationFileFactory $migrationFactory,
 		private readonly GeneratedFileWriter $fileWriter,
 		private readonly ProviderRegistrationEditor $providerUpdater
@@ -134,12 +136,12 @@ final class MigrationCommand extends Command
 	 * @throws RuntimeException When the provider cannot accept the migration registration.
 	 */
 	private function validateExplicitProviderUpdate(InputInterface $input, GeneratedMigration $migration): void {
+		$project      = $this->autoloadResolver->project();
+		$providerPath = $this->locations->databaseProvider($project, $this->nullableOption($input, 'provider'));
+
 		if (! $this->hasExplicitProvider($input)) {
 			return;
 		}
-
-		$project      = $this->autoloadResolver->project();
-		$providerPath = $this->providerPath($input, $project);
 
 		if (! is_file($providerPath)) {
 			throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->projectDirectory->relativePath($providerPath)));
@@ -165,7 +167,7 @@ final class MigrationCommand extends Command
 	 */
 	private function updateProvider(InputInterface $input, OutputInterface $output, GeneratedMigration $migration): ?string {
 		$project      = $this->autoloadResolver->project();
-		$providerPath = $this->providerPath($input, $project);
+		$providerPath = $this->locations->databaseProvider($project, $this->nullableOption($input, 'provider'));
 		$explicit     = $this->hasExplicitProvider($input);
 
 		if (! is_file($providerPath)) {
@@ -248,26 +250,6 @@ final class MigrationCommand extends Command
 	}
 
 	/**
-	 * Resolve the explicit provider path or the project's conventional database provider.
-	 */
-	private function providerPath(InputInterface $input, ComposerProject $project): string {
-		$provider = $input->getOption('provider');
-
-		if (is_string($provider) && trim($provider) !== '') {
-			return $this->projectDirectory->absolutePath($provider);
-		}
-
-		$namespace = trim($project->defaultPsr4Namespace()->namespace, '\\') . '\\Database';
-		$autoload  = $project->psr4NamespaceFor($namespace);
-
-		if ($autoload === null) {
-			return $this->projectDirectory->absolutePath('src/Database/Provider.php');
-		}
-
-		return $this->projectDirectory->absolutePath($autoload->pathFor($namespace) . '/Provider.php');
-	}
-
-	/**
 	 * Determine whether the developer explicitly selected a provider file.
 	 */
 	private function hasExplicitProvider(InputInterface $input): bool {
@@ -280,7 +262,7 @@ final class MigrationCommand extends Command
 	 * Determine whether the selected or conventional provider file exists.
 	 */
 	private function providerExists(InputInterface $input): bool {
-		return is_file($this->providerPath($input, $this->autoloadResolver->project()));
+		return is_file($this->locations->databaseProvider($this->autoloadResolver->project(), $this->nullableOption($input, 'provider')));
 	}
 
 	/**

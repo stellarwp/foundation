@@ -8,6 +8,7 @@ use PhpParser\ParserFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+use StellarWP\Foundation\Cli\CliProvider;
 use StellarWP\Foundation\Cli\Commands\Make\Database\Factories\MigrationFileFactory;
 use StellarWP\Foundation\Cli\Commands\Make\Database\MigrationCommand;
 use StellarWP\Foundation\Cli\Commands\Make\Database\ProviderCommand;
@@ -15,11 +16,14 @@ use StellarWP\Foundation\Cli\Commands\Make\Database\ProviderRegistrationEditor;
 use StellarWP\Foundation\Cli\Commands\Make\Database\TableCommand;
 use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
+use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\Php\PhpSourceEditor;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
 use StellarWP\Foundation\Tests\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -32,6 +36,11 @@ final class DatabaseCommandTest extends TestCase
 	private array $temporaryRoots = [];
 
 	private string $tempDir;
+
+	/**
+	 * @var array<string, mixed>
+	 */
+	private array $generatorConfig = [];
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -2223,12 +2232,120 @@ PHP);
 		}
 	}
 
+	public function test_project_defaults_coordinate_database_generation_and_registration(): void {
+		$this->generatorConfig = require dirname(__DIR__, 4) . '/Support/Fixtures/Cli/generator-config.php';
+		$root                  = $this->temporaryProject([
+			'autoload' => ['psr-4' => ['Acme\\Plugin\\Persistence\\Migrations\\' => 'history']],
+		]);
+
+		$provider = new CommandTester($this->providerCommand($root));
+		$this->assertSame(Command::SUCCESS, $provider->execute([]), $provider->getDisplay());
+
+		$table = new CommandTester($this->tableCommand($root));
+		$this->assertSame(Command::SUCCESS, $table->execute(['name' => 'reports', '--migration' => true]), $table->getDisplay());
+
+		$alteration = new CommandTester($this->migrationCommand($root));
+		$this->assertSame(Command::SUCCESS, $alteration->execute(['name' => 'Add_Status', '--table' => 'Reports_Table']), $alteration->getDisplay());
+		$creation = new CommandTester($this->migrationCommand($root));
+		$this->assertSame(Command::SUCCESS, $creation->execute(['name' => 'Create_Archive', '--create' => 'Reports_Table']), $creation->getDisplay());
+
+		$this->assertFileExists($root . '/src/Persistence/Tables/Reports_Table.php');
+		foreach (['Create_Reports_Table', 'Add_Status', 'Create_Archive'] as $class) {
+			$contents = (string) file_get_contents($root . '/history/' . $class . '.php');
+			$this->assertStringContainsString('namespace Acme\\Plugin\\Persistence\\Migrations;', $contents);
+			$this->assertStringContainsString('use Acme\\Plugin\\Persistence\\Tables\\Reports_Table;', $contents);
+		}
+
+		$contents = (string) file_get_contents($root . '/src/Persistence/Provider.php');
+		$this->assertStringContainsString('use Acme\\Plugin\\Persistence\\Tables\\Reports_Table;', $contents);
+		$this->assertStringContainsString('$this->container->singleton( Reports_Table::class );', $contents);
+		$this->assertStringContainsString('$c->get( Create_Reports_Table::class ),', $contents);
+		$this->assertStringContainsString('$c->get( Add_Status::class ),', $contents);
+		$this->assertStringContainsString('$c->get( Create_Archive::class ),', $contents);
+	}
+
+	public function test_explicit_database_options_override_project_defaults(): void {
+		$this->generatorConfig = require dirname(__DIR__, 4) . '/Support/Fixtures/Cli/generator-config.php';
+		$root                  = $this->temporaryProject();
+		$provider              = new CommandTester($this->providerCommand($root));
+		$this->assertSame(Command::SUCCESS, $provider->execute([
+			'name'        => 'Storage_Provider',
+			'--namespace' => 'Acme\\Plugin\\Storage',
+			'--path'      => 'custom/providers',
+		]), $provider->getDisplay());
+
+		$table = new CommandTester($this->tableCommand($root));
+		$this->assertSame(Command::SUCCESS, $table->execute([
+			'name'        => 'reports',
+			'--namespace' => 'Acme\\Plugin\\Reports',
+			'--path'      => 'custom/tables',
+			'--provider'  => 'custom/providers/Storage_Provider.php',
+			'--migration' => true,
+		]), $table->getDisplay());
+
+		$paired = (string) file_get_contents($root . '/src/Persistence/Migrations/Create_Reports_Table.php');
+		$this->assertStringContainsString('use Acme\\Plugin\\Reports\\Reports_Table;', $paired);
+		$this->assertFileExists($root . '/custom/tables/Reports_Table.php');
+
+		$migration = new CommandTester($this->migrationCommand($root));
+		$this->assertSame(Command::SUCCESS, $migration->execute([
+			'name'        => 'Add_Status',
+			'--namespace' => 'Acme\\Plugin\\History',
+			'--path'      => 'custom/migrations',
+			'--provider'  => 'custom/providers/Storage_Provider.php',
+			'--table'     => 'Acme\\Plugin\\Reports\\Reports_Table',
+		]), $migration->getDisplay());
+		$contents = (string) file_get_contents($root . '/custom/migrations/Add_Status.php');
+		$this->assertStringContainsString('namespace Acme\\Plugin\\History;', $contents);
+		$this->assertStringContainsString('use Acme\\Plugin\\Reports\\Reports_Table;', $contents);
+		$contents = (string) file_get_contents($root . '/custom/providers/Storage_Provider.php');
+		$this->assertStringContainsString('$c->get( Add_Status::class ),', $contents);
+		$this->assertFileDoesNotExist($root . '/src/Persistence/Provider.php');
+	}
+
+	public function test_an_unmapped_provider_namespace_fails_before_generation(): void {
+		$this->generatorConfig = ['generators' => ['database-provider' => ['namespace' => 'Other\\Storage']]];
+		$root                  = $this->temporaryProject();
+		$table                 = new CommandTester($this->tableCommand($root));
+		$this->assertSame(Command::FAILURE, $table->execute(['name' => 'reports', '--migration' => true]));
+		$this->assertStringContainsString('Database provider namespace "Other\\Storage"', $table->getDisplay());
+		$this->assertStringContainsString('generators.database-provider.namespace', $table->getDisplay());
+		$this->assertStringContainsString('--provider', $table->getDisplay());
+		$this->assertStringNotContainsString('--path', $table->getDisplay());
+		$this->assertDirectoryDoesNotExist($root . '/src');
+
+		$migration = new CommandTester($this->migrationCommand($root));
+		$this->assertSame(Command::FAILURE, $migration->execute(['name' => 'Add_Status']));
+		$this->assertStringContainsString('--provider', $migration->getDisplay());
+		$this->assertStringNotContainsString('--path', $migration->getDisplay());
+		$this->assertDirectoryDoesNotExist($root . '/src');
+
+		$provider = new CommandTester($this->providerCommand($root));
+		$this->assertSame(Command::SUCCESS, $provider->execute(['--namespace' => 'Acme\\Plugin\\Providers']));
+		$providerPath = 'src/Providers/Provider.php';
+		$this->assertSame(Command::SUCCESS, $table->execute([
+			'name' => 'reports', '--migration' => true, '--provider' => $providerPath,
+		]), $table->getDisplay());
+		$this->assertSame(Command::SUCCESS, $migration->execute([
+			'name' => 'Add_Status', '--provider' => $providerPath,
+		]), $migration->getDisplay());
+	}
+
+	private function generatorLocations(ProjectDirectory $projectDirectory): GeneratorLocationResolver {
+		$container = (new ContainerFactory())->create(new ArrayConfiguration($this->generatorConfig));
+		$container->register(CliProvider::class);
+		$container->singleton(ProjectDirectory::class, $projectDirectory);
+
+		return $container->get(GeneratorLocationResolver::class);
+	}
+
 	private function tableCommand(string $root): TableCommand {
 		$projectDirectory = new ProjectDirectory($root);
 
 		return new TableCommand(
 			projectDirectory: $projectDirectory,
 			autoloadResolver: new ComposerAutoloadResolver($projectDirectory),
+			locations: $this->generatorLocations($projectDirectory),
 			classNameResolver: new WordPressClassNameResolver(),
 			stubResolver: new StubResolver($projectDirectory),
 			stubRenderer: new StubRenderer(),
@@ -2244,6 +2361,7 @@ PHP);
 		return new MigrationCommand(
 			projectDirectory: $projectDirectory,
 			autoloadResolver: new ComposerAutoloadResolver($projectDirectory),
+			locations: $this->generatorLocations($projectDirectory),
 			migrationFactory: $this->migrationFactory($root),
 			fileWriter: $this->fileWriter(),
 			providerUpdater: $this->providerUpdater()
@@ -2256,6 +2374,7 @@ PHP);
 		return new MigrationFileFactory(
 			projectDirectory: $projectDirectory,
 			autoloadResolver: new ComposerAutoloadResolver($projectDirectory),
+			locations: $this->generatorLocations($projectDirectory),
 			classNameResolver: new WordPressClassNameResolver(),
 			stubResolver: new StubResolver($projectDirectory),
 			stubRenderer: new StubRenderer()
@@ -2268,6 +2387,7 @@ PHP);
 		return new ProviderCommand(
 			projectDirectory: $projectDirectory,
 			autoloadResolver: new ComposerAutoloadResolver($projectDirectory),
+			locations: $this->generatorLocations($projectDirectory),
 			classNameResolver: new WordPressClassNameResolver(),
 			stubResolver: new StubResolver($projectDirectory),
 			stubRenderer: new StubRenderer(),

@@ -16,16 +16,38 @@ use StellarWP\Foundation\Cli\Commands\Package\PackageResolver;
 use StellarWP\Foundation\Cli\Commands\Package\PackageScaffolder;
 use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
+use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\ComposerProject;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\Psr4Namespace;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
 use StellarWP\Foundation\Container\ContainerFactory;
+use StellarWP\Foundation\Tests\Support\Fixtures\Cli\CustomGeneratorProvider;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class CliProviderTest extends TestCase
 {
+	public function test_other_providers_can_contribute_generator_defaults(): void {
+		$container = (new ContainerFactory())->create(new ArrayConfiguration([
+			'generators' => ['report' => ['namespace' => 'Plugin\\Exports']],
+		]));
+		$container->register(CliProvider::class);
+		$container->register(CustomGeneratorProvider::class);
+		$locations = $container->get(GeneratorLocationResolver::class);
+		$project   = new ComposerProject([new Psr4Namespace('Plugin\\', 'src')], null);
+
+		$this->assertSame('Plugin\\Exports', $locations->namespaceFor('report', $project));
+		$this->assertSame('Plugin\\Jobs', $locations->namespaceFor('job', $project));
+		$this->assertSame('Plugin\\Database\\Tables', $locations->namespaceFor(TableCommand::CONFIG_KEY, $project));
+		$this->assertSame('Plugin\\Cli\\Commands', $locations->namespaceFor(WPCliCommand::CONFIG_KEY, $project));
+
+		$container->register(CliProvider::class);
+		$this->assertSame($locations, $container->get(GeneratorLocationResolver::class));
+	}
+
 	public function test_it_registers_cli_services(): void {
 		$container = (new ContainerFactory())->create(new ArrayConfiguration());
 		$container->register(CliProvider::class);

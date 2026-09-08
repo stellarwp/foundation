@@ -45,7 +45,14 @@ try {
 
 	require $autoload;
 
-	$container = (new ContainerFactory())->create(new ArrayConfiguration());
+	$configPath = (getcwd() ?: dirname(__DIR__, 3)) . '/foundation/config.php';
+	$config = is_file($configPath) ? (static fn (string $path): mixed => require $path)($configPath) : [];
+
+	if (! is_array($config)) {
+		throw new FoundationCliBootstrapException('foundation/config.php must return a configuration array.');
+	}
+
+	$container = (new ContainerFactory())->create(new ArrayConfiguration($config));
 	$container->register(CliProvider::class);
 
 	exit($container->get(Application::class)->run());

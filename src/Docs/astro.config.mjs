@@ -53,7 +53,7 @@ export default defineConfig({
         },
         {
           label: 'Developer Tooling',
-          items: [{ slug: 'tooling/foundation-cli' }],
+          items: [{ slug: 'tooling/foundation-cli' }, { slug: 'tooling/custom-generators' }],
         },
       ],
       social: [

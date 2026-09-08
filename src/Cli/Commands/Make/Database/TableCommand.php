@@ -8,13 +8,11 @@ use StellarWP\Foundation\Cli\Commands\Make\Database\ValueObjects\GeneratedMigrat
 use StellarWP\Foundation\Cli\Commands\Make\Database\ValueObjects\ProviderRegistrationResult;
 use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
+use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\ComposerProject;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\PhpNamespace;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\Psr4Namespace;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Database\DatabaseStubPath;
 use Symfony\Component\Console\Command\Command;
@@ -31,7 +29,8 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 final class TableCommand extends Command
 {
-	private const string NAME = 'make:database-table';
+	public const string CONFIG_KEY = 'database-table';
+	public const string NAME       = 'make:' . self::CONFIG_KEY;
 
 	/**
 	 * Create the table generator for a consuming project root.
@@ -39,6 +38,7 @@ final class TableCommand extends Command
 	public function __construct(
 		private readonly ProjectDirectory $projectDirectory,
 		private readonly ComposerAutoloadResolver $autoloadResolver,
+		private readonly GeneratorLocationResolver $locations,
 		private readonly WordPressClassNameResolver $classNameResolver,
 		private readonly StubResolver $stubResolver,
 		private readonly StubRenderer $stubRenderer,
@@ -135,7 +135,7 @@ final class TableCommand extends Command
 	private function initialMigration(InputInterface $input): GeneratedMigration {
 		$project        = $this->autoloadResolver->project();
 		$tableClass     = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
-		$tableNamespace = $this->namespace($input, $project->defaultPsr4Namespace());
+		$tableNamespace = $this->locations->namespaceFor(self::CONFIG_KEY, $project, (string) $input->getOption('namespace'));
 
 		return $this->migrationFactory->createTable(
 			name: 'Create_' . $tableClass,
@@ -191,8 +191,8 @@ final class TableCommand extends Command
 	private function generatedFile(InputInterface $input): GeneratedFile {
 		$className = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
 		$project   = $this->autoloadResolver->project();
-		$namespace = $this->namespace($input, $project->defaultPsr4Namespace());
-		$path      = $this->path($input, $namespace, $project);
+		$namespace = $this->locations->namespaceFor(self::CONFIG_KEY, $project, (string) $input->getOption('namespace'));
+		$path      = $this->locations->directoryFor($namespace, $project, (string) $input->getOption('path'));
 		$stub      = $this->stubResolver->resolve('database', 'table', DatabaseStubPath::table());
 		$relative  = $this->projectDirectory->relativePath($path . '/' . $className . '.php');
 		$table     = $this->tableName($input, $className);
@@ -215,14 +215,14 @@ final class TableCommand extends Command
 	 * @throws RuntimeException When the provider cannot accept the generated registrations.
 	 */
 	private function validateExplicitProviderUpdate(InputInterface $input, ?GeneratedMigration $migration): void {
+		$project      = $this->autoloadResolver->project();
+		$className    = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
+		$namespace    = $this->locations->namespaceFor(self::CONFIG_KEY, $project, (string) $input->getOption('namespace'));
+		$providerPath = $this->locations->databaseProvider($project, $this->nullableOption($input, 'provider'));
+
 		if (! $this->hasExplicitProvider($input)) {
 			return;
 		}
-
-		$project      = $this->autoloadResolver->project();
-		$className    = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
-		$namespace    = $this->namespace($input, $project->defaultPsr4Namespace());
-		$providerPath = $this->providerPath($input, $project);
 
 		if (! is_file($providerPath)) {
 			throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->projectDirectory->relativePath($providerPath)));
@@ -255,8 +255,8 @@ final class TableCommand extends Command
 	private function updateProvider(InputInterface $input, OutputInterface $output, ?GeneratedMigration $migration): ?string {
 		$project      = $this->autoloadResolver->project();
 		$className    = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
-		$namespace    = $this->namespace($input, $project->defaultPsr4Namespace());
-		$providerPath = $this->providerPath($input, $project);
+		$namespace    = $this->locations->namespaceFor(self::CONFIG_KEY, $project, (string) $input->getOption('namespace'));
+		$providerPath = $this->locations->databaseProvider($project, $this->nullableOption($input, 'provider'));
 		$explicit     = $this->hasExplicitProvider($input);
 
 		if (! is_file($providerPath)) {
@@ -356,65 +356,6 @@ final class TableCommand extends Command
 	}
 
 	/**
-	 * Resolve an explicit table namespace or derive the conventional namespace.
-	 *
-	 * @throws RuntimeException When the explicit namespace is invalid.
-	 */
-	private function namespace(InputInterface $input, Psr4Namespace $autoload): string {
-		$namespace = $input->getOption('namespace');
-
-		if (is_string($namespace) && trim($namespace) !== '') {
-			return (new PhpNamespace(trim($namespace, '\\')))->value;
-		}
-
-		return trim($autoload->namespace, '\\') . '\\Database\\Tables';
-	}
-
-	/**
-	 * Resolve an explicit output path or map the namespace through Composer PSR-4 metadata.
-	 *
-	 * @throws RuntimeException When the namespace has no PSR-4 mapping and no path was supplied.
-	 */
-	private function path(InputInterface $input, string $namespace, ComposerProject $project): string {
-		$path = $input->getOption('path');
-
-		if (is_string($path) && trim($path) !== '') {
-			return $this->projectDirectory->absolutePath($path);
-		}
-
-		$autoload = $project->psr4NamespaceFor($namespace);
-
-		if ($autoload === null) {
-			throw new RuntimeException(sprintf(
-				'Namespace "%s" is outside the Composer PSR-4 namespaces in composer.json. Pass --path to choose an output directory.',
-				$namespace
-			));
-		}
-
-		return $this->projectDirectory->absolutePath($autoload->pathFor($namespace));
-	}
-
-	/**
-	 * Resolve the explicit provider path or the project's conventional database provider.
-	 */
-	private function providerPath(InputInterface $input, ComposerProject $project): string {
-		$provider = $input->getOption('provider');
-
-		if (is_string($provider) && trim($provider) !== '') {
-			return $this->projectDirectory->absolutePath($provider);
-		}
-
-		$namespace = trim($project->defaultPsr4Namespace()->namespace, '\\') . '\\Database';
-		$autoload  = $project->psr4NamespaceFor($namespace);
-
-		if ($autoload === null) {
-			return $this->projectDirectory->absolutePath('src/Database/Provider.php');
-		}
-
-		return $this->projectDirectory->absolutePath($autoload->pathFor($namespace) . '/Provider.php');
-	}
-
-	/**
 	 * Determine whether the developer explicitly selected a provider file.
 	 */
 	private function hasExplicitProvider(InputInterface $input): bool {
@@ -427,7 +368,7 @@ final class TableCommand extends Command
 	 * Determine whether the selected or conventional provider file exists.
 	 */
 	private function providerExists(InputInterface $input): bool {
-		return is_file($this->providerPath($input, $this->autoloadResolver->project()));
+		return is_file($this->locations->databaseProvider($this->autoloadResolver->project(), $this->nullableOption($input, 'provider')));
 	}
 
 	/**

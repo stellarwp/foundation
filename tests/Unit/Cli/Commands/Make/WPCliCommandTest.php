@@ -4,14 +4,18 @@ namespace StellarWP\Foundation\Tests\Unit\Cli\Commands\Make;
 
 use PhpParser\Lexer;
 use PhpParser\ParserFactory;
+use StellarWP\Foundation\Cli\CliProvider;
 use StellarWP\Foundation\Cli\Commands\Make\WPCliCommand;
 use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
+use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\Php\PhpSourceEditor;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
 use StellarWP\Foundation\Tests\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -24,6 +28,11 @@ final class WPCliCommandTest extends TestCase
 	private array $temporaryRoots = [];
 
 	private string $tempDir;
+
+	/**
+	 * @var array<string, mixed>
+	 */
+	private array $generatorConfig = [];
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -401,12 +410,38 @@ final class WPCliCommandTest extends TestCase
 		$this->assertStringContainsString('final class Sync_Products_Command extends Command {', (string) file_get_contents($root . '/src/Cli/Commands/Sync_Products_Command.php'));
 	}
 
+	public function test_it_uses_project_defaults_and_allows_explicit_overrides(): void {
+		$this->generatorConfig = require dirname(__DIR__, 4) . '/Support/Fixtures/Cli/generator-config.php';
+		$root                  = $this->temporaryProject();
+		$tester                = new CommandTester($this->command($root));
+		$this->assertSame(Command::SUCCESS, $tester->execute(['name' => 'Sync_Products_Command']));
+		$contents = (string) file_get_contents($root . '/src/Commands/Sync_Products_Command.php');
+		$this->assertStringContainsString('namespace Acme\\Plugin\\Commands;', $contents);
+
+		$this->assertSame(Command::SUCCESS, $tester->execute([
+			'name'        => 'Export_Products_Command',
+			'--namespace' => 'Acme\\Plugin\\Catalog',
+			'--path'      => 'custom/commands',
+		]));
+		$contents = (string) file_get_contents($root . '/custom/commands/Export_Products_Command.php');
+		$this->assertStringContainsString('namespace Acme\\Plugin\\Catalog;', $contents);
+	}
+
+	private function generatorLocations(ProjectDirectory $projectDirectory): GeneratorLocationResolver {
+		$container = (new ContainerFactory())->create(new ArrayConfiguration($this->generatorConfig));
+		$container->register(CliProvider::class);
+		$container->singleton(ProjectDirectory::class, $projectDirectory);
+
+		return $container->get(GeneratorLocationResolver::class);
+	}
+
 	private function command(string $root): WPCliCommand {
 		$projectDirectory = new ProjectDirectory($root);
 
 		return new WPCliCommand(
 			projectDirectory: $projectDirectory,
 			autoloadResolver: new ComposerAutoloadResolver($projectDirectory),
+			locations: $this->generatorLocations($projectDirectory),
 			classNameResolver: new WordPressClassNameResolver(),
 			stubResolver: new StubResolver($projectDirectory),
 			stubRenderer: new StubRenderer(),
