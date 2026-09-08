@@ -33,10 +33,13 @@ Foundation migrations apply ordered database changes and record each successful 
 2. **Generate the table and its initial migration**
 
    ```shell
-   vendor/bin/foundation make:database-table Reports_Table --migration
+   vendor/bin/foundation make:database-table Reports_Table \
+       --table-name=your_plugin_reports --migration
    ```
 
    This creates the table class and `Create_Reports_Table` migration, then adds both registrations to the conventional database provider. Review the migration before running it: its `down()` method drops the complete table and its data.
+
+   Choose a stable table name unique to your plugin. WordPress adds its site prefix, producing a name such as `wp_your_plugin_reports`. Keep the application table name fixed after deployment.
 
 3. **Define the complete initial schema**
 
@@ -105,6 +108,7 @@ vendor/bin/foundation make:database-provider Reporting_Provider \
 	--namespace=Plugin\\Reporting \
 	--path=src/Reporting
 vendor/bin/foundation make:database-table Reports_Table --migration \
+	--table-name=your_plugin_reports \
 	--provider=src/Reporting/Reporting_Provider.php
 ```
 
@@ -122,9 +126,11 @@ Constructor injection is available for application tables and other services. Fo
 
 ### Customize generated output
 
-The conventional generator paths and names require no extra options. When a project uses a different structure, the table generator's `--namespace` and `--path` options customize the table class; its migration remains in the conventional `Database\\Migrations` namespace and path. Pass an explicit identifier such as `--migration-id=2026_09_04_143200_create_reports_table` only when the generated timestamp identifier must be replaced.
+The conventional generator paths and class names require no extra options. When a project uses a different structure, the table generator's `--namespace` and `--path` options customize the table class; its migration remains in the conventional `Database\\Migrations` namespace and path. Pass an explicit identifier such as `--migration-id=2026_09_04_143200_create_reports_table` only when the generated timestamp identifier must be replaced.
 
-The table generator derives the unprefixed WordPress table name from the class name. Pass `--table-name=report_entries` when that unprefixed name should differ from the default. The value may contain only ASCII letters, numbers, and underscores. Foundation applies the active WordPress prefix at runtime, producing a physical name such as `wp_report_entries`. Do not include `wp_` or another site prefix in this option, because `--table-name=wp_report_entries` could produce `wp_wp_report_entries`. The migration generator's `--table` option has a separate, class-oriented meaning: it selects the existing table class that an alteration migration changes.
+The table generator derives the unprefixed WordPress table name from the class name unless `--table-name` is supplied. For a standalone plugin, choose a name unique to that plugin, such as `--table-name=your_plugin_reports`. The value may contain only ASCII letters, numbers, and underscores. Foundation applies the active WordPress prefix at runtime, producing a physical name such as `wp_your_plugin_reports`. Supply the application table name without the WordPress site prefix. The migration generator's `--table` option has a separate, class-oriented meaning: it selects the existing table class that an alteration migration changes.
+
+An application that owns the entire installation can use the class-derived default, such as `reports`. A wrapper for an existing table should use that table's established name without its WordPress site prefix.
 
 Project-specific stubs can override the defaults at:
 
@@ -151,7 +157,7 @@ use StellarWP\Foundation\Database\Table\Table;
 
 final readonly class Reports_Table extends Table {
 
-	private const string UNPREFIXED_TABLE_NAME = 'reports';
+	private const string UNPREFIXED_TABLE_NAME = 'your_plugin_reports';
 
 	public function unprefixedName(): string {
 		return self::UNPREFIXED_TABLE_NAME;
@@ -163,7 +169,7 @@ final readonly class Reports_Table extends Table {
 The table class does not contain a mutable "current schema." Each migration owns the exact blueprint it applies, so later table changes do not alter the meaning of migrations that have already shipped.
 
 :::note[Custom table implementations]
-Most application tables should extend the supplied `Table` base class. Implement `StellarWP\Foundation\Database\Contracts\Table` directly only for a custom wrapper that does not need Foundation's query and write conveniences. In either case, `unprefixedName()` must return a stable name such as `reports`, never `wp_reports`.
+Most application tables should extend the supplied `Table` base class. Implement `StellarWP\Foundation\Database\Contracts\Table` directly only for a custom wrapper that does not need Foundation's query and write conveniences. In either case, `unprefixedName()` must return the stable application table name, such as `your_plugin_reports`, without the WordPress site prefix.
 :::
 
 ### Define the initial schema
