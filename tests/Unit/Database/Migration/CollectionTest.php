@@ -10,21 +10,31 @@ use StellarWP\Foundation\Tests\TestCase;
 
 final class CollectionTest extends TestCase
 {
-	public function test_it_collects_migrations_in_order(): void {
+	public function test_it_orders_migrations_by_their_byte_exact_identifiers(): void {
 		$first  = new TestMigration('2026_01_01_000001_create_users');
 		$second = new TestMigration('2026_01_01_000002_create_posts');
+		$third  = new TestMigration('2026_01_01_000003_create_comments');
 
-		$collection = new Collection([$first]);
+		$collection = new Collection([$third, $first]);
 		$collection->add($second);
 
 		$indexed = [
 			$first->id()  => $first,
 			$second->id() => $second,
+			$third->id()  => $third,
 		];
 
 		$this->assertSame($indexed, $collection->all());
-		$this->assertSame([$first, $second], $collection->values());
+		$this->assertSame([$first, $second, $third], $collection->values());
 		$this->assertSame($indexed, iterator_to_array($collection));
+	}
+
+	public function test_explicit_custom_ids_are_ordered_lexically(): void {
+		$last       = new TestMigration('reports_020_add_status');
+		$first      = new TestMigration('reports_010_create_table');
+		$collection = new Collection([$last, $first]);
+
+		$this->assertSame([$first, $last], $collection->values());
 	}
 
 	public function test_it_rejects_duplicate_migration_ids(): void {
@@ -34,6 +44,21 @@ final class CollectionTest extends TestCase
 			new TestMigration('2026_01_01_000001_create_users'),
 			new TestMigration('2026_01_01_000001_create_users'),
 		]);
+	}
+
+	public function test_a_rejected_addition_does_not_partially_mutate_the_collection(): void {
+		$existing   = new TestMigration('2026_01_01_000002_existing');
+		$collection = new Collection([$existing]);
+
+		try {
+			$collection->add(
+				new TestMigration('2026_01_01_000001_new'),
+				new TestMigration($existing->id())
+			);
+			$this->fail('Expected the duplicate migration to be rejected.');
+		} catch (DuplicateMigration) {
+			$this->assertSame([$existing], $collection->values());
+		}
 	}
 
 	public function test_it_rejects_blank_migration_ids(): void {

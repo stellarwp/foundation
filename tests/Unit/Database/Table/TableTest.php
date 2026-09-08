@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\Tests\Unit\Database\Table;
 
 use ReflectionMethod;
 use StellarWP\Foundation\Database\Table\Table;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\ExternalTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestDatabaseTable;
 use StellarWP\Foundation\Tests\TestCase;
@@ -47,6 +48,16 @@ final class TableTest extends TestCase
 			'UPDATE wp_reports',
 			'DELETE wp_reports',
 		], $database->executed);
+	}
+
+	public function test_an_externally_managed_table_can_use_the_table_gateway_without_defining_a_schema(): void {
+		$database               = new FakeDatabase();
+		$database->insertResult = 1;
+		$table                  = new ExternalTable($database);
+
+		$this->assertSame('wp_external_reports', $table->name());
+		$this->assertSame('SELECT * FROM `wp_external_reports`', $table->query()->toSql());
+		$this->assertSame(1, $table->insert(['status' => 'imported']));
 	}
 
 	public function test_subclasses_can_add_table_bound_operations_using_the_active_database_scope(): void {

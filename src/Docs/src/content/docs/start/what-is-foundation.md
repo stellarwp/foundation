@@ -9,32 +9,13 @@ Foundation is a Composer monorepo of reusable PHP components maintained for libr
 
 Foundation is primarily developed for internal Nexcess projects. Its packages are publicly available and designed to remain reusable, but the needs of Nexcess applications will primarily drive changes, priorities, and the project roadmap.
 
-Each component is published to its own read-only repository. A project can install the aggregate `stellarwp/foundation` package or require only the components it uses.
+Each component is published as a focused package from this monorepo. Applications can adopt one capability without taking dependencies on unrelated Foundation features.
 
-:::caution[Choose dependencies before installing]
-For a distributable WordPress plugin, install split runtime packages and require `stellarwp/foundation-cli` with `--dev`. The aggregate package includes the developer CLI in its normal installation; `composer install --no-dev` does not remove it.
-:::
+## Choose packages by deployment boundary
 
-## Choose individual components
+Libraries and distributable WordPress plugins should generally use focused component packages. This keeps their production dependency set aligned with the infrastructure they actually ship.
 
-Use split packages when a library or production plugin should ship with the smallest practical dependency set.
-
-```shell
-composer require stellarwp/foundation-container stellarwp/foundation-log
-composer require --dev stellarwp/foundation-cli
-```
-
-Runtime features belong in Composer's `require` section. Install `stellarwp/foundation-cli` in `require-dev` when it is used only to generate project code.
-
-## Choose the aggregate package
-
-Use `stellarwp/foundation` when convenience is more important than minimizing installed code. It provides every component and the `vendor/bin/foundation` developer CLI.
-
-```shell
-composer require stellarwp/foundation
-```
-
-The aggregate package is appropriate for complete applications or development environments that intentionally own the whole Foundation installation. Prefer split packages for production plugin archives.
+Complete applications that centrally own their dependency graph can use the aggregate package when having every Foundation component available is more useful than minimizing installed code. The installation guide explains the production and developer dependency implications of each approach.
 
 ## Treat Foundation as application infrastructure
 
@@ -46,7 +27,3 @@ Foundation components provide infrastructure and extension points. Application-s
 - Keep authorization, business rules, and domain behavior in application code.
 
 Foundation does not require an application to adopt every component at once.
-
-## Continue
-
-[Install Foundation](/start/install-foundation/) using the approach that matches the application.

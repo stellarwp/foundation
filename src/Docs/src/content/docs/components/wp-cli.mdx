@@ -1,13 +1,13 @@
 ---
 title: WP-CLI
-description: Build container-aware WP-CLI commands and register them from feature providers.
+description: Build injectable WP-CLI commands and register them from feature providers.
 sidebar:
   order: 8
 ---
 
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-Foundation WP-CLI provides a container-aware command base class and a shared provider for registering commands during WP-CLI bootstrap. Application services remain injectable, command prefixes remain configurable, and feature providers can contribute commands without loading WP-CLI classes during normal WordPress requests.
+Foundation WP-CLI provides a command base class and a shared provider for registering commands during WP-CLI bootstrap. Application services remain injectable, command prefixes remain configurable, and feature providers can contribute commands without loading WP-CLI classes during normal WordPress requests.
 
 ## Installation
 
@@ -68,85 +68,32 @@ In the root `config.php`, configure a stable application prefix for a distributa
 
 return [
 	'foundation' => [
-		'prefix' => 'your-plugin',
+		'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? 'your-plugin',
 	],
 ];
 ```
 
-Commands will be registered beneath `wp your-plugin`. Complete WordPress applications that own the full installation can keep the zero-configuration `nx` default.
+With the example's default prefix, commands will be registered beneath `wp your-plugin`. Complete WordPress applications that own the full installation can keep the zero-configuration `nx` default.
 
-Set `wpcli.command_prefix` in the same root `config.php` only when WP-CLI should intentionally use a different prefix:
+Set `FOUNDATION_WPCLI_COMMAND_PREFIX` only when WP-CLI should intentionally use a different prefix. In the same root `config.php`, add the package-specific setting when that environment variable is present:
 
 ```php title="config.php"
-return [
-	'foundation' => [
-		'prefix' => 'your-plugin',
-	],
-	'wpcli' => [
-		'command_prefix' => 'your-plugin-tools',
-	],
-];
-```
-
-### Register the WP-CLI provider
-
-In `src/App.php`, register `WPCliProvider` before feature providers that contribute commands:
-
-```php title="App.php"
-use StellarWP\Foundation\Container\Contracts\Providable;
-use StellarWP\Foundation\WPCli;
-use YourPlugin\Catalog;
-
-/** @var list<class-string<Providable>> */
-private const array PROVIDERS = [
-	WPCli\WPCliProvider::class,
-	Catalog\Provider::class,
-];
-```
-
-`WPCliProvider` listens to `cli_init` and resolves the command collection only when WP-CLI is active. Feature providers should contribute commands to that collection instead of registering their own `cli_init` hooks.
-
-### Contribute a command from its feature provider
-
-`WPCliProvider` creates the shared `CommandPrefix` from configuration. Feature providers only add their commands to the shared collection.
-
-In `src/Catalog/Provider.php`:
-
-```php title="Provider.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Catalog;
+$config = [
+	'foundation' => [
+		'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? 'your-plugin',
+	],
+];
 
-use StellarWP\Foundation\Container\Contracts\Resolver as C;
-use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
-use StellarWP\Foundation\WPCli\WPCliProvider;
-use YourPlugin\Catalog\Cli\Sync_Catalog_Command;
-
-/**
- * Configures the product catalog feature and its WP-CLI commands.
- */
-final class Provider extends Service_Provider {
-
-	public function register(): void {
-		$this->register_cli_commands();
-	}
-
-	private function register_cli_commands(): void {
-		$this->container->mergeArrayVar(
-			WPCliProvider::COMMANDS,
-			static fn ( C $c ): array => [
-				$c->get( Sync_Catalog_Command::class ),
-			]
-		);
-	}
+if ( isset( $_ENV['FOUNDATION_WPCLI_COMMAND_PREFIX'] ) ) {
+	$config['wpcli']['command_prefix'] = $_ENV['FOUNDATION_WPCLI_COMMAND_PREFIX'];
 }
+
+return $config;
 ```
 
-:::danger[Do not bind command classes separately]
-Do not call `bind()` or `singleton()` for `Sync_Catalog_Command`. The container may autoload its `WP_CLI_Command` parent during normal WordPress bootstrap, before WP-CLI exists. The lazy `mergeArrayVar()` contribution resolves the command during `cli_init` instead.
-:::
-
-Add more commands to the same returned array or contribute them from other feature providers. `WPCliProvider` validates the complete collection before registering any command.
+When the override is absent, WP-CLI uses `foundation.prefix`.
 
 ## Usage
 
@@ -156,7 +103,7 @@ Generate the initial class from the project root:
 
 ```shell
 vendor/bin/foundation make:wpcli-command Sync_Catalog \
-  --namespace="YourPlugin\\Catalog\\Cli" \
+  --namespace="Plugin\\Catalog\\Cli" \
   --subcommand="catalog:sync" \
   --description="Synchronize the product catalog."
 ```
@@ -176,13 +123,11 @@ In `src/Catalog/Cli/Sync_Catalog_Command.php`:
 ```php title="Sync_Catalog_Command.php"
 <?php declare(strict_types=1);
 
-namespace YourPlugin\Catalog\Cli;
+namespace Plugin\Catalog\Cli;
 
-use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\WPCli\Command;
-use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 use WP_CLI;
-use YourPlugin\Catalog\Catalog_Synchronizer;
+use Plugin\Catalog\Catalog_Synchronizer;
 
 use function WP_CLI\Utils\get_flag_value;
 
@@ -200,11 +145,8 @@ final class Sync_Catalog_Command extends Command {
 	private const string FLAG_DRY_RUN       = 'dry-run';
 
 	public function __construct(
-		Container $container,
-		CommandPrefix $commandPrefix,
 		private readonly Catalog_Synchronizer $synchronizer
 	) {
-		parent::__construct( $container, $commandPrefix );
 	}
 
 	/**
@@ -291,6 +233,72 @@ The three synopsis types map to WP-CLI input as follows:
 | Associative | `batch-size` | `--batch-size=50` |
 | Flag | `dry-run` | `--dry-run` |
 
+The command constructor contains only its business dependencies. Foundation supplies the configured prefix later, when `WPCliProvider` registers the command during `cli_init`.
+
+### Contribute a command from its feature provider
+
+`WPCliProvider` creates the command registration context from configuration. Feature providers only add their commands to the shared collection.
+
+In `src/Catalog/Provider.php`:
+
+```php title="Provider.php"
+<?php declare(strict_types=1);
+
+namespace Plugin\Catalog;
+
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\WPCli\WPCliProvider;
+use Plugin\Catalog\Cli\Sync_Catalog_Command;
+
+/**
+ * Configures the product catalog feature and its WP-CLI commands.
+ */
+final class Provider extends Service_Provider {
+
+	public function register(): void {
+		$this->register_cli_commands();
+	}
+
+	private function register_cli_commands(): void {
+		$this->container->mergeArrayVar(
+			WPCliProvider::COMMANDS,
+			static fn ( C $c ): array => [
+				$c->get( Sync_Catalog_Command::class ),
+			]
+		);
+	}
+}
+```
+
+:::danger[Do not bind command classes separately]
+Do not call `bind()` or `singleton()` for `Sync_Catalog_Command`. The container may autoload its `WP_CLI_Command` parent during normal WordPress bootstrap, before WP-CLI exists. The lazy `mergeArrayVar()` contribution resolves the command during `cli_init` instead.
+:::
+
+Add more commands to the same returned array or contribute them from other feature providers. `WPCliProvider` validates the complete collection before registering any command.
+
+### Register the WP-CLI provider
+
+In `src/App.php`, register `WPCliProvider` before feature providers that contribute commands:
+
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\WPCli;
+use Plugin\Catalog;
+
+/** @var list<class-string<Provider>> */
+private const array PROVIDERS = [
+	WPCli\WPCliProvider::class,
+	Catalog\Provider::class,
+];
+```
+
+`WPCliProvider` listens to `cli_init` and resolves the command collection only when WP-CLI is active. Feature providers should contribute commands to that collection instead of registering their own `cli_init` hooks.
+
+### Register a custom command implementation
+
+Extend `Command` for Foundation's synopsis, prompting, and exit-status behavior. A different command abstraction can instead implement `StellarWP\Foundation\WPCli\Contracts\RegistrableCommand`; its `register( CommandContext $context )` method can use `$context->name( 'catalog:sync' )` to build the configured command name before calling `WP_CLI::add_command()`.
+
 ### Run the command
 
 With the `your-plugin` application prefix, run:
@@ -365,3 +373,11 @@ slic run wpcli
 ```
 
 One real command test is more valuable than duplicating the Foundation command wrapper's generic registration tests throughout the application.
+
+## Upgrading to 2.0
+
+The 1.x `Command` constructor accepted the Foundation `Container` and a `CommandPrefix`. Remove both arguments and the corresponding `parent::__construct()` call. Command constructors should contain only their application dependencies. If a command previously called `$this->container->get()`, inject that resolved service directly instead.
+
+`WPCliProvider` now supplies a `CommandContext` when it registers contributed commands. Let the provider register commands through `WPCliProvider::COMMANDS`; direct calls to `register()` would need to supply the context themselves. If an application command overrides the protected `command()` method, either remove that override or update it to `command( CommandContext $context ): string` and use the context to build the configured name.
+
+Custom command abstractions contributed to `WPCliProvider::COMMANDS` must implement `RegistrableCommand` instead of being required to extend Foundation's base `Command`.

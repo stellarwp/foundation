@@ -1,10 +1,7 @@
 <?php declare(strict_types=1);
 
-use Adbar\Dot;
-use lucatume\DI52\Container as DI52Container;
-use StellarWP\ContainerContract\ContainerInterface;
-use StellarWP\Foundation\Container\ContainerAdapter;
-use StellarWP\Foundation\Container\Contracts\Container;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
 use StellarWP\Foundation\Database\Cli\Migrate;
 use StellarWP\Foundation\Database\Contracts\Migration;
 use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
@@ -16,13 +13,17 @@ use StellarWP\Foundation\Database\Migration\Factories\SessionFactory;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository;
 use StellarWP\Foundation\Database\Migration\Store;
+use StellarWP\Foundation\Database\Migration\StoreSchema;
 use StellarWP\Foundation\Database\Schema;
 use StellarWP\Foundation\Database\Schema\DbDelta;
+use StellarWP\Foundation\Database\Schema\Editor;
 use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Database\Scope\SiteScope;
+use StellarWP\Foundation\Database\Table\Blueprint;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestTable;
+use StellarWP\Foundation\WPCli\CommandContext;
 use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 
 if (! class_exists(WP_CLI::class)) {
@@ -42,14 +43,12 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 		return;
 	}
 
-	$container = new ContainerAdapter(new DI52Container());
-	$container->bind(Container::class, $container);
-	$container->bind(ContainerInterface::class, $container);
-	$container->singleton(Dot::class, new Dot());
+	$container = (new ContainerFactory())->create(new ArrayConfiguration());
 
 	$scope              = new SiteScope($wpdb);
 	$database           = new Database($wpdb, $scope);
-	$schema             = new Schema($database, new Reconciler($database, new DbDelta()));
+	$reconciler         = new Reconciler($database, new DbDelta());
+	$schema             = new Schema($database, $reconciler, new Editor($database, $reconciler));
 	$migrationTableName = 'foundation_cli_migrations';
 	$lockTableName      = 'foundation_cli_locks';
 	$exampleTable       = 'foundation_cli_example';
@@ -57,9 +56,10 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 	$lockTable          = new LockTable($lockTableName, $database);
 	$repository         = new Repository($migrationTable);
 	$lock               = new DatabaseLock($database, $lockTable);
-	$store              = new Store($schema, new LeaseFactory(), new SessionFactory(), $scope, $lock, $migrationTable, $lockTable, 'nx-foundation-database-migrations', 300);
+	$storeSchema        = new StoreSchema($schema, $reconciler, $migrationTable, $lockTable);
+	$store              = new Store($storeSchema, new LeaseFactory(), new SessionFactory($schema), $scope, $lock, 'nx-foundation-database-migrations', 300);
 
-	$migration = new class(new TestTable('foundation_cli_example', $exampleTable)) implements Migration {
+	$migration = new class(new TestTable($exampleTable)) implements Migration {
 		public function __construct(
 			private readonly TestTable $table
 		) {
@@ -70,7 +70,10 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 		}
 
 		public function up(SchemaContract $schema): void {
-			$schema->createOrUpdate($this->table);
+			$blueprint = Blueprint::for($this->table);
+			$blueprint->bigIncrements('id');
+
+			$schema->create($blueprint);
 		}
 
 		public function down(SchemaContract $schema): void {
@@ -79,8 +82,6 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 	};
 
 	$command = new Migrate(
-		$container,
-		new CommandPrefix('foundation'),
 		new Migrator(
 			new MigrationCollection([$migration]),
 			$repository,
@@ -88,5 +89,5 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 		)
 	);
 
-	$command->register();
+	$command->register(new CommandContext(new CommandPrefix('foundation')));
 });

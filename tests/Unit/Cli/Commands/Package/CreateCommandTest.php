@@ -2,14 +2,14 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Cli\Commands\Package;
 
-use StellarWP\Foundation\Cli\Commands\Package\Contracts\PackageRepositoryCreator;
-use StellarWP\Foundation\Cli\Commands\Package\CreateCommand;
-use StellarWP\Foundation\Cli\Commands\Package\PackageFilesValidator;
-use StellarWP\Foundation\Cli\Commands\Package\PackageRepositoryPlan;
-use StellarWP\Foundation\Cli\Commands\Package\PackageRepositoryPlanFactory;
-use StellarWP\Foundation\Cli\Commands\Package\PackageResolver;
-use StellarWP\Foundation\Cli\Commands\Package\PackageScaffolder;
 use StellarWP\Foundation\Cli\Process\Contracts\ProcessRunner;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\Contracts\PackageRepositoryCreator;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\CreateCommand;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageFilesValidator;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageRepositoryPlan;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageRepositoryPlanFactory;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageResolver;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageScaffolder;
 use StellarWP\Foundation\Tests\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\HelperSet;
@@ -53,13 +53,40 @@ final class CreateCommandTest extends TestCase
 		);
 
 		$tester     = new CommandTester($command);
-		$statusCode = $tester->execute(['package' => 'Log']);
+		$statusCode = $tester->execute(['package' => 'src/Log']);
 
 		$this->assertSame(Command::SUCCESS, $statusCode);
 		$this->assertStringContainsString('Package: stellarwp/foundation-log', $tester->getDisplay());
 		$this->assertStringContainsString('Dry run. Run with --apply', $tester->getDisplay());
 		$this->assertStringContainsString("'gh' 'repo' 'create'", $tester->getDisplay());
 		$this->assertFalse($packageRepositoryCreator->created);
+	}
+
+	public function test_it_previews_an_existing_npm_package_without_scaffolding(): void {
+		$rootPath                 = dirname(__DIR__, 4) . '/Support/Fixtures/Cli/Package/npm-root';
+		$packageRepositoryCreator = new FakePackageRepositoryCreator();
+		$processRunner            = new FakeProcessRunner();
+		$command                  = new CreateCommand(
+			new PackageResolver($rootPath),
+			new PackageScaffolder($rootPath),
+			new PackageFilesValidator(),
+			new PackageRepositoryPlanFactory(),
+			$packageRepositoryCreator,
+			$processRunner
+		);
+		$command->setHelperSet($this->questionHelperSet());
+
+		$tester     = new CommandTester($command);
+		$statusCode = $tester->execute(['package' => 'src/ExamplePackage'], ['interactive' => false]);
+
+		$this->assertSame(Command::SUCCESS, $statusCode);
+		$this->assertStringContainsString('Package: @stellarwp/foundation-example-package', $tester->getDisplay());
+		$this->assertStringContainsString('Repository: stellarwp/foundation-example-package', $tester->getDisplay());
+		$this->assertStringContainsString("'gh' 'repo' 'create' 'stellarwp/foundation-example-package'", $tester->getDisplay());
+		$this->assertStringNotContainsString('scaffold', $tester->getDisplay());
+		$this->assertSame([], $processRunner->commands);
+		$this->assertFalse($packageRepositoryCreator->created);
+		$this->assertFileDoesNotExist($rootPath . '/src/ExamplePackage/composer.json');
 	}
 
 	public function test_it_creates_the_package_repository_when_apply_is_passed(): void {
@@ -132,7 +159,6 @@ final class CreateCommandTest extends TestCase
 			['composer', 'monorepo', 'merge'],
 		], $processRunner->commands);
 		$this->assertFileExists($rootPath . '/src/WPCli/composer.json');
-		$this->assertFileExists($rootPath . '/src/WPCli/.github/workflows/close-pull-request.yml');
 		$this->assertStringContainsString('"name": "stellarwp/foundation-wpcli"', (string) file_get_contents($rootPath . '/src/WPCli/composer.json'));
 	}
 

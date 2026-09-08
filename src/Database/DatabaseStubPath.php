@@ -29,10 +29,10 @@ final class DatabaseStubPath
 	}
 
 	/**
-	 * Return the default table-reconciliation migration stub path.
+	 * Return the default table-alteration migration stub path.
 	 */
-	public static function reconcileTableMigration(): string {
-		return __DIR__ . '/stubs/reconcile-table-migration.stub';
+	public static function alterTableMigration(): string {
+		return __DIR__ . '/stubs/alter-table-migration.stub';
 	}
 
 	/**

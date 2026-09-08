@@ -8,6 +8,8 @@ namespace StellarWP\Foundation\Database\Migration\ValueObjects;
 final readonly class Result
 {
 	/**
+	 * Capture the migrations affected or skipped by one operation.
+	 *
 	 * @param list<string> $ran
 	 * @param list<string> $rolledBack
 	 * @param list<string> $skipped
@@ -19,6 +21,9 @@ final readonly class Result
 	) {
 	}
 
+	/**
+	 * Return the number of migrations applied or rolled back.
+	 */
 	public function count(): int {
 		return count($this->ran) + count($this->rolledBack);
 	}

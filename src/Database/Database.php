@@ -117,7 +117,8 @@ final readonly class Database implements DatabaseContract
 	/**
 	 * Execute a query and return its first row when present.
 	 *
-	 * @throws QueryException When preparation or execution fails.
+	 * @throws DatabaseException When WordPress returns a row in an invalid shape.
+	 * @throws QueryException    When preparation or execution fails.
 	 *
 	 * @return array<string, mixed>|null
 	 */
@@ -137,7 +138,8 @@ final readonly class Database implements DatabaseContract
 	/**
 	 * Execute a query and return all rows with string keys.
 	 *
-	 * @throws QueryException When preparation or execution fails.
+	 * @throws DatabaseException When WordPress returns a row in an invalid shape.
+	 * @throws QueryException    When preparation or execution fails.
 	 *
 	 * @return list<array<string, mixed>>
 	 */

@@ -32,6 +32,19 @@ final class PhysicalIndexCollectionTest extends TestCase
 		], $indexes);
 	}
 
+	public function test_it_distinguishes_functional_indexes_from_column_indexes(): void {
+		$indexes = PhysicalIndexCollection::fromRows([
+			array_replace(self::indexRow('lookup', 1, 1, 'status'), [
+				'Column_name' => null,
+				'Expression'  => 'lower(`status`)',
+			]),
+		], 'wp_catalog')->all();
+
+		$this->assertSame('KEY ((lower(`status`)))', $indexes['lookup']->describe());
+		$this->assertFalse($indexes['lookup']->hasSameDefinitionAs(new IndexState('lookup', IndexType::KEY, ['status'])));
+		$this->assertFalse($indexes['lookup']->hasSameDefinitionAs(new IndexState('lookup', IndexType::KEY, ['(lower(`status`))'])));
+	}
+
 	/**
 	 * @dataProvider invalidMetadata
 	 *
@@ -49,6 +62,14 @@ final class PhysicalIndexCollectionTest extends TestCase
 	 * @return iterable<string, array{list<array<string, mixed>>, string}>
 	 */
 	public static function invalidMetadata(): iterable {
+		yield 'missing column and expression' => [[
+			array_replace(self::indexRow('lookup', 1, 1, 'status'), ['Column_name' => null]),
+		], 'invalid index metadata for wp_catalog.'];
+
+		yield 'empty expression' => [[
+			array_replace(self::indexRow('lookup', 1, 1, 'status'), ['Column_name' => null, 'Expression' => ' ']),
+		], 'invalid index metadata for wp_catalog.'];
+
 		yield 'missing row fields' => [
 			[['Key_name' => 'PRIMARY']],
 			'invalid index metadata for wp_catalog.',

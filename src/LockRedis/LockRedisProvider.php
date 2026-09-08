@@ -5,6 +5,7 @@ namespace StellarWP\Foundation\LockRedis;
 use InvalidArgumentException;
 use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use StellarWP\Foundation\Container\Traits\ResolvesFoundationPrefix;
 use StellarWP\Foundation\Lock\Contracts\Clock;
 use StellarWP\Foundation\Lock\SystemClock;
 
@@ -13,10 +14,14 @@ use StellarWP\Foundation\Lock\SystemClock;
  */
 final class LockRedisProvider extends Provider
 {
-	public const string PREFIX = self::class . '.prefix';
+	use ResolvesFoundationPrefix;
+
+	private const string PREFIX = self::class . '.prefix';
 
 	/**
-	 * @throws InvalidArgumentException When the required Redis lock prefix is not configured.
+	 * Register the Redis lock policy and its shared implementation services.
+	 *
+	 * @throws InvalidArgumentException When the configured Foundation or Redis lock prefix is invalid.
 	 */
 	public function register(): void {
 		$this->registerConfiguration();
@@ -25,9 +30,17 @@ final class LockRedisProvider extends Provider
 	}
 
 	/**
-	 * @throws InvalidArgumentException When the required Redis lock prefix is not configured.
+	 * Validate and register the prefix used to isolate this application's locks.
+	 *
+	 * @throws InvalidArgumentException When the configured Foundation or Redis lock prefix is invalid.
 	 */
 	private function registerConfiguration(): void {
+		if (! $this->config->has('lock.redis.prefix')) {
+			$this->container->singleton(self::PREFIX, $this->foundationPrefix() . ':lock:');
+
+			return;
+		}
+
 		$prefix = $this->config->get('lock.redis.prefix');
 
 		if (! is_string($prefix) || trim($prefix) === '') {
@@ -37,10 +50,16 @@ final class LockRedisProvider extends Provider
 		$this->container->singleton(self::PREFIX, $prefix);
 	}
 
+	/**
+	 * Register the system clock used to calculate lock expirations.
+	 */
 	private function registerClock(): void {
 		$this->container->singleton(SystemClock::class);
 	}
 
+	/**
+	 * Register the Redis lock while leaving its connection to the application.
+	 */
 	private function registerLock(): void {
 		$this->container->when(RedisLock::class)
 			->needs(Clock::class)

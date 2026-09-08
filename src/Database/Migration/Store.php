@@ -4,14 +4,11 @@ namespace StellarWP\Foundation\Database\Migration;
 
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\DatabaseScope;
-use StellarWP\Foundation\Database\Contracts\Schema;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Migration\Exceptions\MigrationLockFailed;
 use StellarWP\Foundation\Database\Migration\Exceptions\UninitializedStore;
 use StellarWP\Foundation\Database\Migration\Factories\LeaseFactory;
 use StellarWP\Foundation\Database\Migration\Factories\SessionFactory;
-use StellarWP\Foundation\Database\Table\Tables\LockTable;
-use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use Throwable;
@@ -29,13 +26,11 @@ final readonly class Store
 	 * @throws InvalidArgumentException When the migration lock configuration is invalid.
 	 */
 	public function __construct(
-		private Schema $schema,
+		private StoreSchema $storeSchema,
 		private LeaseFactory $leaseFactory,
 		private SessionFactory $sessionFactory,
 		private DatabaseScope $scope,
 		private Lock $lock,
-		private MigrationTable $migrationTable,
-		private LockTable $lockTable,
 		private string $lockName,
 		private int $lockTtl
 	) {
@@ -58,11 +53,11 @@ final readonly class Store
 	public function initialize(): void {
 		$scopeId = $this->scope->capture();
 
-		$this->schema->createOrUpdate($this->lockTable);
+		$this->storeSchema->initializeLock();
 		$lease = $this->acquireLease($scopeId);
 
 		try {
-			$this->schema->createOrUpdate($this->migrationTable);
+			$this->storeSchema->initializeLedger();
 		} catch (Throwable $failure) {
 			$this->releasePreservingFailure($lease, $failure);
 		}
@@ -80,7 +75,7 @@ final readonly class Store
 	 */
 	public function drop(): void {
 		$this->withMigrationLock(function (): void {
-			$this->schema->drop($this->migrationTable);
+			$this->storeSchema->dropLedger();
 		});
 	}
 
@@ -90,7 +85,7 @@ final readonly class Store
 	 * @throws DatabaseException When migration storage cannot be inspected.
 	 */
 	public function isInitialized(): bool {
-		return $this->hasLedger() && $this->schema->hasTable($this->lockTable);
+		return $this->storeSchema->hasLedger() && $this->storeSchema->hasLock();
 	}
 
 	/**
@@ -99,7 +94,7 @@ final readonly class Store
 	 * @throws DatabaseException When migration storage cannot be inspected.
 	 */
 	public function hasLedger(): bool {
-		return $this->schema->hasTable($this->migrationTable);
+		return $this->storeSchema->hasLedger();
 	}
 
 	/**
@@ -120,7 +115,7 @@ final readonly class Store
 		$scopeId = $this->scope->capture();
 
 		// Migration lock storage must exist before lock acquisition.
-		$hasLockTable = $this->schema->hasTable($this->lockTable);
+		$hasLockTable = $this->storeSchema->hasLock();
 		$this->scope->assertCurrent($scopeId);
 
 		if (! $hasLockTable) {
@@ -138,7 +133,7 @@ final readonly class Store
 				throw new UninitializedStore();
 			}
 
-			$result = $operation($this->sessionFactory->create($this->schema, $lease));
+			$result = $operation($this->sessionFactory->create($lease));
 		} catch (Throwable $failure) {
 			$this->releasePreservingFailure($lease, $failure);
 		}

@@ -26,7 +26,8 @@ final readonly class Repository implements RepositoryContract
 	}
 
 	/**
-	 * Return every ledger record keyed by its byte-exact migration identifier.
+	 * Return every ledger record keyed by its byte-exact migration identifier
+	 * in ascending execution order, with the oldest record first.
 	 *
 	 * @throws DatabaseException  When the migration ledger cannot be read.
 	 * @throws InvalidMigrationId When a stored migration identifier is invalid.
@@ -113,7 +114,8 @@ final readonly class Repository implements RepositoryContract
 	}
 
 	/**
-	 * Return ledger records belonging to one batch in stored order.
+	 * Return ledger records belonging to one batch in ascending execution order,
+	 * with the oldest record first.
 	 *
 	 * @throws DatabaseException  When the migration ledger cannot be read.
 	 * @throws InvalidMigrationId When a stored migration identifier is invalid.

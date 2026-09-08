@@ -2,33 +2,18 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\WPCli;
 
-use StellarWP\Foundation\WPCli\Command;
+use StellarWP\Foundation\WPCli\CommandContext;
+use StellarWP\Foundation\WPCli\Contracts\RegistrableCommand;
 
-final class RecordingCommand extends Command
+final class RecordingCommand implements RegistrableCommand
 {
 	public static bool $registered        = false;
 	public static ?string $registeredName = null;
 	public static int $registrationCount  = 0;
 
-	public function runCommand(array $args = [], array $assocArgs = []): int {
-		return self::SUCCESS;
-	}
-
-	public function register(): void {
+	public function register(CommandContext $context): void {
 		self::$registered     = true;
-		self::$registeredName = $this->command();
+		self::$registeredName = $context->name('recording');
 		self::$registrationCount++;
-	}
-
-	protected function subcommand(): string {
-		return 'recording';
-	}
-
-	protected function description(): string {
-		return 'Recording command.';
-	}
-
-	protected function arguments(): array {
-		return [];
 	}
 }

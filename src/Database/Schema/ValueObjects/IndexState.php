@@ -12,19 +12,24 @@ use StellarWP\Foundation\Database\Table\IndexType;
  */
 final readonly class IndexState
 {
-	/** Index types reported by physical inspection but not declared by TableDefinition. */
+	/**
+	 * Index types reported by physical inspection but not declared by Blueprint.
+	 */
 	public const string FULLTEXT = 'fulltext';
 
 	public const string SPATIAL = 'spatial';
 	public const string RTREE   = 'rtree';
 
 	/**
+	 * Capture a normalized physical or declared index definition.
+	 *
 	 * @param list<string> $columns
 	 */
 	public function __construct(
 		public string $name,
 		private string $type,
-		private array $columns
+		private array $columns,
+		private bool $hasExpressions = false
 	) {
 	}
 
@@ -52,7 +57,8 @@ final readonly class IndexState
 	public function hasSameDefinitionAs(self $other): bool {
 		return strcasecmp($this->name, $other->name) === 0
 			&& $this->type                              === $other->type
-			&& $this->columns                           === $other->columns;
+			&& $this->columns                           === $other->columns
+			&& $this->hasExpressions                    === $other->hasExpressions;
 	}
 
 	/**

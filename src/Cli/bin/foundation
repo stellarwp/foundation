@@ -1,13 +1,11 @@
 #!/usr/bin/env php
 <?php declare(strict_types=1);
 
-use Adbar\Dot;
-use lucatume\DI52\Container as DI52Container;
-use StellarWP\ContainerContract\ContainerInterface;
 use StellarWP\Foundation\Cli\Application;
 use StellarWP\Foundation\Cli\CliProvider;
-use StellarWP\Foundation\Container\ContainerAdapter;
-use StellarWP\Foundation\Container\Contracts\Container;
+use StellarWP\Foundation\Cli\Tooling\ToolingProviderResolver;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
 
 final class FoundationCliBootstrapException extends RuntimeException
 {
@@ -48,11 +46,20 @@ try {
 
 	require $autoload;
 
-	$container = new ContainerAdapter(new DI52Container());
-	$container->bind(Container::class, $container);
-	$container->bind(ContainerInterface::class, $container);
-	$container->singleton(Dot::class, new Dot());
+	$configPath = (getcwd() ?: dirname(__DIR__, 3)) . '/config.php';
+	$config = is_file($configPath) ? (static fn (string $path): mixed => require $path)($configPath) : [];
+
+	if (! is_array($config)) {
+		throw new FoundationCliBootstrapException('config.php must return a configuration array.');
+	}
+
+	$container = (new ContainerFactory())->create(new ArrayConfiguration($config));
 	$container->register(CliProvider::class);
+	foreach ($container->get(ToolingProviderResolver::class)->providers() as $provider) {
+		if (strcasecmp(ltrim($provider, '\\'), CliProvider::class) !== 0) {
+			$container->register($provider);
+		}
+	}
 
 	exit($container->get(Application::class)->run());
 } catch (FoundationCliBootstrapException $e) {

@@ -2,7 +2,8 @@
 
 namespace StellarWP\Foundation\Database\Query;
 
-use StellarWP\Foundation\Database\Contracts\Database;
+use StellarWP\Foundation\Database\Contracts\QueryReader;
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\QueryException;
 
 /**
@@ -19,7 +20,7 @@ final readonly class Query
 	 * @param list<mixed> $bindings
 	 */
 	public function __construct(
-		private Database $database,
+		private QueryReader $database,
 		private string $sql,
 		private array $bindings = []
 	) {
@@ -53,7 +54,8 @@ final readonly class Query
 	/**
 	 * Execute the query and return every matching row.
 	 *
-	 * @throws QueryException When the query fails.
+	 * @throws DatabaseException When the database returns a row in an invalid shape.
+	 * @throws QueryException    When the query fails.
 	 *
 	 * @return list<array<string, mixed>>
 	 */
@@ -64,7 +66,8 @@ final readonly class Query
 	/**
 	 * Execute the query and return its first row when present.
 	 *
-	 * @throws QueryException When the query fails.
+	 * @throws DatabaseException When the database returns a row in an invalid shape.
+	 * @throws QueryException    When the query fails.
 	 *
 	 * @return array<string, mixed>|null
 	 */

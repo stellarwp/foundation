@@ -10,6 +10,8 @@ use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 final class UnavailableMigration extends DatabaseException
 {
 	/**
+	 * Report the recorded migration identifiers missing from this deployment.
+	 *
 	 * @param non-empty-list<string> $migrations
 	 */
 	public function __construct(

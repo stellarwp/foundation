@@ -5,7 +5,10 @@ namespace StellarWP\Foundation\Tests\Unit\Pipeline;
 use Closure;
 use Error;
 use RuntimeException;
+use StellarWP\Foundation\Pipeline\Contracts\Pipeline as PipelineContract;
+use StellarWP\Foundation\Pipeline\Exceptions\PipelineNotStarted;
 use StellarWP\Foundation\Pipeline\Pipeline;
+use StellarWP\Foundation\Tests\Support\Fixtures\Pipeline\MultipleMethodsPipe;
 use StellarWP\Foundation\Tests\Support\Pipeline\PipelineParameterizedStage;
 use StellarWP\Foundation\Tests\Support\Pipeline\PipelineStageOne;
 use StellarWP\Foundation\Tests\Support\Pipeline\PipelineStageTwo;
@@ -103,15 +106,27 @@ final class PipelineTest extends TestCase
 		$this->assertSame('A Sample String That Is Passed Through To All The Pipes.', $result);
 	}
 
-	public function test_it_sets_the_container_after_construction(): void {
-		$result = (new Pipeline())->setContainer($this->container)
-			->send('a sample string that is passed through to all pipes.')
-			->through([
-				PipelineStageOne::class,
-				PipelineStageTwo::class,
-			])->thenReturn();
+	public function test_it_exposes_a_minimal_execution_contract(): void {
+		$pipeline = $this->pipeline->through([
+			PipelineStageOne::class,
+			PipelineStageTwo::class,
+		]);
 
-		$this->assertSame('A Sample String That Is Passed Through To All The Pipes.', $result);
+		$this->assertInstanceOf(PipelineContract::class, $pipeline);
+		$this->assertSame(
+			'A Sample String That Is Passed Through To All The Pipes.',
+			$pipeline->send('a sample string that is passed through to all pipes.')->thenReturn()
+		);
+	}
+
+	public function test_it_resolves_with_its_required_container_dependency(): void {
+		$pipeline = $this->container->get(Pipeline::class);
+
+		$result = $pipeline->send('a sample string that is passed through to all pipes.')
+			->through(PipelineStageOne::class)
+			->thenReturn();
+
+		$this->assertSame('A Sample String That Is Passed Through To All Pipes.', $result);
 	}
 
 	public function test_it_pushes_additional_pipes(): void {
@@ -146,6 +161,18 @@ final class PipelineTest extends TestCase
 		$this->assertSame('A Sample String', $result);
 	}
 
+	public function test_invokable_objects_take_precedence_over_default_and_configured_methods(): void {
+		$pipe = new MultipleMethodsPipe();
+
+		$this->assertSame('value:invoke', $this->pipeline->through($pipe)->send('value')->thenReturn());
+		$this->assertSame('value:handle', $this->pipeline->through(MultipleMethodsPipe::class)->send('value')->thenReturn());
+
+		$this->pipeline->via('process');
+
+		$this->assertSame('value:invoke', $this->pipeline->through($pipe)->send('value')->thenReturn());
+		$this->assertSame('value:process', $this->pipeline->through(MultipleMethodsPipe::class)->send('value')->thenReturn());
+	}
+
 	public function test_it_rethrows_when_an_object_pipe_has_no_callable_handler(): void {
 		$this->expectException(Error::class);
 
@@ -172,12 +199,53 @@ final class PipelineTest extends TestCase
 			->thenReturn();
 	}
 
-	public function test_it_requires_a_container_for_class_string_pipes(): void {
-		$this->expectException(RuntimeException::class);
-		$this->expectExceptionMessage('A container instance has not been passed to the Pipeline.');
+	public function test_a_pipe_can_skip_later_pipes_and_the_destination(): void {
+		$result = $this->pipeline->send('input')
+			->through(
+				static fn (): string => 'skipped',
+				static fn (): never => throw new RuntimeException('Later pipe must not run.')
+			)
+			->then(static fn (): never => throw new RuntimeException('Destination must not run.'));
 
-		(new Pipeline())->send('passable')
-			->through(PipelineStageOne::class)
-			->thenReturn();
+		$this->assertSame('skipped', $result);
+	}
+
+	public function test_a_pipe_can_transform_the_destination_result(): void {
+		$result = $this->pipeline->send('input')
+			->through(static fn (string $value, Closure $next): string => '[' . $next($value) . ']')
+			->then(static fn (string $value): string => strtoupper($value));
+
+		$this->assertSame('[INPUT]', $result);
+	}
+
+	public function test_a_pipe_can_handle_a_downstream_failure(): void {
+		$failure = new RuntimeException('Destination failed.');
+		$caught  = null;
+
+		$result = $this->pipeline->send('input')
+			->through(static function (string $value, Closure $next) use (&$caught): string {
+				try {
+					return $next($value);
+				} catch (RuntimeException $exception) {
+					$caught = $exception;
+
+					return 'fallback';
+				}
+			})
+			->then(static fn (): never => throw $failure);
+
+		$this->assertSame($failure, $caught);
+		$this->assertSame('fallback', $result);
+	}
+
+	public function test_it_rejects_execution_before_a_value_is_sent(): void {
+		$this->expectException(PipelineNotStarted::class);
+		$this->expectExceptionMessage('Call send() before executing the pipeline.');
+
+		$this->pipeline->thenReturn();
+	}
+
+	public function test_it_accepts_null_as_an_explicit_passable_value(): void {
+		$this->assertNull($this->pipeline->send(null)->thenReturn());
 	}
 }

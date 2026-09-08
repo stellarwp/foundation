@@ -2,8 +2,8 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Cli\Commands\Package;
 
-use StellarWP\Foundation\Cli\Commands\Package\Package;
-use StellarWP\Foundation\Cli\Commands\Package\PackageFilesValidator;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\Package;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageFilesValidator;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class PackageFilesValidatorTest extends TestCase
@@ -16,14 +16,13 @@ final class PackageFilesValidatorTest extends TestCase
 			component: 'Log',
 			directory: 'src/Log',
 			path: $path,
-			composerPath: $path . '/composer.json'
+			manifestPath: $path . '/composer.json'
 		));
 
 		$this->assertSame([
 			'README.md',
 			'.gitattributes',
 			'.gitignore',
-			'.github/workflows/close-pull-request.yml',
 		], $missingFiles);
 	}
 }

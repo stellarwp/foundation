@@ -7,7 +7,7 @@ namespace StellarWP\Foundation\Identifier\Ulid;
  */
 final class UlidValidator
 {
-	private const string PATTERN = '/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/';
+	private const string PATTERN = '/\A[0-7][0-9A-HJKMNP-TV-Z]{25}\z/';
 
 	public function isValid(string $identifier): bool {
 		return preg_match(self::PATTERN, $identifier) === 1;

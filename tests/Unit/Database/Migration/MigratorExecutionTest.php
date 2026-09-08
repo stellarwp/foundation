@@ -6,7 +6,6 @@ use DateTimeImmutable;
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Migration;
 use StellarWP\Foundation\Database\Contracts\Schema;
-use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Exceptions\DatabaseContextChanged;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Migration\Collection;
@@ -20,7 +19,10 @@ use StellarWP\Foundation\Database\Migration\Factories\LeaseFactory;
 use StellarWP\Foundation\Database\Migration\Factories\SessionFactory;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Store;
+use StellarWP\Foundation\Database\Migration\StoreSchema;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Record;
+use StellarWP\Foundation\Database\Schema\Reconciler;
+use StellarWP\Foundation\Database\Table\Blueprint;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
@@ -32,6 +34,7 @@ use StellarWP\Foundation\Tests\Support\Fixtures\Database\FailingMigration;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\InMemoryRepository;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchema;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\RecordingSchemaExecutor;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestDatabaseScope;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestMigration;
 use StellarWP\Foundation\Tests\Support\Fixtures\Lock\MutableClock;
@@ -62,13 +65,11 @@ final class MigratorExecutionTest extends TestCase
 		$this->database   = new FakeDatabase();
 
 		(new Store(
-			$this->schema,
+			$this->storeSchema($this->schema),
 			new LeaseFactory(),
-			new SessionFactory(),
+			new SessionFactory($this->schema),
 			$this->scope,
 			$this->lock,
-			new MigrationTable('nx_foundation_migrations', $this->database),
-			new LockTable('nx_foundation_locks', $this->database),
 			'nx-foundation-database-migrations',
 			300
 		))->initialize();
@@ -81,13 +82,11 @@ final class MigratorExecutionTest extends TestCase
 		$this->expectExceptionMessage('lock name cannot be empty');
 
 		new Store(
-			$this->schema,
+			$this->storeSchema($this->schema),
 			new LeaseFactory(),
-			new SessionFactory(),
+			new SessionFactory($this->schema),
 			$this->scope,
 			$this->lock,
-			new MigrationTable('nx_foundation_migrations', $this->database),
-			new LockTable('nx_foundation_locks', $this->database),
 			lockName: '   ',
 			lockTtl: 300
 		);
@@ -98,22 +97,20 @@ final class MigratorExecutionTest extends TestCase
 		$this->expectExceptionMessage('TTL must be at least one second');
 
 		new Store(
-			$this->schema,
+			$this->storeSchema($this->schema),
 			new LeaseFactory(),
-			new SessionFactory(),
+			new SessionFactory($this->schema),
 			$this->scope,
 			$this->lock,
-			new MigrationTable('nx_foundation_migrations', $this->database),
-			new LockTable('nx_foundation_locks', $this->database),
 			lockName: 'nx-foundation-database-migrations',
 			lockTtl: 0
 		);
 	}
 
-	public function test_it_runs_pending_migrations_in_order(): void {
+	public function test_it_runs_pending_migrations_in_ascending_id_order(): void {
 		$result = $this->configured(
-			new TestMigration('2026_01_01_000001_create_users'),
 			new TestMigration('2026_01_01_000002_create_posts'),
+			new TestMigration('2026_01_01_000001_create_users'),
 		)->run();
 
 		$this->assertSame([
@@ -295,15 +292,25 @@ final class MigratorExecutionTest extends TestCase
 		$this->configured(
 			new TestMigration('2026_01_01_000001_create_users'),
 		)->run();
+		$this->schema->statements = [];
 
 		$result = $this->configured(
-			new TestMigration('2026_01_01_000001_create_users'),
+			new TestMigration('2026_01_01_000003_create_comments'),
 			new TestMigration('2026_01_01_000002_create_posts'),
+			new TestMigration('2026_01_01_000001_create_users'),
 		)->run();
 
-		$this->assertSame(['2026_01_01_000002_create_posts'], $result->ran);
+		$this->assertSame([
+			'2026_01_01_000002_create_posts',
+			'2026_01_01_000003_create_comments',
+		], $result->ran);
 		$this->assertSame(['2026_01_01_000001_create_users'], $result->skipped);
+		$this->assertSame([
+			'up:2026_01_01_000002_create_posts',
+			'up:2026_01_01_000003_create_comments',
+		], $this->schema->statements);
 		$this->assertSame(2, $this->repository->all()['2026_01_01_000002_create_posts']->batch);
+		$this->assertSame(2, $this->repository->all()['2026_01_01_000003_create_comments']->batch);
 	}
 
 	public function test_it_rolls_back_the_latest_batch_in_reverse_order(): void {
@@ -333,6 +340,36 @@ final class MigratorExecutionTest extends TestCase
 		], $this->schema->statements);
 		$this->assertTrue($this->repository->hasRun('2026_01_01_000001_create_users'));
 		$this->assertFalse($this->repository->hasRun('2026_01_01_000002_create_posts'));
+	}
+
+	public function test_it_rolls_back_in_reverse_execution_order_instead_of_reverse_id_order(): void {
+		$executedFirst = new TestMigration('2026_01_01_000003_executed_first');
+		$executedLast  = new TestMigration('2026_01_01_000001_executed_last');
+		$ranAt         = new DateTimeImmutable('2026-01-01 00:00:00');
+		$repository    = $this->createMock(Repository::class);
+
+		$repository->method('latestBatch')->willReturn(1);
+		$repository->method('recordsForBatch')->willReturn([
+			new Record(200, $executedFirst->id(), 1, $ranAt),
+			new Record(100, $executedLast->id(), 1, $ranAt),
+		]);
+		$repository->expects($this->exactly(2))
+			->method('deleteRun')
+			->willReturn(true);
+
+		$result = $this->migrator(
+			$this->collection($executedFirst, $executedLast),
+			repository: $repository
+		)->rollback();
+
+		$this->assertSame([
+			$executedLast->id(),
+			$executedFirst->id(),
+		], $result->rolledBack);
+		$this->assertSame([
+			'down:' . $executedLast->id(),
+			'down:' . $executedFirst->id(),
+		], $this->schema->statements);
 	}
 
 	public function test_it_renews_the_lock_around_each_rollback(): void {
@@ -763,21 +800,19 @@ final class MigratorExecutionTest extends TestCase
 
 	public function test_it_releases_the_lock_when_initialization_fails(): void {
 		$storeSchema = $this->createMock(Schema::class);
-		$storeSchema->method('createOrUpdate')
-			->willReturnCallback(static function (Table $table): void {
-				if ($table instanceof MigrationTable) {
+		$storeSchema->method('create')
+			->willReturnCallback(static function (Blueprint $blueprint): void {
+				if ($blueprint->table() instanceof MigrationTable) {
 					throw new DatabaseException('Could not prepare the migration ledger.');
 				}
 			});
 
 		$store = new Store(
-			$storeSchema,
+			$this->storeSchema($storeSchema),
 			new LeaseFactory(),
-			new SessionFactory(),
+			new SessionFactory($storeSchema),
 			$this->scope,
 			$this->lock,
-			new MigrationTable('nx_foundation_migrations', $this->database),
-			new LockTable('nx_foundation_locks', $this->database),
 			'nx-foundation-database-migrations',
 			300
 		);
@@ -1018,13 +1053,11 @@ final class MigratorExecutionTest extends TestCase
 		$lock ??= $this->lock;
 		$repository ??= $this->repository;
 		$store = new Store(
-			$schema,
+			$this->storeSchema($schema),
 			new LeaseFactory(),
-			new SessionFactory(),
+			new SessionFactory($schema),
 			$this->scope,
 			$lock,
-			new MigrationTable('nx_foundation_migrations', $this->database),
-			new LockTable('nx_foundation_locks', $this->database),
 			$lockName,
 			$lockTtl
 		);
@@ -1033,6 +1066,18 @@ final class MigratorExecutionTest extends TestCase
 			$migrations,
 			$repository,
 			$store
+		);
+	}
+
+	/**
+	 * Build migration storage around the test schema and configured table names.
+	 */
+	private function storeSchema(Schema $schema): StoreSchema {
+		return new StoreSchema(
+			$schema,
+			new Reconciler($this->database, new RecordingSchemaExecutor()),
+			new MigrationTable('nx_foundation_migrations', $this->database),
+			new LockTable('nx_foundation_locks', $this->database)
 		);
 	}
 

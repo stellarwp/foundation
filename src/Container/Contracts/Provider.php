@@ -2,45 +2,30 @@
 
 namespace StellarWP\Foundation\Container\Contracts;
 
-use Adbar\Dot;
-use StellarWP\Foundation\Container\ContainerAdapter;
+use StellarWP\Foundation\Container\Exceptions\ContainerException;
+use StellarWP\Foundation\Container\Exceptions\NotFoundException;
 
 /**
- * Providers should extend this abstract in order to have
- * access to the container instance to register their bindings.
+ * Provides feature registration access to the shared container and configuration.
  */
-abstract class Provider implements Providable
+abstract class Provider
 {
-	/**
-	 * Whether this service provider will be a deferred one or not.
-	 */
-	protected bool $deferred = false;
+	protected readonly Configuration $config;
 
-	public function __construct(
-		/** @var Container|ContainerAdapter $container */
-		protected readonly Container $container,
-		/** @var Dot<array-key, mixed> */
-		protected readonly Dot $config
+	/**
+	 * Provide the shared container and resolve the application configuration used during registration.
+	 *
+	 * @throws ContainerException When the configuration service cannot be resolved.
+	 * @throws NotFoundException  When the configuration service has not been registered.
+	 */
+	final public function __construct(
+		protected readonly Container $container
 	) {
+		$this->config = $this->container->get(Configuration::class);
 	}
 
 	/**
-	 * {@inheritDoc}
+	 * Register this feature's bindings and application hooks.
 	 */
-	public function isDeferred(): bool {
-		return $this->deferred;
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	public function provides(): array {
-		return [];
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	public function boot(): void {
-	}
+	abstract public function register(): void;
 }

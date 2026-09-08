@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Tests\Unit\Database\Table;
 
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use StellarWP\Foundation\Database\Table\Column;
 use StellarWP\Foundation\Database\Table\ValueObjects\ColumnComment;
 use StellarWP\Foundation\Tests\TestCase;
@@ -67,6 +68,12 @@ final class ColumnTest extends TestCase
 		);
 	}
 
+	public function test_it_canonicalizes_common_custom_type_spellings(): void {
+		$this->assertSame('double', (new Column('measurement', 'DOUBLE PRECISION'))->typeSql());
+		$this->assertSame('decimal(10,2)', (new Column('amount', 'decimal(10, 2)'))->typeSql());
+		$this->assertSame("enum('a, b','c')", (new Column('state', "enum('a, b','c')"))->typeSql());
+	}
+
 	public function test_it_reports_invalid_final_column_states(): void {
 		$this->assertSame(
 			['Column id cannot be nullable because it uses AUTO_INCREMENT.'],
@@ -77,6 +84,34 @@ final class ColumnTest extends TestCase
 			['Column completed_at cannot use DEFAULT NULL unless it is nullable.'],
 			(new Column('completed_at', 'datetime', hasDefault: true))->validationErrors()
 		);
+	}
+
+	/**
+	 * @dataProvider decimalTypes
+	 */
+	#[DataProvider('decimalTypes')]
+	public function test_it_normalizes_decimal_precision_and_scale(string $type, ?int $length, string $expected): void {
+		$this->assertSame($expected, (new Column('amount', $type, $length))->typeSql());
+	}
+
+	/**
+	 * @return array<string, array{string, ?int, string}>
+	 */
+	public static function decimalTypes(): array {
+		return [
+			'precision'                  => ['decimal(12)', null, 'decimal(12,0)'],
+			'numeric precision'          => ['NUMERIC(12)', null, 'decimal(12,0)'],
+			'dec precision'              => ['dec(12)', null, 'decimal(12,0)'],
+			'separate precision'         => ['decimal', 12, 'decimal(12,0)'],
+			'numeric separate precision' => ['numeric', 12, 'decimal(12,0)'],
+			'dec separate precision'     => ['dec', 12, 'decimal(12,0)'],
+			'default precision'          => ['decimal', null, 'decimal(10,0)'],
+			'numeric default precision'  => ['numeric', null, 'decimal(10,0)'],
+			'dec default precision'      => ['dec', null, 'decimal(10,0)'],
+			'explicit scale'             => ['decimal(12, 2)', null, 'decimal(12,2)'],
+			'numeric explicit scale'     => ['NUMERIC(12, 2)', null, 'decimal(12,2)'],
+			'dec explicit scale'         => ['dec(12, 2)', null, 'decimal(12,2)'],
+		];
 	}
 
 	public function test_it_rejects_auto_increment_on_non_integer_columns(): void {

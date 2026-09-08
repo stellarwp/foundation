@@ -3,15 +3,13 @@
 namespace StellarWP\Foundation\Cli\Commands\Make;
 
 use RuntimeException;
-use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
+use StellarWP\Foundation\Cli\Composer\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
+use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\ComposerProject;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\PhpNamespace;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\Psr4Namespace;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\WPCli\WPCliStubPath;
 use Symfony\Component\Console\Command\Command;
@@ -28,11 +26,14 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 final class WPCliCommand extends Command
 {
-	private const string NAME = 'make:wpcli-command';
+	public const string CONFIG_KEY        = 'wpcli-command';
+	public const string NAME              = 'make:' . self::CONFIG_KEY;
+	public const string DEFAULT_NAMESPACE = 'Cli\\Commands';
 
 	public function __construct(
 		private readonly ProjectDirectory $projectDirectory,
 		private readonly ComposerAutoloadResolver $autoloadResolver,
+		private readonly GeneratorLocationResolver $locations,
 		private readonly WordPressClassNameResolver $classNameResolver,
 		private readonly StubResolver $stubResolver,
 		private readonly StubRenderer $stubRenderer,
@@ -78,8 +79,8 @@ final class WPCliCommand extends Command
 	private function generatedFile(InputInterface $input): GeneratedFile {
 		$className   = $this->classNameResolver->commandClass((string) $input->getArgument('name'));
 		$project     = $this->autoloadResolver->project();
-		$namespace   = $this->namespace($input, $project->defaultPsr4Namespace());
-		$path        = $this->path($input, $namespace, $project);
+		$namespace   = $this->locations->namespaceFor(self::CONFIG_KEY, self::DEFAULT_NAMESPACE, $project, (string) $input->getOption('namespace'));
+		$path        = $this->locations->directoryFor($namespace, $project, (string) $input->getOption('path'));
 		$stub        = $this->stubResolver->resolve('wpcli', 'command', WPCliStubPath::command());
 		$relative    = $this->projectDirectory->relativePath($path . '/' . $className . '.php');
 		$description = (string) ($input->getOption('description') ?: $this->classNameResolver->description($className));
@@ -92,41 +93,12 @@ final class WPCliCommand extends Command
 				'namespace'                => $namespace,
 				'class'                    => $className,
 				'foundation_wpcli_command' => $project->foundationClass('StellarWP\\Foundation\\WPCli\\Command'),
-				'subcommand'               => $subcommand,
+				'subcommand_doc'           => $this->stubRenderer->phpDocLine($subcommand),
 				'subcommand_php'           => $this->stubRenderer->phpStringLiteral($subcommand),
-				'description'              => $description,
+				'description_doc'          => $this->stubRenderer->phpDocLine($description),
 				'description_php'          => $this->stubRenderer->phpStringLiteral($description),
 			])
 		);
-	}
-
-	private function namespace(InputInterface $input, Psr4Namespace $autoload): string {
-		$namespace = $input->getOption('namespace');
-
-		if (is_string($namespace) && trim($namespace) !== '') {
-			return (new PhpNamespace(trim($namespace, '\\')))->value;
-		}
-
-		return trim($autoload->namespace, '\\') . '\\Cli\\Commands';
-	}
-
-	private function path(InputInterface $input, string $namespace, ComposerProject $project): string {
-		$path = $input->getOption('path');
-
-		if (is_string($path) && trim($path) !== '') {
-			return $this->projectDirectory->absolutePath($path);
-		}
-
-		$autoload = $project->psr4NamespaceFor($namespace);
-
-		if ($autoload === null) {
-			throw new RuntimeException(sprintf(
-				'Namespace "%s" is outside the Composer PSR-4 namespaces in composer.json. Pass --path to choose an output directory.',
-				$namespace
-			));
-		}
-
-		return $this->projectDirectory->absolutePath($autoload->pathFor($namespace));
 	}
 
 	private function runtimeDependencyWarning(): ?string {

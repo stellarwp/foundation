@@ -7,5 +7,8 @@ namespace StellarWP\Foundation\Identifier\Contracts;
  */
 interface IdentifierGenerator
 {
+	/**
+	 * Generate a new identifier in the implementation's documented format.
+	 */
 	public function generate(): string;
 }

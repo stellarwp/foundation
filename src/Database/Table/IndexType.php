@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\Database\Table;
 
 /**
- * Supported MySQL index types for table definitions.
+ * Supported MySQL index types for migration blueprints.
  */
 final class IndexType
 {

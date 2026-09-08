@@ -14,6 +14,8 @@ use StellarWP\Foundation\View\Contracts\View;
 final class ViewProvider extends Provider
 {
 	/**
+	 * Register the configured PHP renderer under each supported view contract.
+	 *
 	 * @throws InvalidArgumentException When view.directory is not a non-empty string.
 	 */
 	public function register(): void {
@@ -21,6 +23,8 @@ final class ViewProvider extends Provider
 	}
 
 	/**
+	 * Validate the view directory and register the shared renderer instance.
+	 *
 	 * @throws InvalidArgumentException When view.directory is not a non-empty string.
 	 */
 	private function registerView(): void {

@@ -5,6 +5,7 @@ namespace StellarWP\Foundation\WPCli;
 use InvalidArgumentException;
 use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Traits\ResolvesFoundationPrefix;
+use StellarWP\Foundation\WPCli\Contracts\RegistrableCommand;
 use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 use UnexpectedValueException;
 
@@ -24,6 +25,8 @@ final class WPCliProvider extends Provider
 	private bool $registered = false;
 
 	/**
+	 * Register command configuration and defer command resolution until WP-CLI initializes.
+	 *
 	 * @throws InvalidArgumentException When the configured Foundation prefix is invalid.
 	 */
 	public function register(): void {
@@ -40,6 +43,7 @@ final class WPCliProvider extends Provider
 			->needs('$value')
 			->give($commandPrefix);
 		$this->container->singleton(CommandPrefix::class);
+		$this->container->singleton(CommandContext::class);
 
 		add_action('cli_init', function (): void {
 			$this->registerCommands();
@@ -49,6 +53,8 @@ final class WPCliProvider extends Provider
 	}
 
 	/**
+	 * Validate and register every command contributed through the shared collection.
+	 *
 	 * @throws UnexpectedValueException When the configured command list contains an invalid value.
 	 */
 	private function registerCommands(): void {
@@ -64,18 +70,20 @@ final class WPCliProvider extends Provider
 		$commands = is_array($commands) ? array_values($commands) : iterator_to_array($commands, false);
 
 		foreach ($commands as $index => $command) {
-			if (! $command instanceof Command) {
+			if (! $command instanceof RegistrableCommand) {
 				throw new UnexpectedValueException(sprintf(
-					'WP-CLI command at index %d must extend %s; received %s.',
+					'WP-CLI command at index %d must implement %s; received %s.',
 					$index,
-					Command::class,
+					RegistrableCommand::class,
 					get_debug_type($command)
 				));
 			}
 		}
 
+		$context = $this->container->get(CommandContext::class);
+
 		foreach ($commands as $command) {
-			$command->register();
+			$command->register($context);
 		}
 	}
 }

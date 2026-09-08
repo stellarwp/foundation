@@ -2,12 +2,10 @@
 
 namespace StellarWP\Foundation\Tests\WPUnit\Database;
 
-use Adbar\Dot;
-use lucatume\DI52\Container as DI52Container;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
-use StellarWP\ContainerContract\ContainerInterface;
-use StellarWP\Foundation\Container\ContainerAdapter;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
 use StellarWP\Foundation\Container\Contracts\Container;
 use StellarWP\Foundation\Database\Contracts\Database as DatabaseContract;
 use StellarWP\Foundation\Database\Contracts\Table;
@@ -19,12 +17,17 @@ use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\Contracts\Repository as MigrationRecordRepositoryContract;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Repository;
+use StellarWP\Foundation\Database\Migration\StoreSchema;
+use StellarWP\Foundation\Database\Migration\ValueObjects\Record;
 use StellarWP\Foundation\Database\Query\QueryBuilder;
 use StellarWP\Foundation\Database\Schema;
 use StellarWP\Foundation\Database\Schema\DbDelta;
+use StellarWP\Foundation\Database\Schema\Editor;
 use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Database\Scope\SiteScope;
-use StellarWP\Foundation\Database\Table\TableDefinition;
+use StellarWP\Foundation\Database\Table\Blueprint;
+use StellarWP\Foundation\Database\Table\Column;
+use StellarWP\Foundation\Database\Table\IndexType;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
@@ -44,6 +47,8 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 	private Schema $schema;
 
+	private Reconciler $reconciler;
+
 	/**
 	 * @var list<string>
 	 */
@@ -59,8 +64,9 @@ final class DatabaseIntegrationTest extends WPTestCase
 			throw new RuntimeException('WordPress must be loaded before running database integration tests.');
 		}
 
-		$this->database = new Database($GLOBALS['wpdb'], new SiteScope($GLOBALS['wpdb']));
-		$this->schema   = new Schema($this->database, new Reconciler($this->database, new DbDelta()));
+		$this->database   = new Database($GLOBALS['wpdb'], new SiteScope($GLOBALS['wpdb']));
+		$this->reconciler = new Reconciler($this->database, new DbDelta());
+		$this->schema     = new Schema($this->database, $this->reconciler, new Editor($this->database, $this->reconciler));
 	}
 
 	protected function tearDown(): void {
@@ -75,7 +81,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	public function test_database_executes_and_reads_rows_through_wpdb(): void {
-		$tableObject = new TestTable('database_table', $this->unprefixedTable('database'));
+		$tableObject = new TestTable($this->unprefixedTable('database'));
 		$table       = $this->database->tableName($tableObject);
 
 		$this->database->execute(sprintf(
@@ -95,8 +101,8 @@ final class DatabaseIntegrationTest extends WPTestCase
 			'second'
 		);
 
-		$this->assertSame($GLOBALS['wpdb']->prefix . 'example', $this->database->tableName(new TestTable('example', 'example')));
-		$this->assertSame($GLOBALS['wpdb']->prefix . 'wp_reports', $this->database->tableName(new TestTable('reports', 'wp_reports')));
+		$this->assertSame($GLOBALS['wpdb']->prefix . 'example', $this->database->tableName(new TestTable('example')));
+		$this->assertSame($GLOBALS['wpdb']->prefix . 'wp_reports', $this->database->tableName(new TestTable('wp_reports')));
 		$this->assertSame(['name' => 'first'], $this->database->row(sprintf(
 			'SELECT name FROM %s WHERE id = 1',
 			$this->database->quoteIdentifier($table)
@@ -118,16 +124,13 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 		$this->assertSame(
 			$GLOBALS['wpdb']->prefix . $maximum,
-			$this->database->tableName(new TestTable('maximum_table_name', $maximum))
+			$this->database->tableName(new TestTable($maximum))
 		);
 
 		$this->expectException(DatabaseException::class);
 		$this->expectExceptionMessage('64-character identifier limit');
 
-		$this->database->tableName(new TestTable(
-			'too_long_table_name',
-			str_repeat('a', 65 - strlen($GLOBALS['wpdb']->prefix))
-		));
+		$this->database->tableName(new TestTable(str_repeat('a', 65 - strlen($GLOBALS['wpdb']->prefix))));
 	}
 
 	/**
@@ -138,7 +141,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->expectException(DatabaseException::class);
 		$this->expectExceptionMessage($message);
 
-		$this->database->tableName(new TestTable('invalid_table_name', $tableName));
+		$this->database->tableName(new TestTable($tableName));
 	}
 
 	/**
@@ -156,11 +159,11 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->expectException(DatabaseException::class);
 		$this->expectExceptionMessage('64-character identifier limit');
 
-		$this->schema->createOrUpdate(new TestDatabaseTable(str_repeat('a', 65), $this->database));
+		$this->schema->create((new TestDatabaseTable(str_repeat('a', 65), $this->database))->blueprint());
 	}
 
 	public function test_database_crud_helpers_and_schema_inspection_use_wordpress(): void {
-		$tableObject = new TestTable('crud_table', $this->unprefixedTable('crud'));
+		$tableObject = new TestTable($this->unprefixedTable('crud'));
 		$table       = $this->database->tableName($tableObject);
 
 		$this->database->execute(sprintf(
@@ -195,7 +198,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	public function test_database_insert_returns_affected_rows_for_string_identifiers(): void {
-		$tableObject = new TestTable('string_ids_table', $this->unprefixedTable('string_ids'));
+		$tableObject = new TestTable($this->unprefixedTable('string_ids'));
 		$table       = $this->database->tableName($tableObject);
 
 		$this->database->execute(sprintf(
@@ -259,7 +262,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 	public function test_database_wraps_wordpress_query_failures(): void {
 		$previous = $GLOBALS['wpdb']->suppress_errors(true);
-		$table    = new TestTable('missing_table', 'missing_foundation_table');
+		$table    = new TestTable('missing_foundation_table');
 
 		try {
 			$exception = $this->assertQueryFails(fn (): mixed => $this->database->rows('SELECT * FROM %i', 'missing_foundation_table'));
@@ -311,23 +314,31 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	public function test_schema_creates_inspects_and_changes_tables_through_wordpress(): void {
-		$tableObject = new TestTable('schema_table', $this->unprefixedTable('schema'));
+		$tableObject = new TestTable($this->unprefixedTable('schema'));
 		$table       = $this->database->tableName($tableObject);
 		$schema      = $this->schema;
+		$definition  = Blueprint::for($tableObject);
+		$definition->bigIncrements('id');
+		$definition->string('legacy_name');
 
-		$schema->createOrUpdate($tableObject);
+		$schema->create($definition);
 		$schema->execute(sprintf(
 			'ALTER TABLE %s ADD KEY %s (%s)',
 			$this->database->quoteIdentifier($table),
 			$this->database->quoteIdentifier('name'),
-			$this->database->quoteIdentifier('id')
+			$this->database->quoteIdentifier('legacy_name')
 		));
 		$this->assertTrue($schema->hasTable($tableObject));
 		$this->assertTrue($schema->hasIndex($tableObject, 'name'));
+		$this->assertTrue($this->database->columnExists($tableObject, 'legacy_name'));
 
-		$schema->dropIndex($tableObject, 'name');
+		$change = Blueprint::for($tableObject);
+		$change->dropIndex('name');
+		$change->dropColumn('legacy_name');
+		$schema->alter($change);
 
 		$this->assertFalse($schema->hasIndex($tableObject, 'name'));
+		$this->assertFalse($this->database->columnExists($tableObject, 'legacy_name'));
 
 		$schema->execute(sprintf(
 			'DROP TABLE IF EXISTS %s',
@@ -346,36 +357,27 @@ final class DatabaseIntegrationTest extends WPTestCase
 			) {
 			}
 
-			public function id(): string {
-				return 'queue_schema_table';
-			}
-
 			public function unprefixedName(): string {
 				return $this->unprefixedName;
 			}
-
-			public function definition(): TableDefinition {
-				$table = TableDefinition::for($this);
-
-				$table->bigIncrements('id');
-				$table->string('queue', 255);
-				$table->string('task_handler', 255);
-				$table->longText('args');
-				$table->integer('priority', 3)->nullable();
-				$table->dateTime('run_after')->default('0000-00-00 00:00:00');
-				$table->integer('taken')->default(0);
-				$table->integer('done')->nullable()->default(0);
-				$table->tinyInteger('tries')->unsigned()->default(0);
-				$table->tinyInteger('failed', 1)->unsigned()->default(false);
-				$table->index('done', 'done');
-				$table->index('taken_failed', 'taken', 'failed');
-				$table->index('taken_failed_done', 'taken', 'failed', 'done');
-
-				return $table;
-			}
 		};
+		$definition = Blueprint::for($queue);
 
-		$schema->createOrUpdate($queue);
+		$definition->bigIncrements('id');
+		$definition->string('queue', 255);
+		$definition->string('task_handler', 255);
+		$definition->longText('args');
+		$definition->integer('priority', 3)->nullable();
+		$definition->dateTime('run_after')->default('0000-00-00 00:00:00');
+		$definition->integer('taken')->default(0);
+		$definition->integer('done')->nullable()->default(0);
+		$definition->tinyInteger('tries')->unsigned()->default(0);
+		$definition->tinyInteger('failed', 1)->unsigned()->default(false);
+		$definition->index('done', 'done');
+		$definition->index('taken_failed', 'taken', 'failed');
+		$definition->index('taken_failed_done', 'taken', 'failed', 'done');
+
+		$schema->create($definition);
 
 		$this->assertTrue($schema->hasTable($queue));
 		$this->assertTrue($this->database->columnExists($queue, 'args'));
@@ -385,11 +387,184 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertTrue($schema->hasIndex($queue, 'taken_failed_done'));
 	}
 
+	public function test_schema_canonicalizes_supported_custom_type_spellings(): void {
+		$table     = new TestTable($this->unprefixedTable('custom_types'));
+		$blueprint = Blueprint::for($table);
+
+		$blueprint->bigIncrements('id');
+		$blueprint->column(new Column('measurement', 'DOUBLE PRECISION'));
+		$blueprint->column(new Column('amount', 'decimal(10, 2)'));
+
+		$this->schema->create($blueprint);
+
+		$measurement = $this->database->row('SHOW FULL COLUMNS FROM %i WHERE Field = %s', $this->database->tableName($table), 'measurement');
+		$amount      = $this->database->row('SHOW FULL COLUMNS FROM %i WHERE Field = %s', $this->database->tableName($table), 'amount');
+
+		$this->assertSame('double', strtolower((string) ($measurement['Type'] ?? '')));
+		$this->assertSame('decimal(10,2)', strtolower((string) ($amount['Type'] ?? '')));
+	}
+
+	public function test_schema_creates_and_retries_decimal_declarations_without_changing_stored_data(): void {
+		$table     = new TestTable($this->unprefixedTable('decimal_retry'));
+		$blueprint = Blueprint::for($table);
+		$columns   = [
+			new Column('amount', 'decimal(12)'),
+			new Column('numeric_amount', 'NUMERIC(12)'),
+			new Column('dec_amount', 'dec(12)'),
+			new Column('separate_precision', 'decimal', 12),
+			new Column('numeric_precision', 'numeric', 12),
+			new Column('dec_precision', 'dec', 12),
+			new Column('default_precision', 'decimal'),
+			new Column('numeric_default', 'numeric'),
+			new Column('dec_default', 'dec'),
+		];
+		$data = [];
+
+		foreach ($columns as $column) {
+			$blueprint->column($column);
+			$data[$column->name] = 42;
+		}
+
+		$this->schema->create($blueprint);
+		$this->database->insert($table, $data);
+
+		$statements = [];
+		$recordDdl  = static function (string $sql) use (&$statements): string {
+			if (preg_match('/\A\s*(?:CREATE|ALTER|DROP)\b/i', $sql) === 1) {
+				$statements[] = $sql;
+			}
+
+			return $sql;
+		};
+		add_filter('query', $recordDdl);
+
+		try {
+			$this->schema->create($blueprint);
+		} finally {
+			remove_filter('query', $recordDdl);
+		}
+
+		$this->assertSame([], $statements);
+		$this->assertSame([array_map(strval(...), $data)], $this->database->rows('SELECT * FROM %i', $this->database->tableName($table)));
+	}
+
+	/**
+	 * @dataProvider omittedSchemaDeclarations
+	 */
+	#[DataProvider('omittedSchemaDeclarations')]
+	public function test_schema_detects_unapplied_declarations_after_db_delta_returns(string $omitted, string $message): void {
+		$table     = new TestTable($this->unprefixedTable('unapplied_schema'));
+		$blueprint = Blueprint::for($table);
+		$blueprint->bigIncrements('id');
+		$blueprint->string('status', 20);
+		$blueprint->index('id_lookup', 'id');
+
+		// Simulate WordPress applying only part of the requested definition.
+		$omitDeclaration = static fn (array $queries): array => array_map(
+			static fn (string $sql): string => str_replace($omitted, '', $sql),
+			$queries
+		);
+		add_filter('dbdelta_create_queries', $omitDeclaration);
+
+		try {
+			$this->expectException(DatabaseException::class);
+			$this->expectExceptionMessage($message);
+			$this->schema->create($blueprint);
+		} finally {
+			remove_filter('dbdelta_create_queries', $omitDeclaration);
+		}
+	}
+
+	/**
+	 * @return array<string, array{string, string}>
+	 */
+	public static function omittedSchemaDeclarations(): array {
+		return [
+			'column' => ["  `status` varchar(20) NOT NULL,\n", '.status'],
+			'index'  => [",\n  KEY `id_lookup` (`id`)", 'index id_lookup expected KEY (id), found missing'],
+		];
+	}
+
+	public function test_schema_rejects_an_existing_table_with_an_incompatible_charset(): void {
+		$table     = new TestTable($this->unprefixedTable('wrong_charset'));
+		$tableName = $this->database->tableName($table);
+		$blueprint = Blueprint::for($table);
+
+		$blueprint->bigIncrements('id');
+		$blueprint->string('label', 20);
+		$this->database->execute(sprintf(
+			'CREATE TABLE %s (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				label varchar(20) NOT NULL,
+				PRIMARY KEY  (id)
+			) DEFAULT CHARACTER SET latin1 COLLATE latin1_swedish_ci',
+			$this->database->quoteIdentifier($tableName)
+		));
+
+		$this->expectException(DatabaseException::class);
+		$this->expectExceptionMessage('table expected collation');
+		$this->expectExceptionMessage('found latin1_swedish_ci');
+
+		$this->schema->create($blueprint);
+	}
+
+	public function test_schema_rejects_an_existing_text_column_with_an_incompatible_charset(): void {
+		$table     = new TestTable($this->unprefixedTable('wrong_column_charset'));
+		$tableName = $this->database->tableName($table);
+		$blueprint = Blueprint::for($table);
+
+		$blueprint->bigIncrements('id');
+		$blueprint->string('label', 20);
+		$this->database->execute(sprintf(
+			'CREATE TABLE %s (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				label varchar(20) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL,
+				PRIMARY KEY  (id)
+			) %s',
+			$this->database->quoteIdentifier($tableName),
+			$this->database->charsetCollate()
+		));
+
+		$this->expectException(DatabaseException::class);
+		$this->expectExceptionMessage('column label expected collation');
+		$this->expectExceptionMessage('found latin1_swedish_ci');
+
+		$this->schema->create($blueprint);
+	}
+
+	public function test_schema_does_not_reapply_an_old_creation_blueprint_to_an_evolved_table(): void {
+		$table   = new TestTable($this->unprefixedTable('historical_create'));
+		$initial = Blueprint::for($table);
+
+		$initial->bigIncrements('id');
+		$initial->string('status', 20);
+		$this->schema->create($initial);
+
+		$change = Blueprint::for($table);
+		$change->string('status', 40)->change();
+		$this->schema->alter($change);
+
+		try {
+			$this->schema->create($initial);
+			$this->fail('Expected the historical creation blueprint to reject the evolved column.');
+		} catch (DatabaseException $exception) {
+			$this->assertStringContainsString('column status expected type varchar(20), found varchar(40)', $exception->getMessage());
+		}
+
+		$status = $this->database->row(
+			'SHOW FULL COLUMNS FROM %i WHERE Field = %s',
+			$this->database->tableName($table),
+			'status'
+		);
+
+		$this->assertSame('varchar(40)', strtolower((string) ($status['Type'] ?? '')));
+	}
+
 	public function test_datetime_zero_precision_is_canonical_and_idempotent(): void {
 		$table = new DateTimePrecisionTable($this->unprefixedTable('datetime_zero'));
 
-		$this->schema->createOrUpdate($table);
-		$this->schema->createOrUpdate($table);
+		$this->schema->create($table->blueprint());
+		$this->schema->create($table->blueprint());
 
 		$column = $this->database->row(
 			'SHOW COLUMNS FROM %i WHERE Field = %s',
@@ -414,10 +589,10 @@ final class DatabaseIntegrationTest extends WPTestCase
 				$comment             = "Customer's updated description; internal metadata";
 				$table               = new CommentedTable($unprefixedTableName, $comment);
 
-				$this->schema->createOrUpdate(new CommentedTable($unprefixedTableName, null));
-				$this->schema->createOrUpdate(new CommentedTable($unprefixedTableName, "Customer's description"));
-				$this->schema->createOrUpdate($table);
-				$this->schema->createOrUpdate($table);
+				$this->schema->create((new CommentedTable($unprefixedTableName, null))->blueprint());
+				$this->alterDescriptionComment($table, "Customer's description");
+				$this->alterDescriptionComment($table, $comment);
+				$this->alterDescriptionComment($table, $comment);
 
 				$column = $this->database->row(
 					'SHOW FULL COLUMNS FROM %i WHERE Field = %s',
@@ -428,7 +603,7 @@ final class DatabaseIntegrationTest extends WPTestCase
 				$this->assertSame($activeSqlMode, $this->database->value('SELECT @@SESSION.sql_mode'));
 				$this->assertSame($comment, $column['Comment'] ?? null);
 
-				$this->schema->createOrUpdate(new CommentedTable($unprefixedTableName, null));
+				$this->alterDescriptionComment($table, null);
 
 				$column = $this->database->row(
 					'SHOW FULL COLUMNS FROM %i WHERE Field = %s',
@@ -447,78 +622,55 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 	public function test_schema_changes_and_removes_comments_while_preserving_supported_column_attributes(): void {
 		$unprefixedTableName = $this->unprefixedTable('reconciled_comment');
+		$table               = new CommentReconciliationTable($unprefixedTableName, null);
 
-		$this->schema->createOrUpdate(new CommentReconciliationTable($unprefixedTableName, null));
-		$this->schema->createOrUpdate(new CommentReconciliationTable($unprefixedTableName, 'Initial comment'));
-		$this->schema->createOrUpdate(new CommentReconciliationTable($unprefixedTableName, 'Updated comment'));
-		$this->schema->createOrUpdate(new CommentReconciliationTable($unprefixedTableName, 'Updated comment'));
+		$this->schema->create($table->blueprint());
+		$this->alterReconciliationComments($table, 'Initial comment');
+		$this->alterReconciliationComments($table, 'Updated comment');
+		$this->alterReconciliationComments($table, 'Updated comment');
 
 		$this->assertCommentReconciliationTable($unprefixedTableName, 'Updated comment');
 
-		$this->schema->createOrUpdate(new CommentReconciliationTable($unprefixedTableName, null));
-		$this->schema->createOrUpdate(new CommentReconciliationTable($unprefixedTableName, null));
+		$this->alterReconciliationComments($table, null);
+		$this->alterReconciliationComments($table, null);
 
 		$this->assertCommentReconciliationTable($unprefixedTableName, '');
 	}
 
 	public function test_schema_preserves_quote_and_backslash_string_defaults(): void {
 		$unprefixedTableName = $this->unprefixedTable('string_default');
-		$tableName           = $this->database->tableName(new TestTable('string_default_table', $unprefixedTableName));
+		$tableObject         = new TestTable($unprefixedTableName);
+		$tableName           = $this->database->tableName($tableObject);
 		$default             = "customer's \\ path";
-		$table               = static function (string $columnDefault) use ($unprefixedTableName): Table {
-			return new class($unprefixedTableName, $columnDefault) implements Table {
-				public function __construct(
-					private string $unprefixedName,
-					private string $default
-				) {
-				}
+		$definition          = Blueprint::for($tableObject);
+		$definition->bigIncrements('id');
+		$definition->string('label', 100)->default($default);
+		$this->schema->create($definition);
+		$this->schema->create($definition);
+		$this->database->execute('INSERT INTO %i () VALUES ()', $tableName);
+		$this->assertSame($default, $this->database->value('SELECT label FROM %i WHERE id = 1', $tableName));
 
-				public function id(): string {
-					return 'string_default_table';
-				}
-
-				public function unprefixedName(): string {
-					return $this->unprefixedName;
-				}
-
-				public function definition(): TableDefinition {
-					$table = TableDefinition::for($this);
-
-					$table->bigIncrements('id');
-					$table->string('label', 100)->default($this->default);
-
-					return $table;
-				}
-			};
-		};
-
-		$this->schema->createOrUpdate($table('initial'));
-		$this->schema->createOrUpdate($table($default));
-		$this->schema->createOrUpdate($table($default));
+		$default = "updated customer's \\ path";
+		$change  = Blueprint::for($tableObject);
+		$change->string('label', 100)->default($default)->change();
+		$this->schema->alter($change);
+		$this->schema->alter($change);
 		$this->database->execute('INSERT INTO %i () VALUES ()', $tableName);
 
-		$this->assertSame($default, $this->database->value('SELECT label FROM %i LIMIT 1', $tableName));
+		$this->assertSame($default, $this->database->value('SELECT label FROM %i WHERE id = 2', $tableName));
 	}
 
-	public function test_schema_rejects_unapplied_numeric_defaults_and_nullability(): void {
+	public function test_schema_explicitly_changes_numeric_defaults_and_nullability(): void {
 		$unprefixedTableName = $this->unprefixedTable('column_properties');
-		$table               = $this->database->tableName(new TestTable('column_properties', $unprefixedTableName));
+		$tableObject         = new SchemaReconciliationTable($unprefixedTableName, 1, false);
+		$table               = $this->database->tableName($tableObject);
 
-		$this->schema->createOrUpdate(new SchemaReconciliationTable($unprefixedTableName, 1, false));
+		$this->schema->create($tableObject->blueprint());
 
-		try {
-			$this->schema->createOrUpdate(new SchemaReconciliationTable($unprefixedTableName, 5, true));
-			$this->fail('Expected unapplied column properties to fail schema reconciliation.');
-		} catch (DatabaseException $exception) {
-			$this->assertStringContainsString('column attempts expected DEFAULT 5, found DEFAULT 1', $exception->getMessage());
-			$this->assertStringContainsString('column completed_at expected NULL, found NOT NULL', $exception->getMessage());
-		}
-
-		$this->database->execute(
-			'ALTER TABLE %i MODIFY COLUMN attempts int(10) NOT NULL DEFAULT 5, MODIFY COLUMN completed_at datetime NULL',
-			$table
-		);
-		$this->schema->createOrUpdate(new SchemaReconciliationTable($unprefixedTableName, 5, true));
+		$change = Blueprint::for($tableObject);
+		$change->integer('attempts')->default(5)->change();
+		$change->dateTime('completed_at')->nullable()->change();
+		$this->schema->alter($change);
 		$this->database->execute('INSERT INTO %i (completed_at) VALUES (NULL)', $table);
 
 		$row = $this->database->row('SELECT attempts, completed_at FROM %i LIMIT 1', $table);
@@ -527,22 +679,110 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertNull($row['completed_at'] ?? null);
 	}
 
-	public function test_schema_rejects_an_index_that_db_delta_does_not_remove(): void {
+	public function test_schema_removes_declared_indexes_without_rejecting_external_indexes(): void {
 		$unprefixedTableName = $this->unprefixedTable('removed_index');
-		$definition          = new IndexReconciliationTable($unprefixedTableName, true);
+		$table               = new IndexReconciliationTable($unprefixedTableName, true);
 
-		$this->schema->createOrUpdate($definition);
-		$this->assertTrue($this->schema->hasIndex($definition, 'email_unique'));
+		$this->schema->create($table->blueprint());
+		$this->schema->execute(sprintf(
+			'ALTER TABLE %s ADD INDEX %s (%s)',
+			$this->database->quoteIdentifier($this->database->tableName($table)),
+			$this->database->quoteIdentifier('external_tenant'),
+			$this->database->quoteIdentifier('tenant')
+		));
+		$this->assertTrue($this->schema->hasIndex($table, 'email_unique'));
 
-		$this->expectException(DatabaseException::class);
-		$this->expectExceptionMessage('unexpected index email_unique');
+		$change = Blueprint::for($table);
+		$change->dropIndex('email_unique');
+		$this->schema->alter($change);
 
-		$this->schema->createOrUpdate(new IndexReconciliationTable($unprefixedTableName, false));
+		$this->assertFalse($this->schema->hasIndex($table, 'email_unique'));
+		$this->assertTrue($this->schema->hasIndex($table, 'external_tenant'));
 	}
 
-	public function test_schema_rejects_an_unapplied_auto_increment_attribute(): void {
+	/**
+	 * @dataProvider replacementIndexes
+	 *
+	 * @param list<string> $originalColumns
+	 * @param list<string> $replacementColumns
+	 */
+	#[DataProvider('replacementIndexes')]
+	public function test_schema_replaces_indexes_and_skips_completed_retries(
+		?string $originalType,
+		array $originalColumns,
+		string $replacementType,
+		array $replacementColumns
+	): void {
+		$table   = new TestTable($this->unprefixedTable('index_retry'));
+		$initial = Blueprint::for($table);
+		$initial->string('status', 20);
+		$initial->string('category', 20);
+
+		if ($originalType === IndexType::UNIQUE) {
+			$initial->unique('lookup', ...$originalColumns);
+		} elseif ($originalType !== null) {
+			$initial->index('lookup', ...$originalColumns);
+		}
+
+		$this->schema->create($initial);
+		$this->database->insert($table, ['status' => 'draft', 'category' => 'report']);
+
+		$change = Blueprint::for($table);
+		$change->dropIndex('LOOKUP');
+
+		if ($replacementType === IndexType::UNIQUE) {
+			$change->unique('lookup', ...$replacementColumns);
+		} else {
+			$change->index('lookup', ...$replacementColumns);
+		}
+
+		$statements = [];
+		$recordDdl  = static function (string $sql) use (&$statements): string {
+			if (preg_match('/\A\s*(?:CREATE|ALTER|DROP)\b/i', $sql) === 1) {
+				$statements[] = $sql;
+			}
+
+			return $sql;
+		};
+		add_filter('query', $recordDdl);
+
+		try {
+			$this->schema->alter($change);
+			$alreadyMatches = $originalType === $replacementType && $originalColumns === $replacementColumns;
+			$this->assertCount($alreadyMatches ? 0 : 1, $statements);
+
+			$statements = [];
+			$this->schema->alter($change);
+			$this->assertSame([], $statements);
+		} finally {
+			remove_filter('query', $recordDdl);
+		}
+
+		$indexes = $this->database->rows('SHOW INDEX FROM %i WHERE Key_name = %s', $this->database->tableName($table), 'lookup');
+		$this->assertSame($replacementColumns, array_column($indexes, 'Column_name'));
+		$this->assertSame($replacementType === IndexType::UNIQUE ? 0 : 1, (int) $indexes[0]['Non_unique']);
+		$this->assertSame([
+			['status' => 'draft', 'category' => 'report'],
+		], $this->database->rows('SELECT * FROM %i', $this->database->tableName($table)));
+	}
+
+	/**
+	 * @return array<string, array{?string, list<string>, string, list<string>}>
+	 */
+	public static function replacementIndexes(): array {
+		return [
+			'add column to index' => [IndexType::KEY, ['status'], IndexType::KEY, ['status', 'category']],
+			'change uniqueness'   => [IndexType::UNIQUE, ['status'], IndexType::KEY, ['status']],
+			'add uniqueness'      => [IndexType::KEY, ['status'], IndexType::UNIQUE, ['status']],
+			'change column order' => [IndexType::KEY, ['category', 'status'], IndexType::KEY, ['status', 'category']],
+			'missing index'       => [null, [], IndexType::KEY, ['status']],
+			'already matches'     => [IndexType::KEY, ['status'], IndexType::KEY, ['status']],
+		];
+	}
+
+	public function test_schema_explicitly_adds_an_auto_increment_attribute(): void {
 		$unprefixedTableName = $this->unprefixedTable('column_extra');
-		$tableObject         = new TestTable('column_extra', $unprefixedTableName);
+		$tableObject         = new TestTable($unprefixedTableName);
 		$table               = $this->database->tableName($tableObject);
 
 		$this->database->execute(sprintf(
@@ -551,15 +791,13 @@ final class DatabaseIntegrationTest extends WPTestCase
 			$this->database->charsetCollate()
 		));
 
-		try {
-			$this->schema->createOrUpdate($tableObject);
-			$this->fail('Expected an unapplied AUTO_INCREMENT attribute to fail schema reconciliation.');
-		} catch (DatabaseException $exception) {
-			$this->assertStringContainsString('column id expected extra auto_increment, found none', $exception->getMessage());
-		}
+		$change = Blueprint::for($tableObject);
+		$change->column(new Column('id', 'bigint', 20, unsigned: true))->autoIncrement()->change();
+		$this->schema->alter($change);
 
-		$this->database->execute('ALTER TABLE %i MODIFY COLUMN id bigint(20) unsigned NOT NULL AUTO_INCREMENT', $table);
-		$this->schema->createOrUpdate($tableObject);
+		$column = $this->database->row('SHOW COLUMNS FROM %i WHERE Field = %s', $table, 'id');
+
+		$this->assertSame('auto_increment', strtolower((string) ($column['Extra'] ?? '')));
 	}
 
 	public function test_migration_repository_persists_records_in_wordpress(): void {
@@ -571,7 +809,12 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 		$this->assertFalse($schema->hasTable($migrationTable));
 
-		$schema->createOrUpdate($migrationTable);
+		(new StoreSchema(
+			$schema,
+			$this->reconciler,
+			$migrationTable,
+			new LockTable($this->unprefixedTable('repository_locks'), $this->database)
+		))->initializeLedger();
 
 		$this->assertTrue($schema->hasTable($migrationTable));
 		$this->assertSame($table, $migrationTable->name());
@@ -593,7 +836,13 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 		$this->assertTrue($repository->hasRun('CreateReports'));
 		$this->assertTrue($repository->hasRun('createreports'));
-		$this->assertCount(2, $repository->recordsForBatch(2));
+		$this->assertSame(
+			['CreateReports', 'createreports'],
+			array_map(
+				static fn (Record $record): string => $record->migration,
+				$repository->recordsForBatch(2)
+			)
+		);
 
 		$schema->drop($migrationTable);
 
@@ -609,7 +858,12 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 		$this->assertFalse($wpSchema->hasTable($lockTable));
 
-		$wpSchema->createOrUpdate($lockTable);
+		(new StoreSchema(
+			$wpSchema,
+			$this->reconciler,
+			new MigrationTable($this->unprefixedTable('lock_migrations'), $this->database),
+			$lockTable
+		))->initializeLock();
 
 		$this->assertTrue($wpSchema->hasTable($lockTable));
 		$this->assertSame($table, $lockTable->name());
@@ -635,7 +889,12 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$table     = $this->database->tableName($lockTable);
 		$lock      = new DatabaseLock($this->database, $lockTable);
 
-		$wpSchema->createOrUpdate($lockTable);
+		(new StoreSchema(
+			$wpSchema,
+			$this->reconciler,
+			new MigrationTable($this->unprefixedTable('expired_lock_migrations'), $this->database),
+			$lockTable
+		))->initializeLock();
 
 		$first = $lock->acquire('foundation:database:takeover', 60);
 
@@ -665,7 +924,12 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$table     = $this->database->tableName($lockTable);
 		$lock      = new DatabaseLock($this->database, $lockTable);
 
-		$wpSchema->createOrUpdate($lockTable);
+		(new StoreSchema(
+			$wpSchema,
+			$this->reconciler,
+			new MigrationTable($this->unprefixedTable('exact_lock_migrations'), $this->database),
+			$lockTable
+		))->initializeLock();
 
 		$upper = $lock->acquire('Catalog:1', 60);
 		$lower = $lock->acquire('catalog:1', 60);
@@ -707,7 +971,12 @@ final class DatabaseIntegrationTest extends WPTestCase
 			$this->database->charsetCollate()
 		));
 
-		$wpSchema->createOrUpdate($lockTable);
+		(new StoreSchema(
+			$wpSchema,
+			$this->reconciler,
+			new MigrationTable($this->unprefixedTable('previous_lock_migrations'), $this->database),
+			$lockTable
+		))->initializeLock();
 
 		$name       = $this->database->row('SHOW COLUMNS FROM %i WHERE Field = %s', $table, 'name');
 		$owner      = $this->database->row('SHOW COLUMNS FROM %i WHERE Field = %s', $table, 'owner');
@@ -740,7 +1009,12 @@ final class DatabaseIntegrationTest extends WPTestCase
 			$this->database->charsetCollate()
 		));
 
-		$wpSchema->createOrUpdate($migrationTable);
+		(new StoreSchema(
+			$wpSchema,
+			$this->reconciler,
+			$migrationTable,
+			new LockTable($this->unprefixedTable('previous_migration_locks'), $this->database)
+		))->initializeLedger();
 
 		$migration = $this->database->row('SHOW COLUMNS FROM %i WHERE Field = %s', $table, 'migration');
 
@@ -754,8 +1028,6 @@ final class DatabaseIntegrationTest extends WPTestCase
 
 		$container->register(DatabaseProvider::class);
 
-		$this->assertSame('nx_foundation_migrations', $container->get(DatabaseProvider::MIGRATIONS_TABLE));
-		$this->assertSame('nx_foundation_locks', $container->get(DatabaseProvider::LOCKS_TABLE));
 		$this->assertInstanceOf(Database::class, $container->get(Database::class));
 		$this->assertInstanceOf(Database::class, $container->get(DatabaseContract::class));
 		$this->assertInstanceOf(Schema::class, $container->get(Schema::class));
@@ -764,6 +1036,39 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertInstanceOf(Repository::class, $container->get(MigrationRecordRepositoryContract::class));
 		$this->assertInstanceOf(Migrator::class, $container->get(Migrator::class));
 		$this->assertFalse($container->has(Lock::class));
+	}
+
+	/**
+	 * Apply a complete replacement declaration for the test description column.
+	 */
+	private function alterDescriptionComment(CommentedTable $table, ?string $comment): void {
+		$change      = Blueprint::for($table);
+		$description = $change->text('description');
+
+		if ($comment !== null) {
+			$description->comment($comment);
+		}
+
+		$description->change();
+		$this->schema->alter($change);
+	}
+
+	/**
+	 * Change comments while retaining every modeled column attribute.
+	 */
+	private function alterReconciliationComments(CommentReconciliationTable $table, ?string $comment): void {
+		$change      = Blueprint::for($table);
+		$id          = $change->column(new Column('id', 'bigint', 20, unsigned: true))->autoIncrement();
+		$description = $change->string('description', 100)->nullable()->default('fallback');
+
+		if ($comment !== null) {
+			$id->comment($comment);
+			$description->comment($comment);
+		}
+
+		$id->change();
+		$description->change();
+		$this->schema->alter($change);
 	}
 
 	private function assertCommentReconciliationTable(string $unprefixedTableName, string $comment): void {
@@ -791,16 +1096,13 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	private function table(string $suffix): string {
-		return $this->database->tableName(new TestTable(
-			'temporary_' . $suffix,
-			$this->unprefixedTable($suffix)
-		));
+		return $this->database->tableName(new TestTable($this->unprefixedTable($suffix)));
 	}
 
 	private function unprefixedTable(string $suffix): string {
 		$table = 'foundation_' . $suffix . '_' . str_replace('.', '_', uniqid('', true));
 
-		$this->tables[] = $this->database->tableName(new TestTable('temporary_' . $suffix, $table));
+		$this->tables[] = $this->database->tableName(new TestTable($table));
 
 		return $table;
 	}
@@ -821,11 +1123,6 @@ final class DatabaseIntegrationTest extends WPTestCase
 	}
 
 	private function newContainer(): Container {
-		$container = new ContainerAdapter(new DI52Container());
-		$container->bind(Container::class, $container);
-		$container->bind(ContainerInterface::class, $container);
-		$container->singleton(Dot::class, new Dot());
-
-		return $container;
+		return (new ContainerFactory())->create(new ArrayConfiguration());
 	}
 }

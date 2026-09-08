@@ -10,6 +10,8 @@ use Random\RandomException;
 interface Entropy
 {
 	/**
+	 * Return the requested number of random bytes for ULID generation.
+	 *
 	 * @throws RandomException When secure random bytes cannot be generated.
 	 */
 	public function bytes(int $length): string;
