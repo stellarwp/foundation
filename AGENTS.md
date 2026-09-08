@@ -87,7 +87,7 @@ Database migration generators must distinguish table ownership from a table depe
 
 ## CLI Tooling Boundary
 
-The monorepo's own maintenance commands are wired directly in `dev/bin/foundation`, invoked through `composer run foundation`. Keep the root `config.php` convention for consuming projects; do not add a monorepo configuration file to register Foundation's own tooling.
+The monorepo's own maintenance commands and their private collaborators live under `dev/Cli/Commands/`, registered by `dev/Cli/MonorepoProvider.php`. They are wired directly in `dev/bin/foundation`, invoked through `composer run foundation`. Shared CLI infrastructure belongs in `src/Cli/`. Keep the root `config.php` convention for consuming projects; do not add a monorepo configuration file to register Foundation's own tooling.
 
 The Foundation executable reads optional root `config.php` and automatically loads `<ProjectNamespace>\Tooling\Tooling_Provider` through Composer. A custom `cli.tooling_provider_path` selects a project-relative or absolute Composer-mapped provider file instead. Keep prerequisite package providers in `cli.providers`; register them before the project tooling provider and resolve commands afterward. Tooling providers configure developer commands, independently of application/WordPress bootstrap.
 

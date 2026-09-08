@@ -2,14 +2,14 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Cli\Commands\Package;
 
-use StellarWP\Foundation\Cli\Commands\Package\Contracts\PackageRepositoryCreator;
-use StellarWP\Foundation\Cli\Commands\Package\CreateCommand;
-use StellarWP\Foundation\Cli\Commands\Package\PackageFilesValidator;
-use StellarWP\Foundation\Cli\Commands\Package\PackageRepositoryPlan;
-use StellarWP\Foundation\Cli\Commands\Package\PackageRepositoryPlanFactory;
-use StellarWP\Foundation\Cli\Commands\Package\PackageResolver;
-use StellarWP\Foundation\Cli\Commands\Package\PackageScaffolder;
 use StellarWP\Foundation\Cli\Process\Contracts\ProcessRunner;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\Contracts\PackageRepositoryCreator;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\CreateCommand;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageFilesValidator;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageRepositoryPlan;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageRepositoryPlanFactory;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageResolver;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageScaffolder;
 use StellarWP\Foundation\Tests\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\HelperSet;

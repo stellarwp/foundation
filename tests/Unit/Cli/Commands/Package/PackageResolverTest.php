@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\Tests\Unit\Cli\Commands\Package;
 
 use PHPUnit\Framework\Attributes\DataProvider;
-use StellarWP\Foundation\Cli\Commands\Package\PackageResolver;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageResolver;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class PackageResolverTest extends TestCase

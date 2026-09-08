@@ -2,8 +2,8 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Cli\Commands\Package;
 
-use StellarWP\Foundation\Cli\Commands\Package\Package;
-use StellarWP\Foundation\Cli\Commands\Package\PackageFilesValidator;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\Package;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageFilesValidator;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class PackageFilesValidatorTest extends TestCase

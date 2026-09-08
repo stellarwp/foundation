@@ -1,11 +1,11 @@
 <?php declare(strict_types=1);
 
-namespace StellarWP\Foundation\Cli\Commands\Package;
+namespace StellarWP\Foundation\Dev\Cli\Commands\Package;
 
 use RuntimeException;
-use StellarWP\Foundation\Cli\Commands\Package\Contracts\PackageRepositoryCreator;
 use StellarWP\Foundation\Cli\Process\Contracts\ProcessRunner;
 use StellarWP\Foundation\Cli\Process\ShellCommand;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\Contracts\PackageRepositoryCreator;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputArgument;

@@ -3,16 +3,16 @@
 namespace StellarWP\Foundation\Dev\Cli;
 
 use StellarWP\Foundation\Cli\CliProvider;
-use StellarWP\Foundation\Cli\Commands\Package\Contracts\PackageRepositoryCreator;
-use StellarWP\Foundation\Cli\Commands\Package\CreateCommand;
-use StellarWP\Foundation\Cli\Commands\Package\GitHubPackageRepositoryCreator;
-use StellarWP\Foundation\Cli\Commands\Package\PackageFilesValidator;
-use StellarWP\Foundation\Cli\Commands\Package\PackageRepositoryPlanFactory;
-use StellarWP\Foundation\Cli\Commands\Package\PackageResolver;
-use StellarWP\Foundation\Cli\Commands\Package\PackageScaffolder;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\Contracts\PackageRepositoryCreator;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\CreateCommand;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\GitHubPackageRepositoryCreator;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageFilesValidator;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageRepositoryPlanFactory;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageResolver;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageScaffolder;
 
 /**
  * Registers Foundation monorepo maintenance commands.

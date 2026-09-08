@@ -133,7 +133,7 @@ jobs:
           composer run coverage:phpcov-install
           composer run coverage:prepare
           "${SLIC_BIN}" pcov on --yes
-          "${SLIC_BIN}" run unit --coverage coverage/unit.cov --ext DotReporter
+          "${SLIC_BIN}" composer run test:coverage:unit -- --ext DotReporter
           "${SLIC_BIN}" run feature --coverage coverage/feature.cov --ext DotReporter
           "${SLIC_BIN}" run redis --coverage coverage/redis.cov --ext DotReporter
           "${SLIC_BIN}" run integration --coverage coverage/integration.cov --ext DotReporter

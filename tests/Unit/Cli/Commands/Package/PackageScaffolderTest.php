@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\Tests\Unit\Cli\Commands\Package;
 
 use RuntimeException;
-use StellarWP\Foundation\Cli\Commands\Package\PackageScaffolder;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageScaffolder;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class PackageScaffolderTest extends TestCase

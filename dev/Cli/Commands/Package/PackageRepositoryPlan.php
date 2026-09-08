@@ -1,6 +1,6 @@
 <?php declare(strict_types=1);
 
-namespace StellarWP\Foundation\Cli\Commands\Package;
+namespace StellarWP\Foundation\Dev\Cli\Commands\Package;
 
 /**
  * Repository creation plan derived from a resolved Foundation package.
