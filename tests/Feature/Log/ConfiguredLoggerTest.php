@@ -3,12 +3,15 @@
 namespace StellarWP\Foundation\Tests\Feature\Log;
 
 use Monolog\Formatter\JsonFormatter;
+use Monolog\Formatter\LineFormatter;
 use Monolog\Handler\ErrorLogHandler;
 use Monolog\Handler\GroupHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\TestHandler;
 use Monolog\Logger;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
 use StellarWP\Foundation\Container\ContainerFactory;
 use StellarWP\Foundation\Container\Exceptions\ContainerException;
@@ -22,11 +25,11 @@ final class ConfiguredLoggerTest extends TestCase
 			'channel'  => 'stack',
 			'level'    => 'warning',
 			'channels' => [
-				'stack' => [
+				'stack'   => [
 					'channels' => ['console', 'errorlog', 'audit'],
-					'with'     => ['stream' => 'php://memory'],
 				],
-				'audit' => ['handler' => TestHandler::class, 'formatter' => JsonFormatter::class],
+				'console' => ['with' => ['stream' => 'php://memory']],
+				'audit'   => ['handler' => TestHandler::class, 'formatter' => JsonFormatter::class],
 			],
 		]);
 		$audit    = new TestHandler();
@@ -45,7 +48,8 @@ final class ConfiguredLoggerTest extends TestCase
 		$this->assertTrue($errorlog->hasWarning('Catalog import failed.'));
 		$this->assertSame(['site_id' => 42], $errorlog->getRecords()[0]['context']);
 		$this->assertInstanceOf(JsonFormatter::class, $audit->getFormatter());
-		$console = $this->container->get(StreamHandler::class);
+		$console = $logger->getHandlers()[2];
+		$this->assertInstanceOf(StreamHandler::class, $console);
 		$this->assertSame([$audit, $errorlog, $console], $logger->getHandlers());
 		$stream = $console->getStream();
 		$this->assertIsResource($stream);
@@ -127,10 +131,172 @@ final class ConfiguredLoggerTest extends TestCase
 	}
 
 	/**
+	 * @dataProvider selectedChannels
+	 */
+	#[DataProvider('selectedChannels')]
+	public function test_a_console_destination_is_preserved_when_selected_through_a_stack(string $channel): void {
+		$path = $this->prepare_temp_dir('log-channels') . '/console.log';
+		$this->configureLogger([
+			'channel'  => $channel,
+			'channels' => [
+				'console'    => ['with' => ['stream' => $path]],
+				'stack'      => ['channels' => ['console']],
+				'background' => ['channels' => ['console']],
+			],
+		]);
+
+		$logger = $this->container->get(LoggerInterface::class);
+		$this->assertInstanceOf(Logger::class, $logger);
+		$handler = $logger->getHandlers()[0];
+		$this->assertInstanceOf(StreamHandler::class, $handler);
+		$this->assertSame($path, $handler->getUrl());
+
+		$logger->info('Catalog imported.');
+
+		$this->assertStringContainsString('Catalog imported.', (string) file_get_contents($path));
+	}
+
+	/**
+	 * @return iterable<string, array{string}>
+	 */
+	public static function selectedChannels(): iterable {
+		yield 'direct' => ['console'];
+
+		yield 'default stack' => ['stack'];
+
+		yield 'custom stack' => ['background'];
+	}
+
+	public function test_stream_channels_keep_independent_destinations_and_formatters(): void {
+		$directory = $this->prepare_temp_dir('log-channels');
+		$this->configureLogger([
+			'channel'  => 'stack',
+			'level'    => 'warning',
+			'channels' => [
+				'stack' => ['channels' => ['plain', 'json']],
+				'plain' => [
+					'handler'   => StreamHandler::class,
+					'formatter' => LineFormatter::class,
+					'with'      => ['stream' => $directory . '/plain.log'],
+				],
+				'json'  => [
+					'handler'   => StreamHandler::class,
+					'formatter' => JsonFormatter::class,
+					'with'      => ['stream' => $directory . '/json.log'],
+				],
+			],
+		]);
+		$this->container->singleton(LineFormatter::class, new LineFormatter("%message%\n"));
+
+		$logger = $this->container->get(LoggerInterface::class);
+		$this->assertInstanceOf(Logger::class, $logger);
+		[$json, $plain] = $logger->getHandlers();
+		$this->assertNotSame($plain, $json);
+
+		$logger->info('Below threshold.');
+		$logger->warning('Catalog import failed.', ['site_id' => 42]);
+
+		$this->assertSame("Catalog import failed.\n", file_get_contents($directory . '/plain.log'));
+		$record = json_decode((string) file_get_contents($directory . '/json.log'), true, 512, JSON_THROW_ON_ERROR);
+		$this->assertSame('Catalog import failed.', $record['message']);
+		$this->assertSame(['site_id' => 42], $record['context']);
+	}
+
+	public function test_transient_custom_handlers_keep_independent_channel_formatters(): void {
+		$this->configureLogger([
+			'channel'  => 'stack',
+			'channels' => [
+				'stack' => ['channels' => ['plain', 'json']],
+				'plain' => ['handler' => TestHandler::class, 'formatter' => LineFormatter::class],
+				'json'  => ['handler' => TestHandler::class, 'formatter' => JsonFormatter::class],
+			],
+		]);
+
+		$logger = $this->container->get(LoggerInterface::class);
+		$this->assertInstanceOf(Logger::class, $logger);
+		[$json, $plain] = $logger->getHandlers();
+		$this->assertInstanceOf(TestHandler::class, $json);
+		$this->assertInstanceOf(TestHandler::class, $plain);
+		$this->assertNotSame($plain, $json);
+		$this->assertInstanceOf(LineFormatter::class, $plain->getFormatter());
+		$this->assertInstanceOf(JsonFormatter::class, $json->getFormatter());
+
+		$logger->info('Both custom channels receive this.');
+
+		$this->assertCount(1, $plain->getRecords());
+		$this->assertCount(1, $json->getRecords());
+	}
+
+	public function test_a_shared_custom_handler_cannot_be_reconfigured_as_two_stack_channels(): void {
+		$this->configureLogger([
+			'channel'  => 'stack',
+			'channels' => [
+				'stack' => ['channels' => ['plain', 'json']],
+				'plain' => ['handler' => TestHandler::class, 'formatter' => LineFormatter::class],
+				'json'  => ['handler' => TestHandler::class, 'formatter' => JsonFormatter::class],
+			],
+		]);
+		$this->container->singleton(TestHandler::class, new TestHandler());
+
+		$this->expectException(ContainerException::class);
+		$this->expectExceptionMessage('shares a handler instance');
+
+		$this->container->get(LoggerInterface::class);
+	}
+
+	public function test_a_single_custom_channel_can_keep_its_shared_handlers_formatter(): void {
+		$this->configureLogger([
+			'channel'  => 'console',
+			'channels' => [
+				'console' => ['handler' => TestHandler::class, 'formatter' => null],
+			],
+		]);
+		$handler   = new TestHandler();
+		$formatter = new JsonFormatter();
+		$handler->setFormatter($formatter);
+		$this->container->singleton(TestHandler::class, $handler);
+
+		$this->container->get(LoggerInterface::class)->info('Use the configured handler.');
+
+		$this->assertSame($formatter, $handler->getFormatter());
+		$this->assertTrue($handler->hasInfo('Use the configured handler.'));
+	}
+
+	public function test_a_non_bubbling_handler_stops_delivery_to_earlier_stack_entries(): void {
+		$this->configureLogger([
+			'channel'  => 'stack',
+			'channels' => [
+				'stack' => ['channels' => ['audit', 'stop']],
+				'audit' => ['handler' => TestHandler::class],
+				'stop'  => ['handler' => GroupHandler::class],
+			],
+		]);
+		$audit = new TestHandler();
+		$last  = new TestHandler();
+		$this->container->singleton(TestHandler::class, $audit);
+		$this->container->singleton(GroupHandler::class, new GroupHandler([$last], false));
+
+		$this->container->get(LoggerInterface::class)->warning('Handled by the last entry.');
+
+		$this->assertTrue($last->hasWarning('Handled by the last entry.'));
+		$this->assertSame([], $audit->getRecords());
+	}
+
+	public function test_an_application_can_replace_the_logger_before_it_resolves(): void {
+		$this->configureLogger(['channel' => 'invalid']);
+		$logger = new NullLogger();
+		$this->container->singleton(LoggerInterface::class, $logger);
+
+		$this->assertSame($logger, $this->container->get(LoggerInterface::class));
+	}
+
+	/**
 	 * @param array<string, mixed> $configuration
 	 */
 	private function configureLogger(array $configuration): void {
+		$dataDirectory   = $this->data_dir();
 		$this->container = (new ContainerFactory())->create(new ArrayConfiguration(['log' => $configuration]));
+		$this->container->singleton(TestCase::DATA_DIR, $dataDirectory);
 		$this->container->register(LogProvider::class);
 	}
 }

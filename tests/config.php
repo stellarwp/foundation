@@ -19,11 +19,6 @@ return [
 					'stream' => 'php://stdout',
 				],
 			],
-			'stack'    => [
-				'with' => [
-					'stream' => 'php://stdout',
-				],
-			],
 		],
 	],
 	'wpcli' => [

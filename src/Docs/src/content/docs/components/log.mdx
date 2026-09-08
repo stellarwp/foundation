@@ -68,12 +68,7 @@ return [
 		'channels' => [
 			'console' => [
 				'with' => [
-					'stream' => 'php://stdout',
-				],
-			],
-			'stack' => [
-				'with' => [
-					'stream' => 'php://stdout',
+					'stream' => $_ENV['APP_LOG_STREAM'] ?? 'php://stdout',
 				],
 			],
 		],
@@ -81,7 +76,7 @@ return [
 ];
 ```
 
-The stream setting is used by `console` and by the console side of `stack`. Common values are `php://stdout` and `php://stderr`.
+Configure the console destination once under `log.channels.console.with.stream`. It uses that destination whether selected directly or included in any stack. Common values are `php://stdout` and `php://stderr`.
 
 ### Combine channels and add a custom handler
 
@@ -110,9 +105,44 @@ return [
 
 Foundation supplies the built-in channel definitions; configure only the settings you want to change. You can also define another stack name with its own `channels` list, or select `audit` directly with `APP_LOG_CHANNEL=audit`. Application services continue injecting `LoggerInterface`.
 
-Custom handlers implement Monolog's `HandlerInterface`. Foundation resolves them through the container, so their dependencies use ordinary application provider bindings. An optional `formatter` class selects a formatter for handlers implementing `FormattableHandlerInterface`; setting it to `null` keeps the handler's own formatter. Handlers extending Monolog's `AbstractHandler` receive `log.level`; implementations of the minimal `HandlerInterface` own their filtering behavior.
+Custom handlers implement Monolog's `HandlerInterface`. Foundation resolves them through the container, so their dependencies use ordinary application provider bindings. Use transient bindings when the same custom handler class serves independently configured channels. A singleton handler can serve one channel and remain shared with other application services. An optional `formatter` class selects a formatter for handlers implementing `FormattableHandlerInterface`; setting it to `null` keeps the handler's own formatter. Handlers extending Monolog's `AbstractHandler` receive `log.level`; implementations of the minimal `HandlerInterface` own their filtering behavior.
 
 List handler-backed channels as stack members. Handlers run in reverse list order, preserving Monolog's `pushHandler()` behavior; a handler with bubbling disabled stops delivery to earlier entries. An empty stack, or one whose only handler is an unavailable PHP error log, discards records.
+
+### Write to separate stream destinations
+
+Each channel using `Monolog\Handler\StreamHandler` receives its own handler, configured with that channel's `with.stream` setting. For example, in `config.php`, combine the console with a JSON log file:
+
+```php title="config.php"
+use Monolog\Formatter\JsonFormatter;
+use Monolog\Handler\StreamHandler;
+
+return [
+	'log' => [
+		'channel' => $_ENV['APP_LOG_CHANNEL'] ?? 'stack',
+		'level' => $_ENV['APP_LOG_LEVEL'] ?? 'info',
+		'channels' => [
+			'console' => [
+				'with' => [
+					'stream' => $_ENV['APP_LOG_STREAM'] ?? 'php://stdout',
+				],
+			],
+			'json' => [
+				'handler' => StreamHandler::class,
+				'formatter' => JsonFormatter::class,
+				'with' => [
+					'stream' => $_ENV['APP_LOG_JSON_PATH'] ?? __DIR__ . '/var/log/application.jsonl',
+				],
+			],
+			'stack' => [
+				'channels' => [ 'console', 'json' ],
+			],
+		],
+	],
+];
+```
+
+The console keeps its colored format, and the file receives JSON records. Configure a file path writable by the PHP process. Custom handlers receive their constructor configuration through application provider bindings.
 
 ### Choose the minimum level
 
@@ -159,6 +189,8 @@ An unavailable PHP `error_log()` function does not stop the application:
 - The `stack` channel keeps the console handler and skips the unavailable error-log handler.
 
 Invalid configuration is different. An unsupported level fails while `LogProvider` is registered, and an unsupported channel fails when `LoggerInterface` is first resolved. Use one of the documented values rather than silently losing records because of a typo.
+
+Each stack entry must resolve a distinct handler instance. If two entries resolve the same custom singleton, logger resolution raises `ContainerException`; use transient handler bindings for independent channels, or include one shared channel once.
 
 A stack member must name a configured handler-backed channel. An unknown member or one without a handler raises `ContainerException` when the logger resolves; correct the channel definition before retrying.
 
