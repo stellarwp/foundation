@@ -56,7 +56,7 @@ Set one channel for the application:
 The example below defaults to `null` so an unconfigured application does not write somewhere unexpected. Set `APP_LOG_CHANNEL` in deployed environments where records must be retained; otherwise failures will not be logged.
 :::
 
-Map the channel, minimum level, and stream in the application's root `config.php`:
+Map the channel, minimum level, and stream in the application's root `config.php`. For a first deployment that uses PHP's error log, set `APP_LOG_CHANNEL=errorlog` and `APP_LOG_LEVEL=info` in the application's environment:
 
 ```php title="config.php"
 <?php declare(strict_types=1);
@@ -77,6 +77,133 @@ return [
 ```
 
 Configure the console destination once under `log.channels.console.with.stream`. It uses that destination whether selected directly or included in any stack. Common values are `php://stdout` and `php://stderr`.
+
+### Register the logging provider
+
+In `src/App.php`, add `LogProvider` before feature providers that consume `LoggerInterface`:
+
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Log\LogProvider;
+
+/** @var list<class-string<Provider>> */
+private const array PROVIDERS = [
+	LogProvider::class,
+];
+```
+
+The provider registers a shared `LoggerInterface` for application services.
+
+## Usage
+
+### Inject the PSR-3 logger
+
+In `src/Catalog/Catalog_Importer.php`, depend on `Psr\Log\LoggerInterface`, not Monolog or a Foundation handler. Include structured context with identifiers and values needed to investigate the event:
+
+```php title="Catalog_Importer.php"
+<?php declare(strict_types=1);
+
+namespace Plugin\Catalog;
+
+use Psr\Log\LoggerInterface;
+
+/**
+ * Imports remote products into the local catalog.
+ */
+final readonly class Catalog_Importer {
+
+	public function __construct(
+		private LoggerInterface $logger
+	) {
+	}
+
+	public function import( int $site_id, array $products ): void {
+		$this->logger->info(
+			'Starting catalog import.',
+			[
+				'site_id'       => $site_id,
+				'product_count' => count( $products ),
+			]
+		);
+
+		foreach ( $products as $product ) {
+			if ( empty( $product['sku'] ) ) {
+				$this->logger->warning(
+					'Skipping a product without a SKU.',
+					[
+						'site_id'    => $site_id,
+						'product_id' => $product['id'] ?? null,
+					]
+				);
+
+				continue;
+			}
+
+			// Import the product.
+		}
+	}
+}
+```
+
+Context remains machine-readable and keeps operational data out of the message text. Do not include passwords, access tokens, payment details, or other secrets.
+
+### Choose the minimum level
+
+The configured level keeps records at that severity and above:
+
+| Level | Typical use |
+| --- | --- |
+| `debug` | Detailed diagnostics useful during development |
+| `info` | Normal application milestones |
+| `notice` | Significant but expected events |
+| `warning` | Unexpected conditions from which the operation can recover |
+| `error` | An operation failed but the application can continue |
+| `critical` | A major application capability is unavailable |
+| `alert` | Immediate operator action is required |
+| `emergency` | The application or site is unusable |
+
+Use lowercase names in configuration. Foundation also accepts title case and uppercase variants.
+
+### Record exceptions with their context
+
+Pass the exception under the conventional `exception` key so handlers and processors can inspect it:
+
+```php
+try {
+	$this->catalog->synchronize( $site_id );
+} catch ( Throwable $exception ) {
+	$this->logger->error(
+		'Catalog synchronization failed.',
+		[
+			'site_id'  => $site_id,
+			'exception' => $exception,
+		]
+	);
+
+	throw $exception;
+}
+```
+
+Log the failure at the boundary responsible for handling or reporting it. Avoid recording the same exception again at every layer through which it passes.
+
+### Understand configuration failures
+
+An unavailable PHP `error_log()` function does not stop the application:
+
+- The `errorlog` channel falls back to the null handler.
+- The `stack` channel keeps the console handler and skips the unavailable error-log handler.
+
+Invalid configuration is different. An unsupported level fails while `LogProvider` is registered, and an unsupported channel fails when `LoggerInterface` is first resolved. Use one of the documented values rather than silently losing records because of a typo.
+
+```php
+// error_log() is disabled: the application continues without that handler.
+$_ENV['APP_LOG_CHANNEL'] = 'errorlog';
+
+// Unsupported configuration: fix the value instead of continuing silently.
+$_ENV['APP_LOG_CHANNEL'] = 'file';
+```
+
+## Customization
 
 ### Combine channels and add a custom handler
 
@@ -144,138 +271,17 @@ return [
 
 The console keeps its colored format, and the file receives JSON records. Configure a file path writable by the PHP process. Custom handlers receive their constructor configuration through application provider bindings.
 
-### Choose the minimum level
-
-The configured level keeps records at that severity and above:
-
-| Level | Typical use |
-| --- | --- |
-| `debug` | Detailed diagnostics useful during development |
-| `info` | Normal application milestones |
-| `notice` | Significant but expected events |
-| `warning` | Unexpected conditions from which the operation can recover |
-| `error` | An operation failed but the application can continue |
-| `critical` | A major application capability is unavailable |
-| `alert` | Immediate operator action is required |
-| `emergency` | The application or site is unusable |
-
-Use lowercase names in configuration. Foundation also accepts title case and uppercase variants.
-
-### Register the logging provider
-
-In `src/App.php`, add `LogProvider` before feature providers that consume `LoggerInterface`:
-
-```php title="App.php"
-use StellarWP\Foundation\Container\Contracts\Provider;
-use StellarWP\Foundation\Log\LogProvider;
-use Plugin\Catalog;
-
-/** @var list<class-string<Provider>> */
-private const array PROVIDERS = [
-	LogProvider::class,
-	Catalog\Provider::class,
-];
-```
-
-`LogProvider` is an optional default. Applications can configure additional Monolog handlers through named channels, or supply a complete replacement by binding `LoggerInterface` in their own provider.
-
-The configured application logger is a singleton. Handlers or processors added after resolution remain attached for the lifetime of that application container. A replacement application logger should normally be registered as a singleton as well; use a separate factory only when the feature intentionally needs independent logger instances.
-
-### Understand configuration failures
-
-An unavailable PHP `error_log()` function does not stop the application:
-
-- The `errorlog` channel falls back to the null handler.
-- The `stack` channel keeps the console handler and skips the unavailable error-log handler.
-
-Invalid configuration is different. An unsupported level fails while `LogProvider` is registered, and an unsupported channel fails when `LoggerInterface` is first resolved. Use one of the documented values rather than silently losing records because of a typo.
+### Handle stack configuration failures
 
 Each stack entry must resolve a distinct handler instance. If two entries resolve the same custom singleton, logger resolution raises `ContainerException`; use transient handler bindings for independent channels, or include one shared channel once.
 
 A stack member must name a configured handler-backed channel. An unknown member or one without a handler raises `ContainerException` when the logger resolves; correct the channel definition before retrying.
 
-```php
-// error_log() is disabled: the application continues without that handler.
-$_ENV['APP_LOG_CHANNEL'] = 'errorlog';
+### Supply another logger
 
-// Unsupported configuration: fix the value instead of continuing silently.
-$_ENV['APP_LOG_CHANNEL'] = 'file';
-```
+`LogProvider` is an optional default. Applications can configure additional Monolog handlers through named channels, or supply a complete replacement by binding `LoggerInterface` in their own provider.
 
-## Usage
-
-### Inject the PSR-3 logger
-
-In `src/Catalog/Catalog_Importer.php`, depend on `Psr\Log\LoggerInterface`, not Monolog or a Foundation handler. Include structured context with identifiers and values needed to investigate the event:
-
-```php title="Catalog_Importer.php"
-<?php declare(strict_types=1);
-
-namespace Plugin\Catalog;
-
-use Psr\Log\LoggerInterface;
-
-/**
- * Imports remote products into the local catalog.
- */
-final readonly class Catalog_Importer {
-
-	public function __construct(
-		private LoggerInterface $logger
-	) {
-	}
-
-	public function import( int $site_id, array $products ): void {
-		$this->logger->info(
-			'Starting catalog import.',
-			[
-				'site_id'       => $site_id,
-				'product_count' => count( $products ),
-			]
-		);
-
-		foreach ( $products as $product ) {
-			if ( empty( $product['sku'] ) ) {
-				$this->logger->warning(
-					'Skipping a product without a SKU.',
-					[
-						'site_id'    => $site_id,
-						'product_id' => $product['id'] ?? null,
-					]
-				);
-
-				continue;
-			}
-
-			// Import the product.
-		}
-	}
-}
-```
-
-Context remains machine-readable and keeps operational data out of the message text. Do not include passwords, access tokens, payment details, or other secrets.
-
-### Record exceptions with their context
-
-Pass the exception under the conventional `exception` key so handlers and processors can inspect it:
-
-```php
-try {
-	$this->catalog->synchronize( $site_id );
-} catch ( Throwable $exception ) {
-	$this->logger->error(
-		'Catalog synchronization failed.',
-		[
-			'site_id'  => $site_id,
-			'exception' => $exception,
-		]
-	);
-
-	throw $exception;
-}
-```
-
-Log the failure at the boundary responsible for handling or reporting it. Avoid recording the same exception again at every layer through which it passes.
+The configured application logger is a singleton. Handlers or processors added after resolution remain attached for the lifetime of that application container. A replacement application logger should normally be registered as a singleton as well; use a separate factory only when the feature intentionally needs independent logger instances.
 
 ## Testing
 

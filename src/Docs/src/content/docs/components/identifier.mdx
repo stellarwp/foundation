@@ -50,86 +50,27 @@ In `src/App.php`, add the Foundation provider before features that generate or v
 ```php title="App.php"
 use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Identifier\IdentifierProvider;
-use Plugin\Job;
 
 /** @var list<class-string<Provider>> */
 private const array PROVIDERS = [
 	IdentifierProvider::class,
-	Job\Provider::class,
 ];
 ```
 
-The provider registers secure entropy, a system millisecond clock, `UlidGenerator`, and `UlidValidator` as shared services.
-
-### Choose the contract your feature needs
-
-Use the narrowest contract that describes the feature:
-
-| Contract | Use when |
-| --- | --- |
-| `Ulid\Contracts\UlidGenerator` | The stored or exchanged identifier must be a ULID |
-| `Contracts\IdentifierGenerator` | The feature needs a unique string but should not choose its format |
-
-`IdentifierProvider` binds the ULID-specific contract. It deliberately does not bind the broad `IdentifierGenerator` contract because the application must decide whether ULID is its default identifier strategy.
-
-If the application chooses ULIDs as its default, create `src/Identifier/Provider.php`:
-
-```php title="Provider.php"
-<?php declare(strict_types=1);
-
-namespace Plugin\Identifier;
-
-use StellarWP\Foundation\Container\Contracts\Resolver as C;
-use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
-use StellarWP\Foundation\Identifier\Contracts\IdentifierGenerator;
-use StellarWP\Foundation\Identifier\Ulid\Contracts\UlidGenerator;
-
-/**
- * Selects ULID as the application's default identifier strategy.
- */
-final class Provider extends Service_Provider {
-
-	public function register(): void {
-		$this->register_default_generator();
-	}
-
-	private function register_default_generator(): void {
-		$this->container->bind(
-			IdentifierGenerator::class,
-			static fn ( C $c ): UlidGenerator => $c->get( UlidGenerator::class )
-		);
-	}
-}
-```
-
-Register both providers in `src/App.php`, in that order:
-
-```php title="App.php"
-use StellarWP\Foundation\Container\Contracts\Provider;
-use StellarWP\Foundation\Identifier\IdentifierProvider;
-use Plugin\Identifier;
-
-/** @var list<class-string<Provider>> */
-private const array PROVIDERS = [
-	IdentifierProvider::class,
-	Identifier\Provider::class,
-];
-```
-
-The callback aliases the broad contract to the configured ULID singleton, so both contracts resolve the same generator.
+The provider registers the ULID generator and validator as shared services. The supplied generator uses the system clock and secure randomness.
 
 ## Usage
 
-### Generate the application's default identifier
+### Generate a ULID
 
-In `src/Job/Job_Creator.php`, inject the broad contract when the feature needs a unique string but does not own its format. With the application binding above, it resolves to the ULID generator:
+Create `src/Job/Job_Creator.php` and inject `UlidGenerator`. Registering `IdentifierProvider` supplies the implementation:
 
 ```php title="Job_Creator.php"
 <?php declare(strict_types=1);
 
 namespace Plugin\Job;
 
-use StellarWP\Foundation\Identifier\Contracts\IdentifierGenerator;
+use StellarWP\Foundation\Identifier\Ulid\Contracts\UlidGenerator;
 
 /**
  * Creates identifiers for queued jobs.
@@ -137,7 +78,7 @@ use StellarWP\Foundation\Identifier\Contracts\IdentifierGenerator;
 final readonly class Job_Creator {
 
 	public function __construct(
-		private IdentifierGenerator $generator
+		private UlidGenerator $generator
 	) {
 	}
 
@@ -148,8 +89,6 @@ final readonly class Job_Creator {
 ```
 
 A generated value looks like `01ARYZ6S410000000000000000`.
-
-If a database column, message contract, or remote API specifically requires a ULID, inject `Ulid\Contracts\UlidGenerator` instead. That type makes the format requirement explicit and does not require the broad application binding.
 
 :::caution[Do not replace failed secure generation with a weaker identifier]
 Generation fails when secure entropy is unavailable, the clock is outside the ULID timestamp range, or an injected entropy source returns the wrong number of bytes. Abort or retry the operation. Do not fall back to `uniqid()`, a timestamp, or another predictable value that weakens identifier guarantees.
@@ -204,23 +143,80 @@ The default generator uses random entropy and is not monotonic. Two identifiers 
 A ULID exposes its approximate creation time. Never use possession of an identifier as authorization, and do not place secrets in or derive secrets from it. Continue to enforce normal capability and ownership checks when loading the identified resource.
 :::
 
+## Customization
+
+### Choose the contract your feature needs
+
+Use the narrowest contract that describes the feature:
+
+| Contract | Use when |
+| --- | --- |
+| `Ulid\Contracts\UlidGenerator` | The stored or exchanged identifier must be a ULID |
+| `Contracts\IdentifierGenerator` | The feature needs a unique string but should not choose its format |
+
+For format-independent features, bind `IdentifierGenerator` to the application's chosen strategy. `IdentifierProvider` supplies the ULID-specific binding used in the example above.
+
+If the application chooses ULIDs as its default, create `src/Identifier/Provider.php`:
+
+```php title="Provider.php"
+<?php declare(strict_types=1);
+
+namespace Plugin\Identifier;
+
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\Identifier\Contracts\IdentifierGenerator;
+use StellarWP\Foundation\Identifier\Ulid\Contracts\UlidGenerator;
+
+/**
+ * Selects ULID as the application's default identifier strategy.
+ */
+final class Provider extends Service_Provider {
+
+	public function register(): void {
+		$this->container->bind(
+			IdentifierGenerator::class,
+			static fn ( C $c ): UlidGenerator => $c->get( UlidGenerator::class )
+		);
+	}
+}
+```
+
+Register both providers in `src/App.php`, in that order:
+
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Identifier\IdentifierProvider;
+use Plugin\Identifier;
+
+/** @var list<class-string<Provider>> */
+private const array PROVIDERS = [
+	IdentifierProvider::class,
+	Identifier\Provider::class,
+];
+```
+
+The callback aliases the broad contract to the configured ULID singleton, so both contracts resolve the same generator.
+
+A service that accepts the application's chosen format can now import `Contracts\IdentifierGenerator` and inject it in place of `Ulid\Contracts\UlidGenerator`. Its call to `$this->generator->generate()` stays the same. Services whose storage or external API requires ULIDs should keep the ULID-specific contract.
+
 ## Testing
 
-### Replace format-agnostic generation
+### Replace ULID generation
 
-When application code depends on `IdentifierGenerator`, use a small fixture that always returns a known value. Create `tests/Support/Fixtures/Identifier/Fixed_Identifier_Generator.php`:
+For the `Job_Creator` above, use a fixture that returns one known ULID. Create `tests/Support/Fixtures/Identifier/Fixed_Ulid_Generator.php`:
 
-```php title="Fixed_Identifier_Generator.php"
+```php title="Fixed_Ulid_Generator.php"
 <?php declare(strict_types=1);
 
 namespace Plugin\Tests\Support\Fixtures\Identifier;
 
-use StellarWP\Foundation\Identifier\Contracts\IdentifierGenerator;
+use StellarWP\Foundation\Identifier\Ulid\Contracts\UlidGenerator;
 
 /**
  * Returns one predictable identifier in focused tests.
  */
-final readonly class Fixed_Identifier_Generator implements IdentifierGenerator {
+final readonly class Fixed_Ulid_Generator implements UlidGenerator {
 
 	public function __construct(
 		private string $identifier
@@ -233,14 +229,18 @@ final readonly class Fixed_Identifier_Generator implements IdentifierGenerator {
 }
 ```
 
-Bind the fixture before resolving the service under test:
+After registering `IdentifierProvider` in the test container, bind the fixture before resolving the service under test:
 
 ```php
+use Plugin\Job\Job_Creator;
+use Plugin\Tests\Support\Fixtures\Identifier\Fixed_Ulid_Generator;
+use StellarWP\Foundation\Identifier\Ulid\Contracts\UlidGenerator;
+
 $identifier = '01ARYZ6S410000000000000000';
 
 $this->container->bind(
-	IdentifierGenerator::class,
-	new Fixed_Identifier_Generator( $identifier )
+	UlidGenerator::class,
+	new Fixed_Ulid_Generator( $identifier )
 );
 
 $service = $this->container->get( Job_Creator::class );
@@ -249,3 +249,5 @@ $this->assertSame( $identifier, $service->create_id() );
 ```
 
 Use `UlidValidator` when a test only needs to confirm that production generation returns a valid ULID. Avoid asserting an exact value from the system clock and secure entropy.
+
+For a feature using the optional `IdentifierGenerator` strategy, implement and bind that contract in its fixture instead. Match the contract injected by the service under test.

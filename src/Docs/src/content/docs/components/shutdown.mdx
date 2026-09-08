@@ -138,8 +138,15 @@ final class Provider extends Service_Provider {
 
 	private const int WRITE_PRIORITY = 100;
 
+	private bool $registered = false;
+
 	public function register(): void {
+		if ( $this->registered ) {
+			return;
+		}
+
 		$this->register_cache_writer();
+		$this->registered = true;
 	}
 
 	private function register_cache_writer(): void {
@@ -166,7 +173,7 @@ final class Provider extends Service_Provider {
 }
 ```
 
-Register the buffer as a singleton so application services and the shutdown writer receive the same instance. Data collected during the request is then available when the writer is resolved at shutdown. The contextual bindings supply the writer's `$cache_key` and `$ttl` constructor arguments.
+The registration guard prevents duplicate task contributions. Register the buffer as a singleton so application services and the shutdown writer receive the same instance. Data collected during the request is then available when the writer is resolved at shutdown. The contextual bindings supply the writer's `$cache_key` and `$ttl` constructor arguments.
 
 `Task` is an immutable value object pairing one `Terminable` service with its priority. Lower values run first. Tasks with the same priority retain provider contribution order.
 
