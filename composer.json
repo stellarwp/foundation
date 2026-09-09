@@ -111,7 +111,7 @@
         "test:wpunit": "slic run wpunit",
         "test:wpcli": "slic run wpcli",
         "test:coverage": "@test:coverage:split",
-        "test:coverage:unit": "@php -d pcov.directory=. vendor/bin/codecept -c codeception.slic.yml run unit --coverage coverage/unit.cov",
+        "test:coverage:unit": "@php -d pcov.directory=. -d 'pcov.exclude=~/(vendor|tests|src/Docs)/~' vendor/bin/codecept -c codeception.slic.yml run unit --coverage coverage/unit.cov",
         "test:coverage-html": "@test:coverage-html:split",
         "test:clean": "rm -f clover.xml tests/_output/coverage/*.cov && rm -rf ./coverage",
         "coverage:phpcov-install": [
@@ -124,14 +124,14 @@
         "test:coverage:split": [
             "@coverage:phpcov-install",
             "@coverage:prepare",
-            "slic pcov on --yes && slic composer run test:coverage:unit && slic run feature --coverage coverage/feature.cov && slic run redis --coverage coverage/redis.cov && slic run integration --coverage coverage/integration.cov && slic run wpunit --coverage coverage/wpunit.cov && slic run wpcli --coverage coverage/wpcli.cov; rc=$?; slic pcov off; exit $rc",
-            "slic composer run coverage:merge"
+            "slic pcov on --yes && slic exec '\"composer run test:coverage:unit\"' && slic run feature --coverage coverage/feature.cov && slic run redis --coverage coverage/redis.cov && slic run integration --coverage coverage/integration.cov && slic run wpunit --coverage coverage/wpunit.cov && slic run wpcli --coverage coverage/wpcli.cov; rc=$?; slic pcov off; exit $rc",
+            "slic exec '\"composer run coverage:merge\"'"
         ],
         "test:coverage-html:split": [
             "@coverage:phpcov-install",
             "@coverage:prepare",
-            "slic pcov on --yes && slic composer run test:coverage:unit && slic run feature --coverage coverage/feature.cov && slic run redis --coverage coverage/redis.cov && slic run integration --coverage coverage/integration.cov && slic run wpunit --coverage coverage/wpunit.cov && slic run wpcli --coverage coverage/wpcli.cov; rc=$?; slic pcov off; exit $rc",
-            "slic composer run coverage:merge-html"
+            "slic pcov on --yes && slic exec '\"composer run test:coverage:unit\"' && slic run feature --coverage coverage/feature.cov && slic run redis --coverage coverage/redis.cov && slic run integration --coverage coverage/integration.cov && slic run wpunit --coverage coverage/wpunit.cov && slic run wpcli --coverage coverage/wpcli.cov; rc=$?; slic pcov off; exit $rc",
+            "slic exec '\"composer run coverage:merge-html\"'"
         ],
         "analyze": "@php vendor/bin/phpstan analyse --ansi --memory-limit 2G",
         "lint": "@php vendor/bin/pinte --test -v",
