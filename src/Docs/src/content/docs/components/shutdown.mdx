@@ -193,7 +193,9 @@ private const array PROVIDERS = [
 ];
 ```
 
-The shutdown provider registers the shared task collection, the decorated runner, and one callback on WordPress's `shutdown` action at `PHP_INT_MAX`. It does not register that automatic callback while WordPress is installing or the plugin is being uninstalled. Registration alone does not construct or run contributed tasks.
+The shutdown provider registers the shared task collection, the decorated runner, and one callback on WordPress's `shutdown` action at `PHP_INT_MAX`. Register it after WordPress's hook API is available, such as during plugin or MU-plugin loading. Registration alone does not construct or run contributed tasks.
+
+The callback checks `WP_UNINSTALL_PLUGIN` and `wp_installing()` when shutdown fires. If either excludes the request, it returns before resolving the runner, constructing tasks, or finishing the response. This also covers uninstall or installation state that begins after provider registration. If installation mode ends before shutdown, automatic termination can run.
 
 If the application uses `foundation-log`, register `LogProvider` with the other infrastructure providers before the feature providers. The shutdown runner receives the configured `LoggerInterface` automatically.
 
@@ -203,7 +205,7 @@ Register every contributing provider before resolving the shutdown runner. The n
 
 ### Run tasks at WordPress shutdown
 
-No application hook is required after `ShutdownProvider` is registered. At WordPress shutdown, Foundation:
+No application hook is required after `ShutdownProvider` is registered. At WordPress shutdown, Foundation first skips requests where `WP_UNINSTALL_PLUGIN` is defined or `wp_installing()` is true. For eligible requests, it:
 
 1. Resolves the complete contributed task collection.
 2. Attempts `fastcgi_finish_request()` and then `litespeed_finish_request()` when available, stopping after one succeeds.
@@ -223,7 +225,7 @@ use StellarWP\Foundation\Shutdown\Contracts\ShutdownRunner;
 $container->get( ShutdownRunner::class )->terminate();
 ```
 
-Each runner instance executes only once. Calling it before WordPress shutdown means the later `shutdown` callback is a no-op for that instance.
+Each runner instance executes only once. Calling it before WordPress shutdown means the later `shutdown` callback cannot repeat its work. Direct `terminate()` calls bypass the automatic callback's installation and uninstall checks; the caller owns eligibility for its explicit lifecycle.
 
 ### Handle task failures
 
@@ -240,5 +242,7 @@ Task exceptions are not rethrown, and PHP shutdown provides no retry or durabili
 ## Testing
 
 Test each `Terminable` service directly through its observable behavior. Add one provider integration test when the contribution itself matters: register `ShutdownProvider` and the feature provider, resolve the `ShutdownRunner` contract, call `terminate()`, and assert the task's effect.
+
+To test automatic WordPress execution, fire the `shutdown` action and restore the test's WordPress hooks afterward. Verify that excluded requests never resolve the runner, including when installation or uninstall state changes after registration.
 
 The package already tests priority ordering, equal-priority stability, once-only execution, recursive invocation, response-finishing fallbacks, failure isolation, and optional logging. Application tests do not need to duplicate those generic guarantees.

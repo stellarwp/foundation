@@ -11,19 +11,15 @@ use StellarWP\Foundation\Shutdown\ShutdownProvider;
 use StellarWP\Foundation\Shutdown\Task;
 use StellarWP\Foundation\Tests\Support\Fixtures\Shutdown\CallbackTerminable;
 use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
+use Symfony\Component\Process\Process;
 
 final class ShutdownProviderTest extends WPTestCase
 {
-	protected function tearDown(): void {
-		if ($this->container->has(ShutdownRunner::class)) {
-			remove_action(
-				'shutdown',
-				$this->container->callback(ShutdownRunner::class, 'terminate'),
-				PHP_INT_MAX
-			);
-		}
+	protected function setUp(): void {
+		parent::setUp();
 
-		parent::tearDown();
+		// Exercise only this application's shutdown work; WPTestCase restores hooks after each test.
+		remove_all_actions('shutdown');
 	}
 
 	public function test_it_registers_a_singleton_runner_with_contributed_tasks(): void {
@@ -70,7 +66,7 @@ final class ShutdownProviderTest extends WPTestCase
 		$calls = [];
 
 		$this->container->register(ShutdownProvider::class);
-		$callback = $this->container->callback(ShutdownRunner::class, 'terminate');
+		$this->container->register(ShutdownProvider::class);
 
 		$this->container->mergeArrayVar(ShutdownProvider::TASKS, [
 			new Task(new CallbackTerminable(static function () use (&$calls): void {
@@ -78,27 +74,83 @@ final class ShutdownProviderTest extends WPTestCase
 			})),
 		]);
 
-		$this->assertSame(PHP_INT_MAX, has_action('shutdown', $callback));
-
-		$callback();
+		$this->assertSame([], $calls);
+		do_action('shutdown');
+		do_action('shutdown');
 
 		$this->assertSame(['terminated'], $calls);
 	}
 
-	public function test_it_does_not_register_the_shutdown_hook_while_wordpress_is_installing(): void {
+	public function test_it_does_not_resolve_the_runner_while_wordpress_is_installing(): void {
 		$wasInstalling = wp_installing(true);
 
 		try {
 			$this->container->register(ShutdownProvider::class);
-			$callback = $this->container->callback(ShutdownRunner::class, 'terminate');
-
-			$this->assertFalse(has_action('shutdown', $callback));
-			$this->assertInstanceOf(
-				ResponseFinishingRunner::class,
-				$this->container->get(ShutdownRunner::class)
-			);
+			$this->assertShutdownSkipsRunner();
 		} finally {
 			wp_installing($wasInstalling);
 		}
+	}
+
+	public function test_it_checks_installation_state_after_provider_registration(): void {
+		$this->container->register(ShutdownProvider::class);
+		$wasInstalling = wp_installing(true);
+
+		try {
+			$this->assertShutdownSkipsRunner();
+		} finally {
+			wp_installing($wasInstalling);
+		}
+	}
+
+	public function test_it_runs_when_installation_has_finished_before_shutdown(): void {
+		$wasInstalling = wp_installing(true);
+		$calls         = [];
+
+		try {
+			$this->container->register(ShutdownProvider::class);
+			$this->container->mergeArrayVar(ShutdownProvider::TASKS, [
+				new Task(new CallbackTerminable(static function () use (&$calls): void {
+					$calls[] = 'terminated';
+				})),
+			]);
+			wp_installing(false);
+			do_action('shutdown');
+
+			$this->assertSame(['terminated'], $calls);
+		} finally {
+			wp_installing($wasInstalling);
+		}
+	}
+
+	public function test_uninstall_state_is_checked_before_resolving_the_runner(): void {
+		foreach (['before', 'after'] as $when) {
+			$process = new Process([
+				PHP_BINARY,
+				dirname(__DIR__, 2) . '/Support/Fixtures/Shutdown/uninstall-request.php',
+				constant('ABSPATH'),
+				$when,
+			]);
+			$process->mustRun();
+
+			$this->assertSame('skipped', $process->getOutput(), 'Uninstall started ' . $when . ' provider registration.');
+		}
+	}
+
+	/**
+	 * Excluded requests must not build tasks or attempt response finishing.
+	 */
+	private function assertShutdownSkipsRunner(): void {
+		$resolutions = 0;
+		$runner      = $this->createMock(ShutdownRunner::class);
+		$runner->expects($this->never())->method('terminate');
+		$this->container->singleton(ShutdownRunner::class, static function () use (&$resolutions, $runner): ShutdownRunner {
+			$resolutions++;
+
+			return $runner;
+		});
+
+		do_action('shutdown');
+		$this->assertSame(0, $resolutions);
 	}
 }
