@@ -119,7 +119,7 @@ final readonly class Catalog_Importer {
 
 	public function import( int $site_id, array $products ): void {
 		$this->logger->info(
-			'Starting catalog import.',
+			'Starting catalog import for site {site_id}.',
 			[
 				'site_id'       => $site_id,
 				'product_count' => count( $products ),
@@ -145,7 +145,9 @@ final readonly class Catalog_Importer {
 }
 ```
 
-Context remains machine-readable and keeps operational data out of the message text. Do not include passwords, access tokens, payment details, or other secrets.
+The supplied logger replaces `{site_id}` with the matching context value before records reach any configured destination. Placeholders without a matching context key remain unchanged. Interpolated fields remain in the structured context, alongside other fields and exceptions; for site `42`, the message above becomes `Starting catalog import for site 42.` and the context still contains `site_id` and `product_count`.
+
+Do not include passwords, access tokens, payment details, or other secrets in messages or context.
 
 ### Choose the minimum level
 
@@ -279,7 +281,7 @@ A stack member must name a configured handler-backed channel. An unknown member 
 
 ### Supply another logger
 
-`LogProvider` is an optional default. Applications can configure additional Monolog handlers through named channels, or supply a complete replacement by binding `LoggerInterface` in their own provider.
+`LogProvider` is an optional default. Applications can configure additional Monolog handlers through named channels, or supply a complete replacement by binding `LoggerInterface` in their own provider. A replacement logger owns its message formatting and placeholder interpolation.
 
 The configured application logger is a singleton. Handlers or processors added after resolution remain attached for the lifetime of that application container. A replacement application logger should normally be registered as a singleton as well; use a separate factory only when the feature intentionally needs independent logger instances.
 
@@ -329,3 +331,5 @@ Assert logs only when they are part of the feature's observable operational cont
 The configured `LoggerInterface` is now an application-lifetime singleton. Handlers or processors added to the resolved logger remain visible to later consumers of that logger. Register an explicit factory under an application-owned identifier when independent logger instances are required.
 
 `LogProvider` container identifiers and channel maps are internal implementation details in 2.0. Replace references to `LogProvider::LOG_LEVEL`, `LogProvider::CHANNEL_ERRORLOG`, or `LogProvider::CHANNELS` with the documented `log.level`, `log.channel`, and `log.channels` configuration keys.
+
+The supplied logger now interpolates message placeholders from context. Existing messages containing `{name}` change when the context contains a matching `name` key; review those messages and any log searches that depend on their literal text. Context fields, including those used in the message, remain available to handlers.

@@ -12,6 +12,7 @@ use Monolog\Logger;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
+use RuntimeException;
 use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
 use StellarWP\Foundation\Container\ContainerFactory;
 use StellarWP\Foundation\Container\Exceptions\ContainerException;
@@ -20,6 +21,36 @@ use StellarWP\Foundation\Tests\TestCase;
 
 final class ConfiguredLoggerTest extends TestCase
 {
+	public function test_interpolation_preserves_context_for_every_stack_destination(): void {
+		$this->configureLogger([
+			'channel'  => 'stack',
+			'channels' => [
+				'stack' => ['channels' => ['errorlog', 'audit']],
+				'audit' => ['handler' => TestHandler::class],
+			],
+		]);
+		$audit    = new TestHandler();
+		$errorlog = new TestHandler();
+		$this->container->singleton(TestHandler::class, $audit);
+		$this->container->singleton(ErrorLogHandler::class, $errorlog);
+		$context = [
+			'site_id'   => 42,
+			'exception' => new RuntimeException('Remote catalog unavailable.'),
+		];
+
+		$this->container->get(LoggerInterface::class)->error(
+			'Catalog import for site {site_id} failed: {unknown}.',
+			$context
+		);
+
+		foreach ([$audit, $errorlog] as $handler) {
+			$this->assertTrue($handler->hasError([
+				'message' => 'Catalog import for site 42 failed: {unknown}.',
+				'context' => $context,
+			]));
+		}
+	}
+
 	public function test_a_stack_combines_builtin_and_custom_handlers(): void {
 		$this->configureLogger([
 			'channel'  => 'stack',

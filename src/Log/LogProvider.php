@@ -9,6 +9,7 @@ use Monolog\Handler\ErrorLogHandler;
 use Monolog\Handler\FormattableHandlerInterface;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
+use Monolog\Processor\PsrLogMessageProcessor;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
 use StellarWP\Foundation\Container\Contracts\Provider;
@@ -90,6 +91,7 @@ final class LogProvider extends Provider
 		}
 
 		$logger = new Logger($channel);
+		$logger->pushProcessor($c->get(PsrLogMessageProcessor::class));
 
 		foreach ($selected['channels'] ?? [$channel] as $name) {
 			$definition = $channels[$name] ?? [];
