@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\Lock;
 
 use InvalidArgumentException;
 use StellarWP\Foundation\Lock\Contracts\Lock;
+use StellarWP\Foundation\Lock\Exceptions\LockContendedException;
 use StellarWP\Foundation\Lock\Exceptions\LockOwnershipLostException;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use Throwable;
@@ -22,43 +23,42 @@ final readonly class LockOperation
 	}
 
 	/**
-	 * Run an operation once ownership is acquired, or return false on contention.
+	 * Return the callback's result after releasing its owned lock.
 	 *
-	 * The operation receives no arguments and its return value is ignored. This method
-	 * makes one acquisition attempt and never waits for, renews, or retries a lock.
+	 * Makes one acquisition attempt, without waiting or retrying. The callback
+	 * receives a lease it may renew between bounded stages using the original TTL.
+	 * Any renewal failure is terminal, even if the callback catches it and returns.
+	 * An escaping callback exception takes precedence over renewal and cleanup
+	 * failures; otherwise a recorded renewal failure takes precedence over cleanup.
 	 *
-	 * @param string            $name      The resource name to coordinate across lock owners.
-	 * @param int               $ttl       The lease duration in whole seconds; it must be at least one.
-	 * @param callable(): mixed $operation
+	 * Successful release confirms ownership at release, not transactional work.
+	 * Renewal cannot interrupt work that outlives the lease.
+	 *
+	 * @template TResult
+	 *
+	 * @param string                       $name      The resource name to coordinate across lock owners.
+	 * @param int                          $ttl       The lease duration in whole seconds; it must be at least one.
+	 * @param callable(LockLease): TResult $operation
+	 *
+	 * @param-immediately-invoked-callable $operation
 	 *
 	 * @throws InvalidArgumentException   When the name or TTL is invalid for the selected backend.
-	 * @throws LockOwnershipLostException When successful work cannot confirm its release.
+	 * @throws LockContendedException     When acquisition is contended, or the callback propagates contention.
+	 * @throws LockOwnershipLostException When renewal or release cannot confirm ownership.
 	 * @throws LockUnavailableException   When the backend cannot determine an ownership result.
 	 * @throws Throwable                  When the operation throws.
+	 *
+	 * @return TResult
 	 */
-	public function run(string $name, int $ttl, callable $operation): bool {
+	public function run(string $name, int $ttl, callable $operation): mixed {
 		$token = $this->lock->acquire($name, $ttl);
 
 		if ($token === null) {
-			return false;
+			throw new LockContendedException(sprintf('Lock "%s" is already owned.', $name));
 		}
 
-		try {
-			$operation();
-		} catch (Throwable $failure) {
-			try {
-				$this->lock->release($token);
-			} catch (Throwable) {
-				// Preserve the operation failure when cleanup also fails.
-			}
+		$execution = new LockExecution($this->lock, $token, $ttl);
 
-			throw $failure;
-		}
-
-		if (! $this->lock->release($token)) {
-			throw new LockOwnershipLostException('Protected work lost lock ownership.');
-		}
-
-		return true;
+		return $execution->run($operation);
 	}
 }

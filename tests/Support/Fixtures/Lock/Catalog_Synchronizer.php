@@ -2,6 +2,7 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Lock;
 
+use StellarWP\Foundation\Lock\Exceptions\LockContendedException;
 use StellarWP\Foundation\Lock\LockOperation;
 use Throwable;
 
@@ -25,10 +26,25 @@ final readonly class Catalog_Synchronizer
 	 * @throws Throwable When importing or lock coordination fails.
 	 */
 	public function synchronize(int $site_id): bool {
-		return $this->lock_operation->run(
-			name: sprintf('catalog:%d:sync', $site_id),
-			ttl: 300,
-			operation: fn () => $this->catalog_importer->import($site_id)
-		);
+		$started = false;
+
+		try {
+			return $this->lock_operation->run(
+				name: sprintf('catalog:%d:sync', $site_id),
+				ttl: 300,
+				operation: function () use ($site_id, &$started): bool {
+					$started = true;
+					$this->catalog_importer->import($site_id);
+
+					return true;
+				}
+			);
+		} catch (LockContendedException $failure) {
+			if ($started) {
+				throw $failure;
+			}
+
+			return false;
+		}
 	}
 }

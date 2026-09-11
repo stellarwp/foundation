@@ -3,7 +3,9 @@
 > [!WARNING]
 > **This is a read-only repository!** For pull requests or issues, see [stellarwp/foundation](https://github.com/stellarwp/foundation).
 
-Foundation Lock provides the shared lock contract, ownership tokens, and an
+Foundation Lock provides `LockOperation` for running bounded work under a managed
+lease, with explicit renewal checkpoints and callback results after confirmed
+release. It also includes the shared lock contract, ownership tokens, and an
 in-memory implementation for tests and single-process work. Persistent database
 and Redis implementations are available through separate Foundation packages.
 

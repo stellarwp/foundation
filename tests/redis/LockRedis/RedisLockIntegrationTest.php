@@ -10,6 +10,7 @@ use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
 use StellarWP\Foundation\Container\Contracts\Configuration;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Lock\Contracts\Lock;
+use StellarWP\Foundation\Lock\Exceptions\LockContendedException;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use StellarWP\Foundation\Lock\InMemoryLock;
 use StellarWP\Foundation\Lock\LockOperation;
@@ -177,13 +178,18 @@ final class RedisLockIntegrationTest extends TestCase
 
 		$this->assertNotNull($default_lock->acquire('catalog:42:sync', 300));
 		$this->assertSame($default_lock, $this->container->get(Lock::class));
-		$this->assertFalse($this->container->get(LockOperation::class)->run(
-			'catalog:42:sync',
-			300,
-			function (): void {
-				$this->fail('The application default must still observe its occupied lock.');
-			}
-		));
+
+		try {
+			$this->container->get(LockOperation::class)->run(
+				'catalog:42:sync',
+				300,
+				static fn () => $importer->import(99)
+			);
+			$this->fail('The occupied default lock must report contention.');
+		} catch (LockContendedException) {
+			$this->assertTrue($default_lock->isAcquired('catalog:42:sync'));
+			$this->assertSame([], $importer->imported_site_ids);
+		}
 		$this->assertTrue($consumer->synchronize(42));
 
 		$other_owner = $this->phpRedisLock->acquire('catalog:42:sync', 30);

@@ -5,7 +5,7 @@ namespace StellarWP\Foundation\Lock\Exceptions;
 use RuntimeException;
 
 /**
- * Indicates that ownership was lost before completed work's lock could be released.
+ * Indicates that renewal or release could not confirm continued lock ownership.
  */
 final class LockOwnershipLostException extends RuntimeException
 {
