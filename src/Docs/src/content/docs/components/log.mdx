@@ -1,0 +1,335 @@
+---
+title: Log
+description: Add configurable PSR-3 logging to application services with console, PHP error log, stacked, or null channels.
+sidebar:
+  order: 4
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Foundation Log configures [Monolog](https://github.com/Seldaek/monolog) behind the standard `Psr\Log\LoggerInterface`. Application services depend on the PSR-3 contract, while configuration selects where records are written and which levels are kept.
+
+## Installation
+
+Install the split package:
+
+```shell
+composer require stellarwp/foundation-log
+```
+
+### Prepare the application
+
+Foundation Log uses the shared application configuration and provider architecture established in these guides:
+
+<CardGrid>
+  <LinkCard
+    title="Configure the Container"
+    description="Make config.php available to Foundation providers."
+    href="/start/configure-the-container/"
+  />
+  <LinkCard
+    title="Bootstrap a WordPress Plugin"
+    description="Register infrastructure providers in application order."
+    href="/start/bootstrap-wordpress-plugin/"
+  />
+  <LinkCard
+    title="Register Service Providers"
+    description="Inject configured services into focused application features."
+    href="/start/register-service-providers/"
+  />
+</CardGrid>
+
+## Configuration
+
+### Choose where records are written
+
+Set one channel for the application:
+
+| Channel | Writes to | Use when |
+| --- | --- | --- |
+| `console` | A configured stream, with colored levels | Local development, CLI processes, or container logs |
+| `errorlog` | PHP's `error_log()` | The hosting platform collects the PHP error log |
+| `stack` | The selected channels; defaults to `console` and `errorlog` | Records should reach several destinations |
+| `null` | Nothing | Logging must be intentionally disabled, including in focused tests |
+
+:::caution[Choose a production channel explicitly]
+The example below defaults to `null` so an unconfigured application does not write somewhere unexpected. Set `APP_LOG_CHANNEL` in deployed environments where records must be retained; otherwise failures will not be logged.
+:::
+
+Map the channel, minimum level, and stream in the application's root `config.php`. For a first deployment that uses PHP's error log, set `APP_LOG_CHANNEL=errorlog` and `APP_LOG_LEVEL=info` in the application's environment:
+
+```php title="config.php"
+<?php declare(strict_types=1);
+
+return [
+	'log' => [
+		'channel'  => $_ENV['APP_LOG_CHANNEL'] ?? 'null',
+		'level'    => $_ENV['APP_LOG_LEVEL'] ?? 'info',
+		'channels' => [
+			'console' => [
+				'with' => [
+					'stream' => $_ENV['APP_LOG_STREAM'] ?? 'php://stdout',
+				],
+			],
+		],
+	],
+];
+```
+
+Configure the console destination once under `log.channels.console.with.stream`. It uses that destination whether selected directly or included in any stack. Common values are `php://stdout` and `php://stderr`.
+
+### Register the logging provider
+
+In `src/App.php`, add `LogProvider` before feature providers that consume `LoggerInterface`:
+
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Log\LogProvider;
+
+/** @var list<class-string<Provider>> */
+private const array PROVIDERS = [
+	LogProvider::class,
+];
+```
+
+The provider registers a shared `LoggerInterface` for application services.
+
+## Usage
+
+### Inject the PSR-3 logger
+
+In `src/Catalog/Catalog_Importer.php`, depend on `Psr\Log\LoggerInterface`, not Monolog or a Foundation handler. Include structured context with identifiers and values needed to investigate the event:
+
+```php title="Catalog_Importer.php"
+<?php declare(strict_types=1);
+
+namespace Plugin\Catalog;
+
+use Psr\Log\LoggerInterface;
+
+/**
+ * Imports remote products into the local catalog.
+ */
+final readonly class Catalog_Importer {
+
+	public function __construct(
+		private LoggerInterface $logger
+	) {
+	}
+
+	public function import( int $site_id, array $products ): void {
+		$this->logger->info(
+			'Starting catalog import for site {site_id}.',
+			[
+				'site_id'       => $site_id,
+				'product_count' => count( $products ),
+			]
+		);
+
+		foreach ( $products as $product ) {
+			if ( empty( $product['sku'] ) ) {
+				$this->logger->warning(
+					'Skipping a product without a SKU.',
+					[
+						'site_id'    => $site_id,
+						'product_id' => $product['id'] ?? null,
+					]
+				);
+
+				continue;
+			}
+
+			// Import the product.
+		}
+	}
+}
+```
+
+The supplied logger replaces `{site_id}` with the matching context value before records reach any configured destination. Placeholders without a matching context key remain unchanged. Interpolated fields remain in the structured context, alongside other fields and exceptions; for site `42`, the message above becomes `Starting catalog import for site 42.` and the context still contains `site_id` and `product_count`.
+
+Do not include passwords, access tokens, payment details, or other secrets in messages or context.
+
+### Choose the minimum level
+
+The configured level keeps records at that severity and above:
+
+| Level | Typical use |
+| --- | --- |
+| `debug` | Detailed diagnostics useful during development |
+| `info` | Normal application milestones |
+| `notice` | Significant but expected events |
+| `warning` | Unexpected conditions from which the operation can recover |
+| `error` | An operation failed but the application can continue |
+| `critical` | A major application capability is unavailable |
+| `alert` | Immediate operator action is required |
+| `emergency` | The application or site is unusable |
+
+Use lowercase names in configuration. Foundation also accepts title case and uppercase variants.
+
+### Record exceptions with their context
+
+Pass the exception under the conventional `exception` key so handlers and processors can inspect it:
+
+```php
+try {
+	$this->catalog->synchronize( $site_id );
+} catch ( Throwable $exception ) {
+	$this->logger->error(
+		'Catalog synchronization failed.',
+		[
+			'site_id'  => $site_id,
+			'exception' => $exception,
+		]
+	);
+
+	throw $exception;
+}
+```
+
+Log the failure at the boundary responsible for handling or reporting it. Avoid recording the same exception again at every layer through which it passes.
+
+### Understand configuration failures
+
+An unavailable PHP `error_log()` function does not stop the application:
+
+- The `errorlog` channel falls back to the null handler.
+- The `stack` channel keeps the console handler and skips the unavailable error-log handler.
+
+Invalid configuration is different. An unsupported level fails while `LogProvider` is registered, and an unsupported channel fails when `LoggerInterface` is first resolved. Use one of the documented values rather than silently losing records because of a typo.
+
+```php
+// error_log() is disabled: the application continues without that handler.
+$_ENV['APP_LOG_CHANNEL'] = 'errorlog';
+
+// Unsupported configuration: fix the value instead of continuing silently.
+$_ENV['APP_LOG_CHANNEL'] = 'file';
+```
+
+## Customization
+
+### Combine channels and add a custom handler
+
+Set `log.channels.stack.channels` to the channel names you want to combine. The list replaces the supplied `console` and `errorlog` selection. Add a named channel with a `handler` class to include your own Monolog handler.
+
+In the application's root `config.php`, this example selects console, PHP error log, and an existing application `Audit_Handler`:
+
+```php title="config.php"
+use Plugin\Logging\Audit_Handler;
+
+return [
+	'log' => [
+		'channel' => $_ENV['APP_LOG_CHANNEL'] ?? 'stack',
+		'level'   => $_ENV['APP_LOG_LEVEL'] ?? 'info',
+		'channels' => [
+			'stack' => [
+				'channels' => [ 'console', 'errorlog', 'audit' ],
+			],
+			'audit' => [
+				'handler' => Audit_Handler::class,
+			],
+		],
+	],
+];
+```
+
+Foundation supplies the built-in channel definitions; configure only the settings you want to change. You can also define another stack name with its own `channels` list, or select `audit` directly with `APP_LOG_CHANNEL=audit`. Application services continue injecting `LoggerInterface`.
+
+Custom handlers implement Monolog's `HandlerInterface`. Foundation resolves them through the container, so their dependencies use ordinary application provider bindings. Use transient bindings when the same custom handler class serves independently configured channels. A singleton handler can serve one channel and remain shared with other application services. An optional `formatter` class selects a formatter for handlers implementing `FormattableHandlerInterface`; setting it to `null` keeps the handler's own formatter. Handlers extending Monolog's `AbstractHandler` receive `log.level`; implementations of the minimal `HandlerInterface` own their filtering behavior.
+
+List handler-backed channels as stack members. Handlers run in reverse list order, preserving Monolog's `pushHandler()` behavior; a handler with bubbling disabled stops delivery to earlier entries. An empty stack, or one whose only handler is an unavailable PHP error log, discards records.
+
+### Write to separate stream destinations
+
+Each channel using `Monolog\Handler\StreamHandler` receives its own handler, configured with that channel's `with.stream` setting. For example, in `config.php`, combine the console with a JSON log file:
+
+```php title="config.php"
+use Monolog\Formatter\JsonFormatter;
+use Monolog\Handler\StreamHandler;
+
+return [
+	'log' => [
+		'channel' => $_ENV['APP_LOG_CHANNEL'] ?? 'stack',
+		'level' => $_ENV['APP_LOG_LEVEL'] ?? 'info',
+		'channels' => [
+			'console' => [
+				'with' => [
+					'stream' => $_ENV['APP_LOG_STREAM'] ?? 'php://stdout',
+				],
+			],
+			'json' => [
+				'handler' => StreamHandler::class,
+				'formatter' => JsonFormatter::class,
+				'with' => [
+					'stream' => $_ENV['APP_LOG_JSON_PATH'] ?? __DIR__ . '/var/log/application.jsonl',
+				],
+			],
+			'stack' => [
+				'channels' => [ 'console', 'json' ],
+			],
+		],
+	],
+];
+```
+
+The console keeps its colored format, and the file receives JSON records. Configure a file path writable by the PHP process. Custom handlers receive their constructor configuration through application provider bindings.
+
+### Handle stack configuration failures
+
+Each stack entry must resolve a distinct handler instance. If two entries resolve the same custom singleton, logger resolution raises `ContainerException`; use transient handler bindings for independent channels, or include one shared channel once.
+
+A stack member must name a configured handler-backed channel. An unknown member or one without a handler raises `ContainerException` when the logger resolves; correct the channel definition before retrying.
+
+### Supply another logger
+
+`LogProvider` is an optional default. Applications can configure additional Monolog handlers through named channels, or supply a complete replacement by binding `LoggerInterface` in their own provider. A replacement logger owns its message formatting and placeholder interpolation.
+
+The configured application logger is a singleton. Handlers or processors added after resolution remain attached for the lifetime of that application container. A replacement application logger should normally be registered as a singleton as well; use a separate factory only when the feature intentionally needs independent logger instances.
+
+## Testing
+
+### Disable records when logging is irrelevant
+
+Replace the application logger with the PSR-3 `NullLogger` when a focused test does not assert logging behavior:
+
+```php
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
+
+$this->container->bind( LoggerInterface::class, NullLogger::class );
+```
+
+### Assert important records
+
+Monolog's `TestHandler` captures records without writing them to an external destination:
+
+```php
+use Monolog\Handler\TestHandler;
+use Monolog\Logger;
+use Psr\Log\LoggerInterface;
+
+$handler = new TestHandler();
+$logger  = new Logger( 'test', [ $handler ] );
+
+$this->container->bind( LoggerInterface::class, $logger );
+
+$service = $this->container->get( Catalog_Importer::class );
+$service->import( 42, [ [ 'id' => 10 ] ] );
+
+$this->assertTrue( $handler->hasWarning( [
+	'message' => 'Skipping a product without a SKU.',
+	'context' => [
+		'site_id'    => 42,
+		'product_id' => 10,
+	],
+] ) );
+```
+
+Assert logs only when they are part of the feature's observable operational contract. Otherwise, test the feature's result and use `NullLogger`.
+
+## Upgrading to 2.0
+
+The configured `LoggerInterface` is now an application-lifetime singleton. Handlers or processors added to the resolved logger remain visible to later consumers of that logger. Register an explicit factory under an application-owned identifier when independent logger instances are required.
+
+`LogProvider` container identifiers and channel maps are internal implementation details in 2.0. Replace references to `LogProvider::LOG_LEVEL`, `LogProvider::CHANNEL_ERRORLOG`, or `LogProvider::CHANNELS` with the documented `log.level`, `log.channel`, and `log.channels` configuration keys.
+
+The supplied logger now interpolates message placeholders from context. Existing messages containing `{name}` change when the context contains a matching `name` key; review those messages and any log searches that depend on their literal text. Context fields, including those used in the message, remain available to handlers.

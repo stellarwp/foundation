@@ -1,0 +1,6 @@
+# Codeception Test Suite Configuration
+
+actor: RedisTester
+path: redis
+modules:
+  enabled: []

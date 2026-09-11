@@ -1,0 +1,15 @@
+<?php declare(strict_types=1);
+
+namespace Acme;
+
+use StellarWP\Foundation\Database\DatabaseProvider;
+
+final class Provider
+{
+	public function register(): void {
+		$this->container->mergeArrayVar( DatabaseProvider::MIGRATIONS, static function (): array {
+			return [
+			];
+		} );
+	}
+}

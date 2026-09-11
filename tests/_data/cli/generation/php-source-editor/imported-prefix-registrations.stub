@@ -1,0 +1,17 @@
+<?php declare(strict_types=1);
+
+namespace Acme\Plugin\Database;
+
+use Acme\Plugin\Database as DB;
+use Acme\Product\StellarWP\Foundation\Database as FoundationDatabase;
+
+final class Provider
+{
+	public function register(): void {
+		$this->container->singleton(DB\Tables\Reports_Table::class);
+
+		$this->container->mergeArrayVar(FoundationDatabase\DatabaseProvider::MIGRATIONS, static fn ($c): array => [
+			$c->get(DB\Migrations\Create_Reports_Table::class),
+		]);
+	}
+}

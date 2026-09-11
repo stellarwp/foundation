@@ -11,6 +11,7 @@
         "php": ">=8.3",
         "adbario/php-dot-notation": ">=2.5",
         "lucatume/di52": ">=4.1",
+        "psr/container": ">=1.1",
         "stellarwp/container-contract": "^1.1",
         "vlucas/phpdotenv": ">=4.3"
     },

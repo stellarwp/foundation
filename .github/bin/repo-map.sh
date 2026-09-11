@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 # Builds a JSON map of the sub-repos name and directory relative to the "src/" dir
 # for use in splitting monorepo packages via GitHub Actions.
@@ -19,7 +20,7 @@
 # ]
 
 # Check if $GITHUB_WORKSPACE is defined
-if [ -z "$GITHUB_WORKSPACE" ]; then
+if [ -z "${GITHUB_WORKSPACE:-}" ]; then
     # If not defined, assign a specific relative path
     root=$( git rev-parse --show-toplevel )
 else
@@ -28,10 +29,15 @@ else
 fi
 
 # Use jq to generate the JSON array directly without line breaks
-packages_json=$(find "$root/src" -name composer.json -print0 |
+packages_json=$(find "$root/src" -mindepth 2 -maxdepth 2 \( -name composer.json -o -name package.json \) -print0 |
     while IFS= read -r -d $'\0' file; do
+        # Each directory is one split package; Composer owns mixed PHP/npm packages.
+        if [[ "$(basename "$file")" == "package.json" && -f "$(dirname "$file")/composer.json" ]]; then
+            continue
+        fi
+
         # Extract the package name and directory
-        package_name=$(jq -r '.name' < "$file" | sed 's/stellarwp\///')
+        package_name=$(jq -r '.name' < "$file" | sed -E 's/^@?stellarwp\///') || exit "$?"
         relative_directory=$(realpath --relative-to="$root/src" "$(dirname "$file")")
 
         # Build the JSON object for each package

@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Tests\Unit\Cli\Generation;
 
 use StellarWP\Foundation\Cli\Generation\StubResolver;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class StubResolverTest extends TestCase
@@ -36,14 +37,14 @@ final class StubResolverTest extends TestCase
 
 		$this->assertSame(
 			$root . '/foundation/stubs/wpcli/command.stub',
-			(new StubResolver($root))->resolve('wpcli', 'command', '/default/command.stub')
+			(new StubResolver(new ProjectDirectory($root)))->resolve('wpcli', 'command', '/default/command.stub')
 		);
 	}
 
 	public function test_it_uses_the_default_stub_when_no_override_exists(): void {
 		$this->assertSame(
 			'/default/command.stub',
-			(new StubResolver($this->temporaryRoot()))->resolve('wpcli', 'command', '/default/command.stub')
+			(new StubResolver(new ProjectDirectory($this->temporaryRoot())))->resolve('wpcli', 'command', '/default/command.stub')
 		);
 	}
 

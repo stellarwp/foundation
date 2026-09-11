@@ -67,7 +67,7 @@ final class LogLevel
 	 *
 	 * @throws UnhandledMatchError
 	 *
-	 * @return int The Monolog level code.
+	 * @return self::* The Monolog level code.
 	 */
 	public static function fromName(string $level): int {
 		return match ($level) {

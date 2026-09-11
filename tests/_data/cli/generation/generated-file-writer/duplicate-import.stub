@@ -1,0 +1,10 @@
+<?php declare(strict_types=1);
+
+namespace Acme\Plugin;
+
+use Acme\Contracts\Migration;
+use Acme\Contracts\Migration;
+
+final class Example
+{
+}

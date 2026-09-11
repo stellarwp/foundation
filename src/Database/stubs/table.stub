@@ -1,0 +1,15 @@
+<?php declare(strict_types=1);
+
+namespace {{ namespace }};
+
+use {{ foundation_database_table }};
+
+final readonly class {{ class }} extends Table {
+
+	private const string UNPREFIXED_TABLE_NAME = {{ table_php }};
+
+	public function unprefixedName(): string {
+		return self::UNPREFIXED_TABLE_NAME;
+	}
+
+}

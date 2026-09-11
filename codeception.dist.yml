@@ -4,6 +4,7 @@ coverage:
   enabled: true
   include:
     - src/*
+    - dev/Cli/*
 paths:
   tests: tests
   log: tests/_output

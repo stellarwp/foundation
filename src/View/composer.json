@@ -1,0 +1,24 @@
+{
+    "name": "stellarwp/foundation-view",
+    "type": "library",
+    "description": "Render scoped PHP views to strings with immutable runtime directory selection.",
+    "license": "GPL-2.0-or-later",
+    "config": {
+        "vendor-dir": "vendor",
+        "preferred-install": "dist"
+    },
+    "require": {
+        "php": ">=8.3",
+        "stellarwp/foundation-container": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "StellarWP\\Foundation\\View\\": ""
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "2.0.x-dev"
+        }
+    }
+}

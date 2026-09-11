@@ -1,0 +1,52 @@
+<?php declare(strict_types=1);
+
+namespace StellarWP\Foundation\Shutdown;
+
+use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use StellarWP\Foundation\Shutdown\Contracts\ShutdownRunner;
+
+/**
+ * Registers the default shutdown runner and task contribution point.
+ */
+final class ShutdownProvider extends Provider
+{
+	public const string TASKS = self::class . '.tasks';
+
+	private bool $registered = false;
+
+	/**
+	 * Register contributed shutdown tasks and connect the shared runner to WordPress.
+	 */
+	public function register(): void {
+		// Repeated provider registration must not duplicate definitions or the WordPress hook.
+		if ($this->registered) {
+			return;
+		}
+
+		$this->registered = true;
+		$this->container->mergeArrayVar(self::TASKS, []);
+
+		$this->container->when(Runner::class)
+			->needs('$tasks')
+			->give(static fn (C $c): array => $c->get(self::TASKS));
+
+		$this->container->singletonDecorators(ShutdownRunner::class, [
+			ResponseFinishingRunner::class,
+			Runner::class,
+		]);
+
+		add_action(
+			'shutdown',
+			function (): void {
+				// Request state can change after registration; skip before resolving tasks or finishing the response.
+				if (defined('WP_UNINSTALL_PLUGIN') || wp_installing()) {
+					return;
+				}
+
+				$this->container->get(ShutdownRunner::class)->terminate();
+			},
+			PHP_INT_MAX
+		);
+	}
+}
