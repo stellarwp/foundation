@@ -10,6 +10,7 @@ use StellarWP\Foundation\Database\Schema\ValueObjects\IndexState;
 use StellarWP\Foundation\Database\Table\Blueprint;
 use StellarWP\Foundation\Database\Table\Column;
 use StellarWP\Foundation\Database\Table\Index;
+use StellarWP\Foundation\Database\Table\ValueObjects\CurrentTimestamp;
 
 /**
  * Reconciles a physical WordPress database table with its declared definition.
@@ -320,7 +321,13 @@ final readonly class Reconciler
 			}
 
 			$expectedExtra = $column->autoIncrement ? 'auto_increment' : '';
-			$actualExtra   = $this->normalizeExtra($properties['extra']);
+			$onUpdate      = $column->onUpdateSql();
+
+			if ($onUpdate !== null) {
+				$expectedExtra = trim($expectedExtra . ' on update ' . $this->normalizeCurrentTimestamp($onUpdate));
+			}
+
+			$actualExtra = $this->normalizeExtra($properties['extra']);
 
 			if ($expectedExtra !== $actualExtra) {
 				$differences[] = sprintf(
@@ -576,6 +583,16 @@ final readonly class Reconciler
 			$suffix = '(1)' . $suffix;
 		}
 
+		if (in_array($name, ['datetime', 'timestamp'], true)
+			&& preg_match('/\A\s*(?:\(\s*(\d+)\s*\))?\z/', $suffix, $precision) === 1
+		) {
+			$digits = (int) ($precision[1] ?? 0);
+
+			if ($digits <= 6) {
+				return $name . ($digits === 0 ? '' : sprintf('(%d)', $digits));
+			}
+		}
+
 		if (in_array($name, ['tinyint', 'smallint', 'mediumint', 'int', 'bigint'], true)) {
 			$suffix = preg_replace('/\A\(\d+\)/', '', $suffix) ?? $suffix;
 
@@ -624,6 +641,11 @@ final readonly class Reconciler
 			return false;
 		}
 
+		if ($column->default instanceof CurrentTimestamp) {
+			return is_string($actual)
+				&& $this->normalizeCurrentTimestamp($actual) === $this->normalizeCurrentTimestamp((string) $column->defaultSql());
+		}
+
 		if (is_bool($column->default)) {
 			return $this->integerDefaultMatches($column->default ? 1 : 0, $actual);
 		}
@@ -660,9 +682,18 @@ final readonly class Reconciler
 	 * Normalize equivalent MySQL Extra metadata before comparing column definitions.
 	 */
 	private function normalizeExtra(string $extra): string {
-		$extra = str_ireplace('DEFAULT_GENERATED', '', $extra);
-		$extra = preg_replace('/CURRENT_TIMESTAMP\(\)/i', 'CURRENT_TIMESTAMP', $extra) ?? $extra;
+		$extra = preg_replace('/\bDEFAULT_GENERATED\b/i', '', $extra) ?? $extra;
 
-		return strtolower(trim(preg_replace('/\s+/', ' ', $extra) ?? $extra));
+		return $this->normalizeCurrentTimestamp(preg_replace('/\s+/', ' ', $extra) ?? $extra);
+	}
+
+	/**
+	 * Normalize current-timestamp expression spelling without changing its precision.
+	 */
+	private function normalizeCurrentTimestamp(string $expression): string {
+		$expression = strtolower(trim($expression));
+		$expression = preg_replace('/\bcurrent_timestamp\s*\(\s*0?\s*\)/', 'current_timestamp', $expression) ?? $expression;
+
+		return preg_replace('/\bcurrent_timestamp\s*\(\s*([1-6])\s*\)/', 'current_timestamp($1)', $expression) ?? $expression;
 	}
 }

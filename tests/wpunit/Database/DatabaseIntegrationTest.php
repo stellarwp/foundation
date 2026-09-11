@@ -36,6 +36,7 @@ use StellarWP\Foundation\Tests\Support\Fixtures\Database\CommentedTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\CommentReconciliationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\DateTimePrecisionTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\IndexReconciliationTable;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\ManagedTimestampTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\SchemaReconciliationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestDatabaseTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestTable;
@@ -575,6 +576,307 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertSame('datetime', strtolower((string) ($column['Type'] ?? '')));
 	}
 
+	/**
+	 * @dataProvider managedTimestampPrecisions
+	 */
+	#[DataProvider('managedTimestampPrecisions')]
+	public function test_database_manages_temporal_values_without_overriding_explicit_assignments(int $precision, string $fraction): void {
+		$this->withControlledTimestamp(function () use ($precision, $fraction): void {
+			$table     = new ManagedTimestampTable($this->unprefixedTable('managed_time'), $precision);
+			$tableName = $this->database->tableName($table);
+			$this->schema->create($table->blueprint());
+			$this->database->execute('SET SESSION timestamp = 1704067200.125');
+			$this->database->insert($table, ['status' => 'draft']);
+
+			$initial = '2024-01-01 00:00:00' . $fraction;
+			$row     = [
+				'id'            => '1',
+				'status'        => 'draft',
+				'created_at'    => $initial,
+				'updated_at'    => $initial,
+				'created_stamp' => $initial,
+				'updated_stamp' => $initial,
+				'processed_at'  => null,
+			];
+			$this->assertSame($row, $this->database->row('SELECT * FROM %i WHERE id = 1', $tableName));
+
+			$this->database->execute('SET SESSION timestamp = 1704153600.125');
+			$this->database->update($table, ['status' => 'draft'], ['id' => 1]);
+			$this->assertSame($row, $this->database->row('SELECT * FROM %i WHERE id = 1', $tableName));
+
+			$this->database->update($table, ['status' => 'published'], ['id' => 1]);
+			$row['status']        = 'published';
+			$row['updated_at']    = '2024-01-02 00:00:00' . $fraction;
+			$row['updated_stamp'] = '2024-01-02 00:00:00' . $fraction;
+			$row['processed_at']  = '2024-01-02 00:00:00' . $fraction;
+			$this->assertSame($row, $this->database->row('SELECT * FROM %i WHERE id = 1', $tableName));
+
+			$explicit = '2020-05-06 07:08:09' . $fraction;
+			$this->database->insert($table, [
+				'status'        => 'imported',
+				'created_at'    => $explicit,
+				'updated_at'    => null,
+				'created_stamp' => $explicit,
+				'updated_stamp' => null,
+				'processed_at'  => null,
+			]);
+			$imported = [
+				'id'            => '2',
+				'status'        => 'imported',
+				'created_at'    => $explicit,
+				'updated_at'    => null,
+				'created_stamp' => $explicit,
+				'updated_stamp' => null,
+				'processed_at'  => null,
+			];
+			$this->assertSame($imported, $this->database->row('SELECT * FROM %i WHERE id = 2', $tableName));
+
+			$this->database->execute('SET SESSION timestamp = 1704240000.125');
+			$this->database->update($table, [
+				'status'        => 'edited',
+				'updated_at'    => $explicit,
+				'updated_stamp' => $explicit,
+				'processed_at'  => null,
+			], ['id' => 2]);
+			$imported['status']        = 'edited';
+			$imported['updated_at']    = $explicit;
+			$imported['updated_stamp'] = $explicit;
+			$this->assertSame($imported, $this->database->row('SELECT * FROM %i WHERE id = 2', $tableName));
+
+			$this->database->update($table, [
+				'status'        => 'cleared',
+				'updated_at'    => null,
+				'updated_stamp' => null,
+				'processed_at'  => null,
+			], ['id' => 2]);
+			$imported['status']        = 'cleared';
+			$imported['updated_at']    = null;
+			$imported['updated_stamp'] = null;
+			$this->assertSame($imported, $this->database->row('SELECT * FROM %i WHERE id = 2', $tableName));
+
+			$this->database->execute("SET SESSION time_zone = '+02:00'");
+			$this->assertSame([
+				'created_at'    => $initial,
+				'created_stamp' => '2024-01-01 02:00:00' . $fraction,
+			], $this->database->row('SELECT created_at, created_stamp FROM %i WHERE id = 1', $tableName));
+		});
+	}
+
+	/**
+	 * @return array<string, array{int, string}>
+	 */
+	public static function managedTimestampPrecisions(): array {
+		return [
+			'zero'       => [0, ''],
+			'fractional' => [6, '.125000'],
+		];
+	}
+
+	/**
+	 * @dataProvider alteredTimestampTypes
+	 */
+	#[DataProvider('alteredTimestampTypes')]
+	public function test_timestamp_attributes_can_be_added_removed_and_retried_without_rewriting_rows(string $type): void {
+		// MariaDB temporary tables do not activate ON UPDATE added by ALTER TABLE.
+		// Use persistent tables; our teardown drops them before the parent restores query hooks.
+		foreach ($GLOBALS['wp_filter']['query']->callbacks[10] as $hook) {
+			$callback = $hook['function'];
+
+			if (is_array($callback) && in_array($callback[1], ['_create_temporary_tables', '_drop_temporary_tables'], true)) {
+				remove_filter('query', $callback);
+			}
+		}
+
+		$this->withControlledTimestamp(function () use ($type): void {
+			$table     = new TestTable($this->unprefixedTable('time_alter'));
+			$tableName = $this->database->tableName($table);
+			$initial   = Blueprint::for($table);
+			$initial->string('status', 20);
+			$initial->column(new Column('occurred_at', $type))->nullable()->default(null)->comment('Event time');
+			$this->schema->create($initial);
+			$this->database->insert($table, ['status' => 'draft']);
+			$original = [['status' => 'draft', 'occurred_at' => null]];
+
+			$change = Blueprint::for($table);
+			$change->column(new Column('occurred_at', $type))->nullable()->useCurrent()->useCurrentOnUpdate()->comment('Event time')->change();
+			$this->schema->alter($change);
+			$this->assertSame($original, $this->database->rows('SELECT * FROM %i', $tableName));
+
+			$current = Blueprint::for($table);
+			$current->string('status', 20);
+			$current->column(new Column('occurred_at', $type))->nullable()->useCurrent()->useCurrentOnUpdate()->comment('Event time');
+			$this->assertNoTimestampDdl(function () use ($table, $current, $change): void {
+				$this->schema->create($current);
+				$this->schema->alter($change);
+				// Retrying an addition also verifies the existing column without DDL.
+				$addition = Blueprint::for($table);
+				$addition->column($current->columns()[1]);
+				$this->schema->alter($addition);
+			});
+			$this->assertSame($original, $this->database->rows('SELECT * FROM %i', $tableName));
+
+			$this->database->execute('SET SESSION timestamp = 1704153600');
+			$this->database->update($table, ['status' => 'published'], ['status' => 'draft']);
+			$value = str_contains($type, '(6)') ? '2024-01-02 00:00:00.000000' : '2024-01-02 00:00:00';
+			$rows  = [['status' => 'published', 'occurred_at' => $value]];
+			$this->assertSame($rows, $this->database->rows('SELECT * FROM %i', $tableName));
+
+			$remove = Blueprint::for($table);
+			$remove->column(new Column('occurred_at', $type))->nullable()->default(null)->comment('Event time')->change();
+			$this->schema->alter($remove);
+			$this->assertSame($rows, $this->database->rows('SELECT * FROM %i', $tableName));
+			$this->assertNoTimestampDdl(function () use ($initial, $remove): void {
+				$this->schema->create($initial);
+				$this->schema->alter($remove);
+			});
+
+			$this->database->execute('SET SESSION timestamp = 1704240000');
+			$this->database->update($table, ['status' => 'archived'], ['status' => 'published']);
+			$this->database->insert($table, ['status' => 'new']);
+			$this->assertSame([
+				['status' => 'archived', 'occurred_at' => $value],
+				['status' => 'new', 'occurred_at' => null],
+			], $this->database->rows('SELECT * FROM %i ORDER BY status', $tableName));
+		});
+	}
+
+	/**
+	 * @return array<string, array{string}>
+	 */
+	public static function alteredTimestampTypes(): array {
+		return [
+			'fractional datetime' => ['datetime(6)'],
+			'zero timestamp'      => ['timestamp(0)'],
+		];
+	}
+
+	/**
+	 * @dataProvider incompatibleTimestampAttributes
+	 */
+	#[DataProvider('incompatibleTimestampAttributes')]
+	public function test_timestamp_retries_reject_missing_or_unexpected_attributes(string $actual, bool $expectsUpdate): void {
+		$table     = new TestTable($this->unprefixedTable('time_mismatch'));
+		$tableName = $this->database->tableName($table);
+		$blueprint = Blueprint::for($table);
+		$column    = $blueprint->dateTime('occurred_at')->nullable()->useCurrent();
+
+		if ($expectsUpdate) {
+			$column->useCurrentOnUpdate();
+		}
+
+		$this->schema->create($blueprint);
+		$this->database->insert($table, ['occurred_at' => '2020-01-02 03:04:05']);
+		$this->database->execute(sprintf('ALTER TABLE %s MODIFY COLUMN occurred_at datetime NULL %s', $this->database->quoteIdentifier($tableName), $actual));
+		$this->assertNoTimestampDdl(function () use ($blueprint): void {
+			foreach (['create', 'alter'] as $operation) {
+				try {
+					$this->schema->{$operation}($blueprint);
+					$this->fail('Expected incompatible automatic timestamp attributes to fail verification.');
+				} catch (DatabaseException $exception) {
+					$this->assertStringContainsString('occurred_at', $exception->getMessage());
+				}
+			}
+		});
+		$this->assertSame([['occurred_at' => '2020-01-02 03:04:05']], $this->database->rows('SELECT * FROM %i', $tableName));
+	}
+
+	/**
+	 * @return array<string, array{string, bool}>
+	 */
+	public static function incompatibleTimestampAttributes(): array {
+		return [
+			'missing default'   => ['DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP', true],
+			'missing update'    => ['DEFAULT CURRENT_TIMESTAMP', true],
+			'unexpected update' => ['DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP', false],
+		];
+	}
+
+	public function test_timestamp_creation_detects_a_default_omitted_by_db_delta(): void {
+		$table     = new TestTable($this->unprefixedTable('time_create_failure'));
+		$blueprint = Blueprint::for($table);
+		$blueprint->dateTime('occurred_at')->nullable()->useCurrent()->useCurrentOnUpdate();
+		$omitDefault = static fn (array $queries): array => array_map(
+			static fn (string $sql): string => str_replace('DEFAULT CURRENT_TIMESTAMP', 'DEFAULT NULL', $sql),
+			$queries
+		);
+		add_filter('dbdelta_create_queries', $omitDefault);
+
+		try {
+			$this->expectException(DatabaseException::class);
+			$this->expectExceptionMessage('occurred_at');
+			$this->schema->create($blueprint);
+		} finally {
+			remove_filter('dbdelta_create_queries', $omitDefault);
+		}
+	}
+
+	public function test_timestamp_alteration_detects_an_update_clause_not_applied_by_the_database(): void {
+		$table     = new TestTable($this->unprefixedTable('time_alter_failure'));
+		$tableName = $this->database->tableName($table);
+		$initial   = Blueprint::for($table);
+		$initial->dateTime('occurred_at')->nullable()->default(null);
+		$this->schema->create($initial);
+		$this->database->insert($table, ['occurred_at' => '2020-01-02 03:04:05']);
+		$change = Blueprint::for($table);
+		$change->dateTime('occurred_at')->nullable()->useCurrent()->useCurrentOnUpdate()->change();
+		$omitUpdate = static function (string $sql) use ($tableName): string {
+			if (str_starts_with($sql, 'ALTER TABLE') && str_contains($sql, $tableName)) {
+				return str_replace(' ON UPDATE CURRENT_TIMESTAMP', '', $sql);
+			}
+
+			return $sql;
+		};
+		add_filter('query', $omitUpdate);
+
+		try {
+			try {
+				$this->schema->alter($change);
+				$this->fail('Expected the unapplied timestamp update clause to fail post-DDL verification.');
+			} catch (DatabaseException $exception) {
+				$this->assertStringContainsString('occurred_at', $exception->getMessage());
+			}
+		} finally {
+			remove_filter('query', $omitUpdate);
+		}
+
+		$this->assertSame([['occurred_at' => '2020-01-02 03:04:05']], $this->database->rows('SELECT * FROM %i', $tableName));
+	}
+
+	public function test_legacy_timestamp_defaults_are_rejected_unless_explicitly_declared(): void {
+		$original = (int) $this->database->value('SELECT @@SESSION.explicit_defaults_for_timestamp');
+
+		try {
+			$this->database->execute('SET SESSION explicit_defaults_for_timestamp = OFF');
+			$table     = new TestTable($this->unprefixedTable('legacy_time'));
+			$blueprint = Blueprint::for($table);
+			$blueprint->timestamp('occurred_at');
+
+			try {
+				$this->schema->create($blueprint);
+				$this->fail('Expected undeclared legacy automatic timestamp attributes to fail verification.');
+			} catch (DatabaseException $exception) {
+				$this->assertStringContainsString('occurred_at', $exception->getMessage());
+			}
+
+			$this->assertSame(0, (int) $this->database->value('SELECT @@SESSION.explicit_defaults_for_timestamp'));
+			$explicit = new TestTable($this->unprefixedTable('explicit_time'));
+			$safe     = Blueprint::for($explicit);
+			$safe->string('status', 20);
+			$safe->timestamp('occurred_at')->nullable()->default(null);
+			$this->schema->create($safe);
+			$this->schema->create($safe);
+			$this->database->insert($explicit, ['status' => 'draft']);
+			$this->database->update($explicit, ['status' => 'published'], ['status' => 'draft']);
+			$this->assertSame([
+				'status'      => 'published',
+				'occurred_at' => null,
+			], $this->database->row('SELECT * FROM %i', $this->database->tableName($explicit)));
+			$this->assertSame(0, (int) $this->database->value('SELECT @@SESSION.explicit_defaults_for_timestamp'));
+		} finally {
+			$this->database->execute('SET SESSION explicit_defaults_for_timestamp = %d', $original);
+		}
+	}
+
 	public function test_schema_creates_and_verifies_column_comments_in_each_backslash_escaping_mode(): void {
 		$originalSqlMode = (string) $this->database->value('SELECT @@SESSION.sql_mode');
 		$sqlModes        = array_values(array_filter(explode(',', $originalSqlMode), static fn (string $mode): bool => $mode !== 'NO_BACKSLASH_ESCAPES'));
@@ -1093,6 +1395,56 @@ final class DatabaseIntegrationTest extends WPTestCase
 		$this->assertSame('YES', $description['Null'] ?? null);
 		$this->assertSame('fallback', $description['Default'] ?? null);
 		$this->assertSame($comment, $description['Comment'] ?? null);
+	}
+
+	/**
+	 * Freeze database time in UTC while preserving a pre-existing frozen or live session clock.
+	 *
+	 * @param callable(): void $callback
+	 */
+	private function withControlledTimestamp(callable $callback): void {
+		$timezone  = (string) $this->database->value('SELECT @@SESSION.time_zone');
+		$timestamp = (string) $this->database->value('SELECT @@SESSION.timestamp');
+		$next      = (string) $this->database->value('SELECT @@SESSION.timestamp');
+		// Reading timestamp=0 returns the changing statement time, not the zero sentinel.
+		$restore = $timestamp === $next ? $timestamp : '0';
+
+		try {
+			$this->database->execute("SET SESSION time_zone = '+00:00'");
+			$this->database->execute('SET SESSION timestamp = 1704067200');
+			$callback();
+		} finally {
+			try {
+				$this->database->execute('SET SESSION timestamp = %f', (float) $restore);
+			} finally {
+				$this->database->execute('SET SESSION time_zone = %s', $timezone);
+			}
+		}
+	}
+
+	/**
+	 * Assert timestamp migration retries only inspect the existing schema.
+	 *
+	 * @param callable(): void $callback
+	 */
+	private function assertNoTimestampDdl(callable $callback): void {
+		$statements = [];
+		$recordDdl  = static function (string $sql) use (&$statements): string {
+			if (preg_match('/\A\s*(?:CREATE|ALTER|DROP)\b/i', $sql) === 1) {
+				$statements[] = $sql;
+			}
+
+			return $sql;
+		};
+		add_filter('query', $recordDdl);
+
+		try {
+			$callback();
+		} finally {
+			remove_filter('query', $recordDdl);
+		}
+
+		$this->assertSame([], $statements);
 	}
 
 	private function table(string $suffix): string {

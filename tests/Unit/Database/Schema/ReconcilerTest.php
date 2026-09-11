@@ -8,6 +8,7 @@ use StellarWP\Foundation\Database\Schema\Reconciler;
 use StellarWP\Foundation\Database\Table\Blueprint;
 use StellarWP\Foundation\Database\Table\Column;
 use StellarWP\Foundation\Database\Table\IndexType;
+use StellarWP\Foundation\Database\Table\ValueObjects\CurrentTimestamp;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\CommentedTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\FakeDatabase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\IndexReconciliationTable;
@@ -48,6 +49,58 @@ final class ReconcilerTest extends TestCase
 		$reconciler->reconcile((new SchemaReconciliationTable('example', 5, true))->blueprint());
 
 		$this->assertSame([], $database->executed);
+	}
+
+	/**
+	 * @dataProvider automaticTimestampMetadata
+	 *
+	 * @param array<string, mixed> $metadata
+	 */
+	#[DataProvider('automaticTimestampMetadata')]
+	public function test_it_compares_automatic_timestamp_semantics(Column $column, array $metadata, bool $matches): void {
+		$database               = new FakeDatabase();
+		$database->rowResults[] = $metadata + [
+			'Type'    => 'datetime',
+			'Null'    => 'NO',
+			'Default' => 'CURRENT_TIMESTAMP',
+			'Extra'   => 'on update CURRENT_TIMESTAMP',
+		];
+		$reconciler = new Reconciler($database, new RecordingSchemaExecutor());
+
+		$this->assertSame($matches, $reconciler->columnMatches(new TestTable('example'), $column));
+	}
+
+	/**
+	 * @return array<string, array{Column, array<string, mixed>, bool}>
+	 */
+	public static function automaticTimestampMetadata(): array {
+		$seconds    = new Column('updated_at', 'datetime', default: new CurrentTimestamp(), hasDefault: true, onUpdateCurrentTimestamp: true);
+		$fractional = new Column('updated_at', 'TIMESTAMP(3)', default: new CurrentTimestamp(), hasDefault: true, onUpdateCurrentTimestamp: true);
+		$created    = new Column('created_at', 'datetime', default: new CurrentTimestamp(), hasDefault: true);
+		$literal    = new Column('label', 'varchar', 40, default: 'CURRENT_TIMESTAMP', hasDefault: true);
+
+		return [
+			'mysql generated marker'                      => [$seconds, ['Extra' => 'DEFAULT_GENERATED on update CURRENT_TIMESTAMP'], true],
+			'mariadb parentheses'                         => [$seconds, ['Default' => 'current_timestamp()', 'Extra' => 'on update current_timestamp()'], true],
+			'explicit zero precision'                     => [$seconds, ['Type' => 'DATETIME(0)', 'Default' => 'CURRENT_TIMESTAMP(0)', 'Extra' => 'on update current_timestamp(0)'], true],
+			'fractional precision'                        => [$fractional, ['Type' => 'timestamp(3)', 'Default' => 'current_timestamp(3)', 'Extra' => 'on update CURRENT_TIMESTAMP(3)'], true],
+			'leading-zero declaration'                    => [
+				new Column('updated_at', 'datetime(06)', default: new CurrentTimestamp(), hasDefault: true, onUpdateCurrentTimestamp: true),
+				['Type' => 'datetime(6)', 'Default' => 'current_timestamp(6)', 'Extra' => 'on update current_timestamp(6)'],
+				true,
+			],
+			'missing default'                             => [$seconds, ['Default' => null], false],
+			'literal date default'                        => [$seconds, ['Default' => '2026-01-01 00:00:00'], false],
+			'missing automatic update'                    => [$seconds, ['Extra' => 'DEFAULT_GENERATED'], false],
+			'unexpected automatic update'                 => [$created, [], false],
+			'different column precision'                  => [$fractional, ['Type' => 'timestamp(6)', 'Default' => 'current_timestamp(3)', 'Extra' => 'on update current_timestamp(3)'], false],
+			'different default precision'                 => [$fractional, ['Type' => 'timestamp(3)', 'Default' => 'current_timestamp(6)', 'Extra' => 'on update current_timestamp(3)'], false],
+			'different update precision'                  => [$fractional, ['Type' => 'timestamp(3)', 'Default' => 'current_timestamp(3)', 'Extra' => 'on update current_timestamp(6)'], false],
+			'unknown extra retained'                      => [$seconds, ['Extra' => 'on update CURRENT_TIMESTAMP INVISIBLE'], false],
+			'literal text matches'                        => [$literal, ['Type' => 'varchar(40)', 'Extra' => ''], true],
+			'literal text remains case sensitive'         => [$literal, ['Type' => 'varchar(40)', 'Default' => 'current_timestamp', 'Extra' => ''], false],
+			'literal text does not normalize parentheses' => [$literal, ['Type' => 'varchar(40)', 'Default' => 'CURRENT_TIMESTAMP()', 'Extra' => ''], false],
+		];
 	}
 
 	public function test_it_accepts_matching_index_metadata(): void {

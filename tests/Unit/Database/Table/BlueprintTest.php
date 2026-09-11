@@ -5,6 +5,7 @@ namespace StellarWP\Foundation\Tests\Unit\Database\Table;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use StellarWP\Foundation\Database\Table\Blueprint;
+use StellarWP\Foundation\Database\Table\Column;
 use StellarWP\Foundation\Database\Table\ColumnDefinition;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\TestTable;
 use StellarWP\Foundation\Tests\TestCase;
@@ -193,38 +194,97 @@ final class BlueprintTest extends TestCase
 		], array_map(static fn ($column): string => $column->sql(), $definition->columns()));
 	}
 
-	public function test_it_defines_datetime_precision_boundaries(): void {
+	/**
+	 * @dataProvider temporalHelpers
+	 *
+	 * @param 'dateTime'|'timestamp' $helper
+	 */
+	#[DataProvider('temporalHelpers')]
+	public function test_it_defines_temporal_precision_boundaries(string $helper, string $type): void {
 		$definition = Blueprint::for(new TestTable('reports'));
 
-		$definition->dateTime('seconds', 0);
-		$definition->dateTime('microseconds', 6);
+		$definition->{$helper}('omitted')->useCurrent();
+		$definition->{$helper}('seconds', 0)->useCurrent();
+		$definition->{$helper}('microseconds', 6)->useCurrent()->useCurrentOnUpdate();
 
 		$this->assertSame([
-			'`seconds` datetime NOT NULL',
-			'`microseconds` datetime(6) NOT NULL',
+			"`omitted` {$type} NOT NULL DEFAULT CURRENT_TIMESTAMP",
+			"`seconds` {$type} NOT NULL DEFAULT CURRENT_TIMESTAMP",
+			"`microseconds` {$type}(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)",
 		], array_map(static fn ($column): string => $column->sql(), $definition->columns()));
+		$this->assertSame([], $definition->errorsForCreate());
 	}
 
 	/**
-	 * @dataProvider invalidDateTimePrecisionProvider
+	 * @return array<string, array{string, string}>
 	 */
-	#[DataProvider('invalidDateTimePrecisionProvider')]
-	public function test_it_rejects_invalid_datetime_precision(int $precision): void {
-		$this->expectException(InvalidArgumentException::class);
-		$this->expectExceptionMessage('Datetime precision must be between 0 and 6.');
-
-		Blueprint::for(new TestTable('reports'))
-			->dateTime('created_at', $precision);
-	}
-
-	/**
-	 * @return array<string, array{int}>
-	 */
-	public static function invalidDateTimePrecisionProvider(): array {
+	public static function temporalHelpers(): array {
 		return [
-			'negative'      => [-1],
-			'above maximum' => [7],
+			'datetime'  => ['dateTime', 'datetime'],
+			'timestamp' => ['timestamp', 'timestamp'],
 		];
+	}
+
+	public function test_it_supports_update_only_nullable_and_custom_temporal_columns(): void {
+		$definition = Blueprint::for(new TestTable('reports'));
+		$definition->timestamp('processed_at', 3)->nullable()->default(null)->useCurrentOnUpdate();
+		$definition->column(new Column('updated_at', 'datetime(6)'))->useCurrent()->useCurrentOnUpdate();
+
+		$this->assertSame([
+			'`processed_at` timestamp(3) NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(3)',
+			'`updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)',
+		], array_map(static fn ($column): string => $column->sql(), $definition->columns()));
+		$this->assertSame([], $definition->errorsForCreate());
+	}
+
+	/**
+	 * @dataProvider invalidTemporalPrecisionProvider
+	 *
+	 * @param 'dateTime'|'timestamp' $helper
+	 */
+	#[DataProvider('invalidTemporalPrecisionProvider')]
+	public function test_it_rejects_invalid_temporal_precision(string $helper, int $precision): void {
+		$this->expectException(InvalidArgumentException::class);
+
+		Blueprint::for(new TestTable('reports'))->{$helper}('created_at', $precision);
+	}
+
+	/**
+	 * @return array<string, array{string, int}>
+	 */
+	public static function invalidTemporalPrecisionProvider(): array {
+		return [
+			'datetime negative'       => ['dateTime', -1],
+			'datetime above maximum'  => ['dateTime', 7],
+			'timestamp negative'      => ['timestamp', -1],
+			'timestamp above maximum' => ['timestamp', 7],
+		];
+	}
+
+	public function test_it_rejects_a_current_timestamp_default_on_a_non_temporal_creation_column(): void {
+		$definition = Blueprint::for(new TestTable('reports'));
+		$definition->string('status')->useCurrent();
+
+		$this->expectException(InvalidArgumentException::class);
+
+		$definition->assertValidForCreate();
+	}
+
+	public function test_it_rejects_invalid_direct_temporal_precision_in_an_alteration(): void {
+		$definition = Blueprint::for(new TestTable('reports'));
+		$definition->column(new Column('updated_at', 'datetime(7)'))->useCurrentOnUpdate()->change();
+
+		$this->expectException(InvalidArgumentException::class);
+
+		$definition->assertValidForAlter();
+	}
+
+	public function test_it_validates_the_completed_default_rather_than_transient_modifiers(): void {
+		$definition = Blueprint::for(new TestTable('reports'));
+		$definition->string('status')->useCurrent()->default('pending');
+
+		$this->assertSame([], $definition->errorsForCreate());
+		$this->assertSame("`status` varchar(191) NOT NULL DEFAULT 'pending'", $definition->columns()[0]->sql());
 	}
 
 	public function test_it_rejects_indexes_that_reference_missing_columns(): void {

@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\Database\Table;
 
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Table\ValueObjects\ColumnComment;
+use StellarWP\Foundation\Database\Table\ValueObjects\CurrentTimestamp;
 use StellarWP\Foundation\Database\Traits\QuotesSqlIdentifiers;
 
 /**
@@ -39,7 +40,8 @@ final readonly class Column
 		public mixed $default = null,
 		public bool $hasDefault = false,
 		public bool $autoIncrement = false,
-		public ?ColumnComment $comment = null
+		public ?ColumnComment $comment = null,
+		public bool $onUpdateCurrentTimestamp = false
 	) {
 		if (! $this->hasDefault && $this->default !== null) {
 			throw new InvalidArgumentException(sprintf(
@@ -51,6 +53,8 @@ final readonly class Column
 
 	/**
 	 * Render this column as the SQL fragment used in a CREATE TABLE statement.
+	 *
+	 * @throws InvalidArgumentException When current-timestamp attributes use an invalid type or precision.
 	 */
 	public function sql(): string {
 		$sql = sprintf(
@@ -64,6 +68,12 @@ final readonly class Column
 
 		if ($default !== null) {
 			$sql .= sprintf(' DEFAULT %s', $default);
+		}
+
+		$onUpdate = $this->onUpdateSql();
+
+		if ($onUpdate !== null) {
+			$sql .= sprintf(' ON UPDATE %s', $onUpdate);
 		}
 
 		if ($this->autoIncrement) {
@@ -89,14 +99,29 @@ final readonly class Column
 	}
 
 	/**
-	 * Return the SQL literal for an explicit default value.
+	 * Return the SQL literal or current-timestamp expression for an explicit default.
+	 *
+	 * @throws InvalidArgumentException When a current-timestamp default uses an invalid type or precision.
 	 */
 	public function defaultSql(): ?string {
 		if (! $this->hasDefault) {
 			return null;
 		}
 
+		if ($this->default instanceof CurrentTimestamp) {
+			return $this->currentTimestampSql();
+		}
+
 		return $this->formatDefault($this->default);
+	}
+
+	/**
+	 * Return the automatic-update expression, or null when none is configured.
+	 *
+	 * @throws InvalidArgumentException When automatic updates use an invalid type or precision.
+	 */
+	public function onUpdateSql(): ?string {
+		return $this->onUpdateCurrentTimestamp ? $this->currentTimestampSql() : null;
 	}
 
 	/**
@@ -135,7 +160,45 @@ final readonly class Column
 			$errors[] = sprintf('Column %s cannot use DEFAULT NULL unless it is nullable.', $this->name);
 		}
 
+		if (($this->default instanceof CurrentTimestamp || $this->onUpdateCurrentTimestamp) && $this->currentTimestampPrecision() === null) {
+			$errors[] = sprintf(
+				'Column %s must use DATETIME or TIMESTAMP with precision between 0 and 6 for CURRENT_TIMESTAMP attributes.',
+				$this->name
+			);
+		}
+
 		return $errors;
+	}
+
+	/**
+	 * Resolve supported temporal precision from the complete SQL type.
+	 */
+	private function currentTimestampPrecision(): ?int {
+		if (preg_match('/\A(?:datetime|timestamp)(?:\s*\(\s*(\d+)\s*\))?\z/i', $this->typeSql(), $parts) !== 1) {
+			return null;
+		}
+
+		$precision = (int) ($parts[1] ?? 0);
+
+		return $precision <= 6 ? $precision : null;
+	}
+
+	/**
+	 * Render the current-timestamp expression shared by defaults and updates.
+	 *
+	 * @throws InvalidArgumentException When the column is not a supported temporal declaration.
+	 */
+	private function currentTimestampSql(): string {
+		$precision = $this->currentTimestampPrecision();
+
+		if ($precision === null) {
+			throw new InvalidArgumentException(sprintf(
+				'Column %s must use DATETIME or TIMESTAMP with precision between 0 and 6 for CURRENT_TIMESTAMP attributes.',
+				$this->name
+			));
+		}
+
+		return $precision === 0 ? 'CURRENT_TIMESTAMP' : sprintf('CURRENT_TIMESTAMP(%d)', $precision);
 	}
 
 	/**

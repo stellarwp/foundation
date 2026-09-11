@@ -6,6 +6,7 @@ use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use StellarWP\Foundation\Database\Table\Column;
 use StellarWP\Foundation\Database\Table\ValueObjects\ColumnComment;
+use StellarWP\Foundation\Database\Table\ValueObjects\CurrentTimestamp;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class ColumnTest extends TestCase
@@ -66,6 +67,103 @@ final class ColumnTest extends TestCase
 			"`id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT 'Customer''s identifier; internal metadata'",
 			$column->sql()
 		);
+	}
+
+	public function test_it_preserves_existing_positional_constructor_arguments(): void {
+		$column = new Column('status', 'varchar', 20, false, true, 'pending', true, false, new ColumnComment('Workflow'));
+
+		$this->assertSame("`status` varchar(20) NULL DEFAULT 'pending' COMMENT 'Workflow'", $column->sql());
+	}
+
+	/**
+	 * @dataProvider temporalTypes
+	 */
+	#[DataProvider('temporalTypes')]
+	public function test_it_uses_column_precision_for_both_current_timestamp_expressions(
+		string $type,
+		?int $length,
+		string $expectedType,
+		string $expectedExpression
+	): void {
+		$column = new Column(
+			'updated_at',
+			$type,
+			$length,
+			default: new CurrentTimestamp(),
+			hasDefault: true,
+			onUpdateCurrentTimestamp: true
+		);
+
+		$this->assertSame(
+			"`updated_at` {$expectedType} NOT NULL DEFAULT {$expectedExpression} ON UPDATE {$expectedExpression}",
+			$column->sql()
+		);
+		$this->assertSame([], $column->validationErrors());
+	}
+
+	/**
+	 * @return array<string, array{string, ?int, string, string}>
+	 */
+	public static function temporalTypes(): array {
+		return [
+			'datetime seconds'        => ['datetime', null, 'datetime', 'CURRENT_TIMESTAMP'],
+			'timestamp explicit zero' => ['timestamp', 0, 'timestamp(0)', 'CURRENT_TIMESTAMP'],
+			'minimum fraction'        => ['datetime', 1, 'datetime(1)', 'CURRENT_TIMESTAMP(1)'],
+			'maximum fraction'        => ['timestamp', 6, 'timestamp(6)', 'CURRENT_TIMESTAMP(6)'],
+			'embedded precision'      => ['datetime(6)', null, 'datetime(6)', 'CURRENT_TIMESTAMP(6)'],
+			'embedded zero'           => ['timestamp(0)', null, 'timestamp(0)', 'CURRENT_TIMESTAMP'],
+			'case and whitespace'     => [' TIMESTAMP ( 3 ) ', null, 'TIMESTAMP ( 3 )', 'CURRENT_TIMESTAMP(3)'],
+		];
+	}
+
+	public function test_current_timestamp_text_remains_a_literal_default(): void {
+		$column = new Column('created_at', 'datetime', default: 'CURRENT_TIMESTAMP', hasDefault: true);
+
+		$this->assertSame("`created_at` datetime NOT NULL DEFAULT 'CURRENT_TIMESTAMP'", $column->sql());
+		$this->assertSame("'CURRENT_TIMESTAMP'", $column->defaultSql());
+		$this->assertNull($column->onUpdateSql());
+	}
+
+	/**
+	 * @dataProvider invalidTemporalTypes
+	 */
+	#[DataProvider('invalidTemporalTypes')]
+	public function test_it_rejects_invalid_temporal_declarations_before_rendering(
+		string $type,
+		?int $length,
+		bool $useCurrent
+	): void {
+		$column = new Column(
+			'managed_at',
+			$type,
+			$length,
+			default: $useCurrent ? new CurrentTimestamp() : null,
+			hasDefault: $useCurrent,
+			onUpdateCurrentTimestamp: ! $useCurrent
+		);
+
+		$this->assertCount(1, $column->validationErrors());
+		$this->expectException(InvalidArgumentException::class);
+
+		$column->sql();
+	}
+
+	/**
+	 * @return array<string, array{string, ?int, bool}>
+	 */
+	public static function invalidTemporalTypes(): array {
+		return [
+			'non-temporal default'        => ['varchar', 20, true],
+			'non-temporal update'         => ['int', 10, false],
+			'date is not datetime'        => ['date', null, true],
+			'negative precision'          => ['datetime', -1, true],
+			'excess precision'            => ['timestamp', 7, false],
+			'embedded negative precision' => ['timestamp(-1)', null, false],
+			'embedded excess precision'   => ['datetime(7)', null, true],
+			'duplicate precision'         => ['datetime(3)', 3, false],
+			'fractional precision'        => ['timestamp(1.5)', null, true],
+			'trailing type attributes'    => ['datetime unsigned', null, false],
+		];
 	}
 
 	public function test_it_canonicalizes_common_custom_type_spellings(): void {

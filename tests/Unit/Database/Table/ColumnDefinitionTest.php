@@ -4,6 +4,8 @@ namespace StellarWP\Foundation\Tests\Unit\Database\Table;
 
 use StellarWP\Foundation\Database\Table\Column;
 use StellarWP\Foundation\Database\Table\ColumnDefinition;
+use StellarWP\Foundation\Database\Table\ValueObjects\ColumnComment;
+use StellarWP\Foundation\Database\Table\ValueObjects\CurrentTimestamp;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class ColumnDefinitionTest extends TestCase
@@ -13,20 +15,14 @@ final class ColumnDefinitionTest extends TestCase
 			->unsigned()
 			->nullable()
 			->notNull()
-			->default(10)
 			->autoIncrement()
 			->comment('Internal identifier')
 			->toColumn();
 
-		$this->assertSame('id', $column->name);
-		$this->assertSame('bigint', $column->type);
-		$this->assertSame(20, $column->length);
-		$this->assertTrue($column->unsigned);
-		$this->assertFalse($column->nullable);
-		$this->assertSame(10, $column->default);
-		$this->assertTrue($column->hasDefault);
-		$this->assertTrue($column->autoIncrement);
-		$this->assertSame('Internal identifier', $column->commentText());
+		$this->assertSame(
+			"`id` bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT 'Internal identifier'",
+			$column->sql()
+		);
 	}
 
 	public function test_an_explicit_null_default_does_not_change_nullability(): void {
@@ -34,9 +30,7 @@ final class ColumnDefinitionTest extends TestCase
 			->default(null)
 			->toColumn();
 
-		$this->assertFalse($column->nullable);
-		$this->assertTrue($column->hasDefault);
-		$this->assertSame('NULL', $column->defaultSql());
+		$this->assertSame('`completed_at` datetime NOT NULL DEFAULT NULL', $column->sql());
 	}
 
 	public function test_modifiers_are_idempotent(): void {
@@ -49,17 +43,62 @@ final class ColumnDefinitionTest extends TestCase
 	}
 
 	public function test_created_columns_are_immutable_snapshots(): void {
-		$definition = new ColumnDefinition(new Column('status', 'varchar', 20));
+		$definition = new ColumnDefinition(new Column('updated_at', 'datetime', 6));
 		$original   = $definition->toColumn();
+		$current    = $definition->useCurrent()->toColumn();
+		$automatic  = $definition->useCurrentOnUpdate()->toColumn();
+		$nullable   = $definition->nullable()->default(null)->toColumn();
 
-		$definition->nullable()->default('pending');
-		$modified = $definition->toColumn();
+		$this->assertSame('`updated_at` datetime(6) NOT NULL', $original->sql());
+		$this->assertSame('`updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)', $current->sql());
+		$this->assertSame(
+			'`updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)',
+			$automatic->sql()
+		);
+		$this->assertSame('`updated_at` datetime(6) NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(6)', $nullable->sql());
+	}
 
-		$this->assertNotSame($original, $modified);
-		$this->assertFalse($original->nullable);
-		$this->assertFalse($original->hasDefault);
-		$this->assertTrue($modified->nullable);
-		$this->assertSame('pending', $modified->default);
-		$this->assertTrue($modified->hasDefault);
+	public function test_the_last_default_modifier_wins_without_changing_automatic_updates(): void {
+		$definition = new ColumnDefinition(new Column('updated_at', 'timestamp', 3));
+		$definition->nullable()->useCurrentOnUpdate()->default(null)->useCurrent();
+
+		$this->assertSame(
+			'`updated_at` timestamp(3) NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)',
+			$definition->toColumn()->sql()
+		);
+
+		$definition->default('CURRENT_TIMESTAMP');
+
+		$this->assertSame(
+			"`updated_at` timestamp(3) NULL DEFAULT 'CURRENT_TIMESTAMP' ON UPDATE CURRENT_TIMESTAMP(3)",
+			$definition->toColumn()->sql()
+		);
+	}
+
+	public function test_automatic_updates_do_not_add_a_default_or_change_nullability(): void {
+		$definition = new ColumnDefinition(new Column('updated_at', 'datetime'));
+		$definition->useCurrentOnUpdate()->useCurrentOnUpdate();
+
+		$this->assertSame('`updated_at` datetime NOT NULL ON UPDATE CURRENT_TIMESTAMP', $definition->toColumn()->sql());
+	}
+
+	public function test_it_preserves_automatic_attributes_from_a_direct_column_seed(): void {
+		$definition = new ColumnDefinition(new Column(
+			'updated_at',
+			'TIMESTAMP(6)',
+			null,
+			false,
+			true,
+			new CurrentTimestamp(),
+			true,
+			false,
+			new ColumnComment('Database managed'),
+			true
+		));
+
+		$this->assertSame(
+			"`updated_at` TIMESTAMP(6) NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT 'Database managed'",
+			$definition->toColumn()->sql()
+		);
 	}
 }

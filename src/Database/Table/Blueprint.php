@@ -130,6 +130,19 @@ final class Blueprint
 	}
 
 	/**
+	 * Add a TIMESTAMP column, optionally with fractional-second precision.
+	 *
+	 * @throws InvalidArgumentException When the column name is already defined or precision is outside the database-supported range.
+	 */
+	public function timestamp(string $name, ?int $precision = null): ColumnDefinition {
+		if ($precision !== null && ($precision < 0 || $precision > 6)) {
+			throw new InvalidArgumentException('Timestamp precision must be between 0 and 6.');
+		}
+
+		return $this->column(new Column($name, 'timestamp', $precision === 0 ? null : $precision));
+	}
+
+	/**
 	 * Add a TEXT column.
 	 *
 	 * @throws InvalidArgumentException When the column name is already defined.

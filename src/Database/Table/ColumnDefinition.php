@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\Database\Table;
 
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Table\ValueObjects\ColumnComment;
+use StellarWP\Foundation\Database\Table\ValueObjects\CurrentTimestamp;
 
 /**
  * Applies fluent modifiers to one explicitly selected database column.
@@ -28,21 +29,24 @@ final class ColumnDefinition
 
 	private ?ColumnComment $comment;
 
+	private bool $onUpdateCurrentTimestamp;
+
 	private bool $changesExistingColumn = false;
 
 	/**
 	 * Begin configuring a column from an immutable seed declaration.
 	 */
 	public function __construct(Column $column) {
-		$this->name          = $column->name;
-		$this->type          = $column->type;
-		$this->length        = $column->length;
-		$this->unsigned      = $column->unsigned;
-		$this->nullable      = $column->nullable;
-		$this->default       = $column->default;
-		$this->hasDefault    = $column->hasDefault;
-		$this->autoIncrement = $column->autoIncrement;
-		$this->comment       = $column->comment;
+		$this->name                     = $column->name;
+		$this->type                     = $column->type;
+		$this->length                   = $column->length;
+		$this->unsigned                 = $column->unsigned;
+		$this->nullable                 = $column->nullable;
+		$this->default                  = $column->default;
+		$this->hasDefault               = $column->hasDefault;
+		$this->autoIncrement            = $column->autoIncrement;
+		$this->comment                  = $column->comment;
+		$this->onUpdateCurrentTimestamp = $column->onUpdateCurrentTimestamp;
 	}
 
 	/**
@@ -76,6 +80,26 @@ final class ColumnDefinition
 	public function default(mixed $default): self {
 		$this->default    = $default;
 		$this->hasDefault = true;
+
+		return $this;
+	}
+
+	/**
+	 * Default a DATETIME or TIMESTAMP column to the database session's current time.
+	 *
+	 * This replaces any earlier default without changing nullability or updates.
+	 */
+	public function useCurrent(): self {
+		return $this->default(new CurrentTimestamp());
+	}
+
+	/**
+	 * Automatically update a DATETIME or TIMESTAMP column when its row changes.
+	 *
+	 * This leaves the default and nullability unchanged.
+	 */
+	public function useCurrentOnUpdate(): self {
+		$this->onUpdateCurrentTimestamp = true;
 
 		return $this;
 	}
@@ -132,7 +156,8 @@ final class ColumnDefinition
 			default: $this->default,
 			hasDefault: $this->hasDefault,
 			autoIncrement: $this->autoIncrement,
-			comment: $this->comment
+			comment: $this->comment,
+			onUpdateCurrentTimestamp: $this->onUpdateCurrentTimestamp
 		);
 	}
 }

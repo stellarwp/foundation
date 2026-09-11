@@ -204,6 +204,7 @@ Use the named helpers for common WordPress table columns:
 | `tinyInteger( 'enabled', 1 )` | `TINYINT` | Flags and small numeric values |
 | `bigInteger( 'external_id' )` | Signed `BIGINT` | Large numeric values |
 | `dateTime( 'created_at' )` | `DATETIME`, optionally with precision from `1` to `6` | WordPress-compatible timestamps |
+| `timestamp( 'occurred_at' )` | `TIMESTAMP`, optionally with precision from `1` to `6` | Times stored with database session time-zone conversion |
 | `text( 'excerpt' )` | `TEXT` | Medium text values |
 | `longText( 'payload' )` | `LONGTEXT` | Serialized payloads and large text values |
 
@@ -217,7 +218,7 @@ $blueprint->dateTime( 'published_at' )->nullable()->default( null );
 $blueprint->longText( 'payload' )->comment( 'Serialized report payload' );
 ```
 
-Available modifiers are `unsigned()`, `nullable()`, `notNull()`, `default()`, `autoIncrement()`, and `comment()`. An explicit `default( null )` is valid only on a nullable column.
+Available modifiers are `unsigned()`, `nullable()`, `notNull()`, `default()`, `useCurrent()`, `useCurrentOnUpdate()`, `autoIncrement()`, and `comment()`. An explicit `default( null )` is valid only on a nullable column.
 
 Prefer `bigIncrements()` for the usual generated primary key. When applying `autoIncrement()` manually, use an integer column without a default, define only one auto-increment column in the table, and make it the first column in a primary, unique, or regular index. Foundation validates these requirements before executing schema SQL.
 
@@ -237,6 +238,58 @@ $blueprint->column( new Column( 'checksum', 'varbinary', 32 ) )->nullable();
 ```
 
 For decimal columns, specify both precision and scale when fractional values are needed, such as `decimal(10,2)`. Omitting the scale uses zero fractional digits: `decimal(10)` and `new Column( 'amount', 'decimal', 10 )` both declare `decimal(10,0)`. Omitting precision as well uses `decimal(10,0)`. The `numeric` and `dec` aliases follow the same rules.
+
+### Let the database manage timestamps
+
+Use `useCurrent()` for a current-time default and `useCurrentOnUpdate()` for automatic updates when another stored value in the row changes. Both work with `dateTime()` and `timestamp()`. Neither modifier changes nullability, and automatic updates do not imply a current-time default.
+
+In `src/Database/Migrations/Create_Reports_Table.php`, define creation and modification times in the migration's blueprint:
+
+```php title="Create_Reports_Table.php"
+public function up( Schema $schema ): void {
+	$blueprint = Blueprint::for( $this->table );
+	$blueprint->bigIncrements( 'id' );
+	$blueprint->string( 'status', 20 )->default( 'draft' );
+	$blueprint->dateTime( 'created_at' )->useCurrent();
+	$blueprint->dateTime( 'updated_at' )->useCurrent()->useCurrentOnUpdate();
+
+	$schema->create( $blueprint );
+}
+```
+
+An insert that omits these values receives the database's current time. A later update changes `updated_at` but leaves `created_at` alone. An update that leaves every stored value unchanged does not advance the timestamp. Explicit timestamp assignments take precedence; explicitly assigning null stores null on a nullable column.
+
+The column controls fractional-second precision. Omitted precision and `0` mean whole seconds; `1` through `6` retain that many fractional digits. The generated default and update expressions use the same precision. In `src/Database/Migrations/Create_Reports_Table.php`, replace the earlier `updated_at` declaration and optionally add a nullable processing time:
+
+```php title="Create_Reports_Table.php"
+$blueprint->dateTime( 'updated_at', 6 )->useCurrent()->useCurrentOnUpdate();
+$blueprint->timestamp( 'processed_at', 3 )->nullable()->default( null )->useCurrentOnUpdate();
+```
+
+The first declaration emits `DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)`. The second stays null on insertion and receives the current time when another stored value changes.
+
+`useCurrent()` and `default()` replace the same default: the last call wins. A string such as `default( 'CURRENT_TIMESTAMP' )` remains literal text, not executable SQL. Foundation rejects the temporal modifiers on incompatible types or invalid precision before executing schema SQL.
+
+:::caution[Database time is not WordPress time]
+These values use the database session's clock and time zone, not PHP time or the WordPress timezone setting. `TIMESTAMP` converts between the session time zone and UTC storage; `DATETIME` does not perform that conversion. Keep existing column types unless a migration deliberately changes their meaning.
+:::
+
+To change automatic behavior, create a new alteration migration and declare the complete column with `change()`. In `src/Database/Migrations/Stop_Automatic_Report_Updates.php`, for example:
+
+```php title="Stop_Automatic_Report_Updates.php"
+public function up( Schema $schema ): void {
+	$blueprint = Blueprint::for( $this->table );
+	$blueprint->dateTime( 'updated_at' )->useCurrent()->change();
+
+	$schema->alter( $blueprint );
+}
+```
+
+This keeps the insertion default but removes automatic updates. Include any existing nullability, precision, and comments that must survive the change. To remove current-time initialization too, omit `useCurrent()` and declare the intended literal or nullable null default. Matching retries verify the attributes without replaying DDL or rewriting stored timestamps.
+
+:::caution[Legacy implicit TIMESTAMP defaults]
+With `explicit_defaults_for_timestamp=OFF`, the database can add automatic initialization and updates to the first bare `TIMESTAMP` column. Foundation rejects those undeclared attributes rather than changing the connection setting or accepting a different schema. Enable explicit defaults in the database configuration, or declare an explicit default or a nullable column, such as `timestamp( 'processed_at' )->nullable()->default( null )`, then retry. If partial creation left an incompatible table, repair it through an explicit alteration; creation retries only verify existing tables.
+:::
 
 ### Add indexes
 
