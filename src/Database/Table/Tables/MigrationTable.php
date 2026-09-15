@@ -3,10 +3,13 @@
 namespace StellarWP\Foundation\Database\Table\Tables;
 
 use StellarWP\Foundation\Database\Contracts\TableGateway;
+use StellarWP\Foundation\Database\Migration\StoreSchema;
 use StellarWP\Foundation\Database\Table\Table;
 
 /**
  * Defines the migration ledger table used to record completed migrations.
+ *
+ * @see StoreSchema::initializeLedger()
  */
 final readonly class MigrationTable extends Table
 {

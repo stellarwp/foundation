@@ -3,10 +3,13 @@
 namespace StellarWP\Foundation\Database\Table\Tables;
 
 use StellarWP\Foundation\Database\Contracts\TableGateway;
+use StellarWP\Foundation\Database\Migration\StoreSchema;
 use StellarWP\Foundation\Database\Table\Table;
 
 /**
  * Defines the database-backed lock table used during migration runs.
+ *
+ * @see StoreSchema::initializeLock()
  */
 final readonly class LockTable extends Table
 {
