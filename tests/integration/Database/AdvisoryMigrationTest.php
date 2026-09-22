@@ -254,7 +254,8 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 
 				try {
 					$connection->executeStatement("UPDATE {$this->table} SET name = 'Wrong'");
-				} catch (MigrationInterrupted) {
+				} catch (Throwable $failure) {
+					self::assertInstanceOf(MigrationInterrupted::class, $failure);
 					$this->source->__set('dbh', $native);
 				}
 			})->migrate();

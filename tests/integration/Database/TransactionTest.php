@@ -137,7 +137,8 @@ final class TransactionTest extends DatabaseTestCase
 				try {
 					$this->connection->insert($this->table, ['id' => 2, 'name' => 'Must not execute']);
 					self::fail('A failed transaction must reject further SQL.');
-				} catch (TransactionFailed) {
+				} catch (Throwable $failure) {
+					self::assertInstanceOf(TransactionFailed::class, $failure);
 				}
 			});
 			self::fail('Expected terminal failure.');

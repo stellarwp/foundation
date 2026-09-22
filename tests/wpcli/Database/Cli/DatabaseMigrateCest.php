@@ -56,10 +56,13 @@ final class DatabaseMigrateCest
 	}
 
 	private function dropTables(WPCLITester $I): void {
-		$I->cli(['db', 'prefix']);
-		$I->seeResultCodeIs(0);
-		$prefix = trim($I->grabLastShellOutput());
-		$I->cli(['db', 'query', sprintf('DROP TABLE IF EXISTS %sfoundation_cli_migrations, %sfoundation_cli_example', $prefix, $prefix)]);
+		$I->cli(['eval', <<<'PHP'
+			global $wpdb;
+			$prefix = $wpdb->prefix;
+			if ($wpdb->query("DROP TABLE IF EXISTS {$prefix}foundation_cli_migrations, {$prefix}foundation_cli_example") === false) {
+				WP_CLI::error($wpdb->last_error);
+			}
+			PHP]);
 		$I->seeResultCodeIs(0);
 	}
 }
