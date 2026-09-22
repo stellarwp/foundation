@@ -70,7 +70,7 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertSame(Command::SUCCESS, $statusCode);
 		$this->assertFileExists($path);
 		$this->assertStringContainsString('Created: src/Database/Tables/Reports_Table.php', $tester->getDisplay());
-		$this->assertStringContainsString('Create a migration that defines this table with Blueprint and Schema::create().', $tester->getDisplay());
+		$this->assertStringContainsString('Create a migration that defines this table with Blueprint::create().', $tester->getDisplay());
 
 		$contents = (string) file_get_contents($path);
 
@@ -114,10 +114,10 @@ final class DatabaseCommandTest extends TestCase
 		$provider  = (string) file_get_contents($providerPath);
 
 		$this->assertStringContainsString('use Acme\\Plugin\\Database\\Tables\\Reports_Table;', $migration);
-		$this->assertStringContainsString('$blueprint = Blueprint::for( $this->table );', $migration);
-		$this->assertStringContainsString("\$blueprint->bigIncrements( 'id' );", $migration);
+
+		$this->assertStringContainsString("\$table->bigIncrements( 'id' );", $migration);
 		$this->assertStringContainsString('Define the complete initial schema before running this migration.', $migration);
-		$this->assertStringContainsString('$schema->create( $blueprint );', $migration);
+		$this->assertStringContainsString('$table = $schema->create( $this->table );', $migration);
 		$this->assertStringContainsString('$schema->drop( $this->table );', $migration);
 		$this->assertStringContainsString('$this->container->singleton( Reports_Table::class );', $provider);
 		$this->assertStringContainsString('$c->get( Create_Reports_Table::class ),', $provider);
@@ -254,15 +254,15 @@ final class DatabaseCommandTest extends TestCase
 		$contents = (string) file_get_contents($path);
 
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Database\\Migrations;', $contents);
-		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Contracts\\Migration;', $contents);
-		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Contracts\\Schema;', $contents);
+		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Migration\\Contracts\\Migration;', $contents);
+		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Migration\\Schema\\Blueprint;', $contents);
 		$this->assertStringContainsString('use Acme\\Plugin\\Database\\Tables\\Reports_Table;', $contents);
 		$this->assertStringContainsString('final readonly class Create_Reports_Table implements Migration {', $contents);
 		$this->assertStringContainsString("public const string ID = '2026_06_26_000001_create_reports_table';", $contents);
 		$this->assertStringContainsString('private Reports_Table $table', $contents);
-		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Table\\Blueprint;', $contents);
-		$this->assertStringContainsString('$blueprint = Blueprint::for( $this->table );', $contents);
-		$this->assertStringContainsString('$schema->create( $blueprint );', $contents);
+		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Migration\\Schema\\Blueprint;', $contents);
+
+		$this->assertStringContainsString('$table = $schema->create( $this->table );', $contents);
 		$this->assertStringContainsString('$schema->drop( $this->table );', $contents);
 		$this->assertStringNotContainsString('CreateTable', $contents);
 	}
@@ -303,8 +303,8 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertStringContainsString('use Acme\\Plugin\\Database\\Tables\\Reports_Table;', $contents);
 		$this->assertStringContainsString('use StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration;', $contents);
 		$this->assertStringContainsString('private Reports_Table $table', $contents);
-		$this->assertStringContainsString('$blueprint = Blueprint::for( $this->table );', $contents);
-		$this->assertStringContainsString('$schema->alter( $blueprint );', $contents);
+
+		$this->assertStringContainsString('$table = $schema->table( $this->table );', $contents);
 		$this->assertStringContainsString('throw IrreversibleMigration::forMigration( self::ID );', $contents);
 		$this->assertStringNotContainsString('$schema->drop( $this->table );', $contents);
 	}
@@ -662,8 +662,8 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertSame(Command::SUCCESS, $statusCode);
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Storage\\Migrations;', $contents);
 		$this->assertStringContainsString('use Acme\\Plugin\\Storage\\Audit_Log_Table;', $contents);
-		$this->assertStringContainsString('$blueprint = Blueprint::for( $this->table );', $contents);
-		$this->assertStringContainsString('$schema->alter( $blueprint );', $contents);
+
+		$this->assertStringContainsString('$table = $schema->table( $this->table );', $contents);
 		$this->assertStringNotContainsString('$schema->drop( $this->table );', $contents);
 	}
 
@@ -683,8 +683,8 @@ final class DatabaseCommandTest extends TestCase
 		$this->assertFalse($this->providerCommand($root)->getDefinition()->hasOption('force'));
 		$this->assertStringContainsString('namespace Acme\\Plugin\\Storage;', $contents);
 		$this->assertStringContainsString('final class Database_Provider extends Service_Provider {', $contents);
-		$this->assertStringContainsString('private bool $registered = false;', $contents);
-		$this->assertStringContainsString('if ( $this->registered ) {', $contents);
+		$this->assertStringNotContainsString('private bool $registered = false;', $contents);
+		$this->assertStringNotContainsString('if ( $this->registered ) {', $contents);
 	}
 
 	public function test_database_provider_generator_refuses_to_replace_an_existing_provider(): void {
@@ -1912,20 +1912,20 @@ PHP);
 		$genericContents   = (string) file_get_contents($root . '/src/Database/Migrations/Bump_Version.php');
 
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Table\\Table;', $tableContents);
-		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Migration;', $migrationContents);
-		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Schema;', $migrationContents);
-		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Table\\Blueprint;', $migrationContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Migration\\Contracts\\Migration;', $migrationContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Migration\\Schema\\Blueprint;', $migrationContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Migration\\Schema\\Blueprint;', $migrationContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration;', $alterContents);
-		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Migration;', $alterContents);
-		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Schema;', $alterContents);
-		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Table\\Blueprint;', $alterContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Migration\\Contracts\\Migration;', $alterContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Migration\\Schema\\Blueprint;', $alterContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Migration\\Schema\\Blueprint;', $alterContents);
 		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration;', $genericContents);
-		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Migration;', $genericContents);
-		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Contracts\\Schema;', $genericContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Migration\\Contracts\\Migration;', $genericContents);
+		$this->assertStringContainsString('use Acme\\Product\\StellarWP\\Foundation\\Database\\Migration\\Schema\\Blueprint;', $genericContents);
 		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\Contracts\\Database;', $tableContents);
 		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\Table\\Table;', $tableContents);
-		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\Table\\Blueprint;', $tableContents);
-		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\Contracts\\Migration;', $migrationContents);
+		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\Migration\\Schema\\Blueprint;', $tableContents);
+		$this->assertStringNotContainsString('use StellarWP\\Foundation\\Database\\Migration\\Contracts\\Migration;', $migrationContents);
 	}
 
 	public function test_database_provider_generator_uses_strauss_namespace_prefix_for_foundation_imports(): void {
@@ -2196,7 +2196,9 @@ PHP);
 
 		yield 'padded' => [' padded ', 'surrounding whitespace'];
 
-		yield 'integer-like' => ['123', 'integer-like'];
+		yield 'reserved zero' => ['0', 'reserved'];
+
+		yield 'reserved latest' => ['latest', 'reserved'];
 
 		yield 'over ledger limit' => [str_repeat('a', 192), 'cannot exceed 191 bytes'];
 	}

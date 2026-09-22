@@ -13,6 +13,8 @@ interface TableNameResolver
 	 * Resolve and validate a table's physical name for the active database scope.
 	 *
 	 * @throws DatabaseException When the table name is invalid for the active database.
+	 *
+	 * @return non-empty-string
 	 */
 	public function tableName(Table $table): string;
 }

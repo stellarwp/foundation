@@ -5,15 +5,20 @@ namespace StellarWP\Foundation\Database\Lock;
 use DateMalformedStringException;
 use DateTimeImmutable;
 use DateTimeZone;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception;
+use Doctrine\DBAL\Schema\Column;
+use Doctrine\DBAL\Schema\PrimaryKeyConstraint;
+use Doctrine\DBAL\Schema\Table;
+use Doctrine\DBAL\Types\Types;
 use InvalidArgumentException;
-use StellarWP\Foundation\Database\Contracts\Database;
-use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use StellarWP\Foundation\Lock\LockToken;
 use StellarWP\Foundation\Lock\Traits\GeneratesLockOwner;
 use StellarWP\Foundation\Lock\Traits\ValidatesLockTtl;
+use Throwable;
 
 /**
  * Database-backed lock implementation for WordPress environments.
@@ -27,9 +32,37 @@ final readonly class DatabaseLock implements Lock
 	 * Create a lock backend using the configured WordPress lock table.
 	 */
 	public function __construct(
-		private Database $database,
+		private Connection $database,
 		private LockTable $table
 	) {
+	}
+
+	/**
+	 * Create lock storage during application activation or deployment.
+	 *
+	 * @throws Exception When storage cannot be inspected or created.
+	 */
+	public function initialize(): void {
+		$manager = $this->database->createSchemaManager();
+
+		if ($manager->tablesExist([$this->table->name()])) {
+			return;
+		}
+		$table = Table::editor()->setUnquotedName($this->table->name())->setOptions(['engine' => 'InnoDB'])
+			->setColumns(
+				Column::editor()->setUnquotedName('name')->setTypeName(Types::BINARY)->setLength(191)->setNotNull(true)->create(),
+				Column::editor()->setUnquotedName('owner')->setTypeName(Types::BINARY)->setLength(64)->setNotNull(true)->create(),
+				Column::editor()->setUnquotedName('expires_at')->setTypeName(Types::DATETIME_MUTABLE)->setColumnDefinition('DATETIME(6) NOT NULL')->create(),
+				Column::editor()->setUnquotedName('created_at')->setTypeName(Types::DATETIME_MUTABLE)->setColumnDefinition('DATETIME(6) NOT NULL')->create(),
+				Column::editor()->setUnquotedName('updated_at')->setTypeName(Types::DATETIME_MUTABLE)->setColumnDefinition('DATETIME(6) NOT NULL')->create(),
+			)
+			->setPrimaryKeyConstraint(PrimaryKeyConstraint::editor()->setUnquotedColumnNames('name')->create())->create();
+
+		try {
+			$manager->createTable($table);
+		} catch (\Doctrine\DBAL\Exception\TableExistsException) {
+			// Another activation created the same configured storage concurrently.
+		}
 	}
 
 	/**
@@ -45,40 +78,33 @@ final readonly class DatabaseLock implements Lock
 		$owner = $this->generateLockOwner();
 
 		try {
-			$table = $this->database->tableName($this->table);
+			$table = $this->table->quotedName();
 
-			$this->database->execute(
-				'INSERT INTO %i (name, owner, expires_at, created_at, updated_at)
-					VALUES (%s, %s, TIMESTAMPADD(SECOND, %d, UTC_TIMESTAMP(6)), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+			$this->database->executeStatement(
+				"INSERT INTO {$table} (name, owner, expires_at, created_at, updated_at)
+					VALUES (?, ?, TIMESTAMPADD(SECOND, ?, UTC_TIMESTAMP(6)), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 					ON DUPLICATE KEY UPDATE
-						owner = IF(expires_at <= UTC_TIMESTAMP(6), %s, owner),
+						owner = IF(expires_at <= UTC_TIMESTAMP(6), ?, owner),
 						updated_at = IF(expires_at <= UTC_TIMESTAMP(6), UTC_TIMESTAMP(6), updated_at),
 						expires_at = IF(
 							expires_at <= UTC_TIMESTAMP(6),
-							TIMESTAMPADD(SECOND, %d, UTC_TIMESTAMP(6)),
+							TIMESTAMPADD(SECOND, ?, UTC_TIMESTAMP(6)),
 							expires_at
-						)',
-				$table,
-				$name,
-				$owner,
-				$ttl,
-				$owner,
-				$ttl
+						)",
+				[$name, $owner, $ttl, $owner, $ttl]
 			);
 
-			$row = $this->database->row(
-				'SELECT expires_at FROM %i
-					WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6)
-					LIMIT 1',
-				$table,
-				$name,
-				$owner
+			$row = $this->database->fetchAssociative(
+				"SELECT expires_at FROM {$table}
+					WHERE name = ? AND owner = ? AND expires_at > UTC_TIMESTAMP(6)
+					LIMIT 1",
+				[$name, $owner]
 			);
-		} catch (DatabaseException $exception) {
+		} catch (Throwable $exception) {
 			throw new LockUnavailableException('The database could not determine the lock acquisition result.', 0, $exception);
 		}
 
-		if ($row === null) {
+		if ($row === false) {
 			return null;
 		}
 
@@ -96,13 +122,11 @@ final readonly class DatabaseLock implements Lock
 	 */
 	public function release(LockToken $token): bool {
 		try {
-			return $this->database->execute(
-				'DELETE FROM %i WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6)',
-				$this->database->tableName($this->table),
-				$token->name,
-				$token->owner
+			return $this->database->executeStatement(
+				'DELETE FROM ' . $this->table->quotedName() . ' WHERE name = ? AND owner = ? AND expires_at > UTC_TIMESTAMP(6)',
+				[$token->name, $token->owner]
 			) > 0;
-		} catch (DatabaseException $exception) {
+		} catch (Throwable $exception) {
 			throw new LockUnavailableException('The database could not determine the lock release result.', 0, $exception);
 		}
 	}
@@ -117,28 +141,23 @@ final readonly class DatabaseLock implements Lock
 		$this->assertValidLockTtl($ttl);
 
 		try {
-			$table = $this->database->tableName($this->table);
+			$table = $this->table->quotedName();
 
-			$this->database->execute(
-				'UPDATE %i SET expires_at = TIMESTAMPADD(SECOND, %d, UTC_TIMESTAMP(6)), updated_at = UTC_TIMESTAMP(6)
-					WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6)',
-				$table,
-				$ttl,
-				$token->name,
-				$token->owner
+			$this->database->executeStatement(
+				"UPDATE {$table} SET expires_at = TIMESTAMPADD(SECOND, ?, UTC_TIMESTAMP(6)), updated_at = UTC_TIMESTAMP(6)
+					WHERE name = ? AND owner = ? AND expires_at > UTC_TIMESTAMP(6)",
+				[$ttl, $token->name, $token->owner]
 			);
 
-			$row = $this->database->row(
-				'SELECT expires_at FROM %i WHERE name = %s AND owner = %s AND expires_at > UTC_TIMESTAMP(6) LIMIT 1',
-				$table,
-				$token->name,
-				$token->owner
+			$row = $this->database->fetchAssociative(
+				"SELECT expires_at FROM {$table} WHERE name = ? AND owner = ? AND expires_at > UTC_TIMESTAMP(6) LIMIT 1",
+				[$token->name, $token->owner]
 			);
-		} catch (DatabaseException $exception) {
+		} catch (Throwable $exception) {
 			throw new LockUnavailableException('The database could not determine the lock refresh result.', 0, $exception);
 		}
 
-		if ($row === null) {
+		if ($row === false) {
 			return null;
 		}
 
@@ -155,12 +174,11 @@ final readonly class DatabaseLock implements Lock
 		$this->assertValidName($name);
 
 		try {
-			return $this->database->row(
-				'SELECT name FROM %i WHERE name = %s AND expires_at > UTC_TIMESTAMP(6) LIMIT 1',
-				$this->database->tableName($this->table),
-				$name
-			) !== null;
-		} catch (DatabaseException $exception) {
+			return $this->database->fetchAssociative(
+				'SELECT name FROM ' . $this->table->quotedName() . ' WHERE name = ? AND expires_at > UTC_TIMESTAMP(6) LIMIT 1',
+				[$name]
+			) !== false;
+		} catch (Throwable $exception) {
 			throw new LockUnavailableException('The database could not determine whether the lock exists.', 0, $exception);
 		}
 	}

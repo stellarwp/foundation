@@ -2,18 +2,11 @@
 
 namespace StellarWP\Foundation\Database\Migration\Exceptions;
 
-use StellarWP\Foundation\Database\Exceptions\DatabaseException;
+use RuntimeException;
 
 /**
- * Reports a migration ledger write that could not be confirmed.
+ * Schema work completed but recording its result failed; retry through the migrator.
  */
-final class LedgerFailure extends DatabaseException
+final class LedgerFailure extends RuntimeException
 {
-	public static function notInsertedAfterRun(string $migration): self {
-		return new self(sprintf('Migration "%s" ran but its ledger record was not inserted.', $migration));
-	}
-
-	public static function notDeletedAfterRollback(string $migration): self {
-		return new self(sprintf('Migration "%s" was rolled back but its ledger record was not deleted.', $migration));
-	}
 }

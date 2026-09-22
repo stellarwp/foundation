@@ -14,14 +14,14 @@ final readonly class {{ class }} implements Migration {
 		return self::ID;
 	}
 
-	public function up( Schema $schema ): void {
+	public function up( Blueprint $schema ): void {
 		// Add migration behavior here.
 	}
 
 	/**
 	 * @throws IrreversibleMigration Until a safe inverse is implemented.
 	 */
-	public function down( Schema $schema ): void {
+	public function down( Blueprint $schema ): void {
 		throw IrreversibleMigration::forMigration( self::ID );
 	}
 

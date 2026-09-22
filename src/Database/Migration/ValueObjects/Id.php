@@ -14,7 +14,7 @@ final readonly class Id
 	/**
 	 * Validate and retain an identifier that can be stored safely in the ledger.
 	 *
-	 * @throws InvalidMigrationId When the identifier is blank, padded, integer-like, or too long for the ledger.
+	 * @throws InvalidMigrationId When the identifier is blank, padded, reserved, or too long for the ledger.
 	 */
 	public function __construct(
 		public string $value
@@ -27,8 +27,8 @@ final readonly class Id
 			throw new InvalidMigrationId(sprintf('Migration IDs cannot exceed %d bytes.', self::MAX_BYTES));
 		}
 
-		if (preg_match('/^(?:0|-?[1-9][0-9]*)$/D', $this->value) === 1) {
-			throw new InvalidMigrationId('Migration IDs cannot be integer-like strings.');
+		if (in_array($this->value, ['0', 'latest'], true)) {
+			throw new InvalidMigrationId('Migration IDs cannot use the reserved targets 0 or latest.');
 		}
 	}
 }

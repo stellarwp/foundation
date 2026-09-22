@@ -4,7 +4,6 @@ namespace {{ namespace }};
 
 use {{ foundation_database_migration }};
 use {{ foundation_database_schema }};
-use {{ foundation_database_blueprint }};
 use {{ table_namespace }}\{{ table_class }};
 
 final readonly class {{ class }} implements Migration {
@@ -20,17 +19,16 @@ final readonly class {{ class }} implements Migration {
 		return self::ID;
 	}
 
-	public function up( Schema $schema ): void {
-		$blueprint = Blueprint::for( $this->table );
+	public function up( Blueprint $schema ): void {
+		$table = $schema->create( $this->table );
 
-		$blueprint->bigIncrements( 'id' );
+		$table->bigIncrements( 'id' );
 
 		// Define the complete initial schema before running this migration.
 
-		$schema->create( $blueprint );
 	}
 
-	public function down( Schema $schema ): void {
+	public function down( Blueprint $schema ): void {
 		$schema->drop( $this->table );
 	}
 

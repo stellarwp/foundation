@@ -49,8 +49,8 @@ final readonly class MigrationFileFactory
 			'namespace'                                  => $context['namespace'],
 			'class'                                      => $context['class'],
 			'id_php'                                     => $this->stubRenderer->phpStringLiteral($context['id']),
-			'foundation_database_migration'              => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Migration'),
-			'foundation_database_schema'                 => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Schema'),
+			'foundation_database_migration'              => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Migration\\Contracts\\Migration'),
+			'foundation_database_schema'                 => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Migration\\Schema\\Blueprint'),
 			'foundation_database_irreversible_migration' => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration'),
 		]));
 	}
@@ -71,9 +71,8 @@ final readonly class MigrationFileFactory
 			'id_php'                        => $this->stubRenderer->phpStringLiteral($context['id']),
 			'table_class'                   => $table['class'],
 			'table_namespace'               => $table['namespace'],
-			'foundation_database_migration' => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Migration'),
-			'foundation_database_schema'    => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Schema'),
-			'foundation_database_blueprint' => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Table\\Blueprint'),
+			'foundation_database_migration' => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Migration\\Contracts\\Migration'),
+			'foundation_database_schema'    => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Migration\\Schema\\Blueprint'),
 		]));
 	}
 
@@ -94,9 +93,8 @@ final readonly class MigrationFileFactory
 			'table_class'                                => $table['class'],
 			'table_namespace'                            => $table['namespace'],
 			'foundation_database_irreversible_migration' => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration'),
-			'foundation_database_migration'              => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Migration'),
-			'foundation_database_schema'                 => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Contracts\\Schema'),
-			'foundation_database_blueprint'              => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Table\\Blueprint'),
+			'foundation_database_migration'              => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Migration\\Contracts\\Migration'),
+			'foundation_database_schema'                 => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Migration\\Schema\\Blueprint'),
 		]));
 	}
 

@@ -2,217 +2,99 @@
 
 namespace StellarWP\Foundation\Database;
 
-use InvalidArgumentException;
+use Doctrine\DBAL\Configuration;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\DriverManager;
+use Doctrine\DBAL\Schema\DefaultSchemaManagerFactory;
 use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Container\Traits\ResolvesFoundationPrefix;
 use StellarWP\Foundation\Database\Cli\Migrate;
-use StellarWP\Foundation\Database\Contracts\CharsetCollationProvider;
-use StellarWP\Foundation\Database\Contracts\Database as DatabaseContract;
+use StellarWP\Foundation\Database\Connection\WordPressConnection;
+use StellarWP\Foundation\Database\Connection\WordPressMiddleware;
+use StellarWP\Foundation\Database\Connection\WordPressSession;
 use StellarWP\Foundation\Database\Contracts\DatabaseScope;
-use StellarWP\Foundation\Database\Contracts\QueryExecutor;
-use StellarWP\Foundation\Database\Contracts\QueryGateway;
-use StellarWP\Foundation\Database\Contracts\QueryReader;
-use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
-use StellarWP\Foundation\Database\Contracts\SchemaInspector;
-use StellarWP\Foundation\Database\Contracts\SqlDialect;
-use StellarWP\Foundation\Database\Contracts\TableGateway;
 use StellarWP\Foundation\Database\Contracts\TableNameResolver;
-use StellarWP\Foundation\Database\Contracts\TableWriter;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
-use StellarWP\Foundation\Database\Migration\Collection as MigrationCollection;
-use StellarWP\Foundation\Database\Migration\Contracts\Repository;
-use StellarWP\Foundation\Database\Migration\Factories\LeaseFactory;
-use StellarWP\Foundation\Database\Migration\Factories\SessionFactory;
+use StellarWP\Foundation\Database\Migration\History;
+use StellarWP\Foundation\Database\Migration\MigrationCollection;
 use StellarWP\Foundation\Database\Migration\Migrator;
-use StellarWP\Foundation\Database\Migration\Repository as MigrationRecordRepository;
-use StellarWP\Foundation\Database\Migration\Store;
-use StellarWP\Foundation\Database\Migration\StoreSchema;
-use StellarWP\Foundation\Database\Schema\Contracts\SchemaExecutor;
-use StellarWP\Foundation\Database\Schema\DbDelta;
-use StellarWP\Foundation\Database\Schema\Editor;
-use StellarWP\Foundation\Database\Schema\Reconciler;
+use StellarWP\Foundation\Database\Migration\Schema\SchemaPlanner;
 use StellarWP\Foundation\Database\Scope\SiteScope;
 use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
-use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\WPCli\WPCliProvider;
+use wpdb;
 
 /**
- * Registers Foundation database services for WordPress environments.
+ * Wire a shared WordPress Doctrine connection, application tables, and migrations.
  */
 final class DatabaseProvider extends Provider
 {
+	public const string MIGRATIONS = self::class . '.migrations';
 	use ResolvesFoundationPrefix;
 
-	public const string MIGRATIONS        = self::class . '.migrations';
-	private const string MIGRATIONS_TABLE = self::class . '.migrations_table';
-	private const string LOCKS_TABLE      = self::class . '.locks_table';
-	private const string LOCK_NAME        = self::class . '.lock_name';
-	private const string LOCK_TTL         = self::class . '.lock_ttl';
-
-	private bool $registered = false;
-
 	/**
-	 * Register database, schema, migration, lock, and WP-CLI services.
+	 * Register lazy database services without executing queries or creating storage.
 	 *
-	 * @throws InvalidArgumentException When the configured Foundation prefix is invalid.
+	 * @throws \InvalidArgumentException When the configured resource prefix is invalid.
 	 */
 	public function register(): void {
-		if ($this->registered) {
-			return;
-		}
-
-		$this->registerDatabase();
-		$this->registerDatabaseScope();
-		$this->registerSchema();
-		$this->registerConfiguration();
+		$this->registerConnection();
 		$this->registerTables();
 		$this->registerMigrations();
-		$this->registerLocks();
-		$this->registerCliCommands();
-
-		$this->registered = true;
+		$this->container->singleton(DatabaseLock::class);
+		$this->container->mergeArrayVar(WPCliProvider::COMMANDS, static fn (C $c): array => [$c->get(Migrate::class)]);
 	}
 
-	/**
-	 * Register application-scoped table names, lock name, and lock lifetime.
-	 */
-	private function registerConfiguration(): void {
-		$foundationPrefix = $this->foundationPrefix();
-		$databasePrefix   = str_replace('-', '_', $foundationPrefix);
-		$migrationsTable  = $this->tableName(
-			$this->config->get('database.migrations_table'),
-			$databasePrefix . '_foundation_migrations'
-		);
-		$locksTable = $this->tableName(
-			$this->config->get('database.locks_table'),
-			$databasePrefix . '_foundation_locks'
-		);
-		$lockName = $this->config->get('database.lock_name')
-			?? $foundationPrefix . '-foundation-database-migrations';
+	private function registerConnection(): void {
+		$this->container->singleton(wpdb::class, static function (): wpdb {
+			$source = $GLOBALS['wpdb'] ?? null;
 
-		$this->container->singleton(self::MIGRATIONS_TABLE, $migrationsTable);
-		$this->container->singleton(self::LOCKS_TABLE, $locksTable);
-		$this->container->singleton(self::LOCK_NAME, $lockName);
-		$this->container->singleton(self::LOCK_TTL, (int) $this->config->get('database.lock_ttl', 300));
-	}
-
-	/**
-	 * Register the active WordPress connection and developer-facing database API.
-	 */
-	private function registerDatabase(): void {
-		$this->container->singleton(\wpdb::class, static function (): \wpdb {
-			$wpdb = $GLOBALS['wpdb'] ?? null;
-
-			if (! $wpdb instanceof \wpdb) {
+			if (! $source instanceof wpdb) {
 				throw new DatabaseException('The global wpdb instance is not available.');
 			}
 
-			return $wpdb;
+			return $source;
 		});
-		$this->container->singleton(Database::class);
-		$this->container->singleton(DatabaseContract::class, static fn (C $c): Database => $c->get(Database::class));
-		$this->container->singleton(CharsetCollationProvider::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
-		$this->container->singleton(QueryExecutor::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
-		$this->container->singleton(QueryGateway::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
-		$this->container->singleton(QueryReader::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
-		$this->container->singleton(SchemaInspector::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
-		$this->container->singleton(SqlDialect::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
-		$this->container->singleton(TableNameResolver::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
-		$this->container->singleton(TableGateway::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
-		$this->container->singleton(TableWriter::class, static fn (C $c): DatabaseContract => $c->get(DatabaseContract::class));
+		$this->container->singleton(DatabaseScope::class, SiteScope::class);
+		$this->container->singleton(TableNameResolver::class, Table\TableNameResolver::class);
+		$this->container->singleton(WordPressSession::class);
+		$this->container->singleton(Connection::class, static function (C $c): Connection {
+			$config = new Configuration();
+			$config->setSchemaManagerFactory(new DefaultSchemaManagerFactory());
+			$config->setMiddlewares([new WordPressMiddleware($c->get(WordPressSession::class))]);
+
+			return DriverManager::getConnection([
+				'driver'       => 'mysqli',
+				'wrapperClass' => WordPressConnection::class,
+			], $config);
+		});
 	}
 
-	/**
-	 * Register schema execution, reconciliation, and inspection services.
-	 */
-	private function registerSchema(): void {
-		$this->container->singleton(DbDelta::class);
-		$this->container->singleton(SchemaExecutor::class, static fn (C $c): DbDelta => $c->get(DbDelta::class));
-		$this->container->singleton(Reconciler::class);
-		$this->container->singleton(Editor::class);
-		$this->container->singleton(Schema::class);
-		$this->container->singleton(SchemaContract::class, static fn (C $c): Schema => $c->get(Schema::class));
-	}
-
-	/**
-	 * Register site-scoped WordPress table-name resolution.
-	 */
-	private function registerDatabaseScope(): void {
-		$this->container->singleton(SiteScope::class);
-		$this->container->singleton(DatabaseScope::class, static fn (C $c): SiteScope => $c->get(SiteScope::class));
-	}
-
-	/**
-	 * Register the migration ledger and lock storage tables.
-	 */
 	private function registerTables(): void {
-		$this->container->when(MigrationTable::class)
-			->needs('$unprefixedTableName')
-			->give(static fn (C $c): string => $c->get(self::MIGRATIONS_TABLE));
-
-		$this->container->when(LockTable::class)
-			->needs('$unprefixedTableName')
-			->give(static fn (C $c): string => $c->get(self::LOCKS_TABLE));
-
+		$prefix = str_replace('-', '_', $this->foundationPrefix());
+		$this->container->when(MigrationTable::class)->needs('$unprefixedTableName')
+			->give($this->config->get('database.migrations_table', $prefix . '_foundation_migrations'));
+		$this->container->when(LockTable::class)->needs('$unprefixedTableName')
+			->give($this->config->get('database.locks_table', $prefix . '_foundation_locks'));
 		$this->container->singleton(MigrationTable::class);
 		$this->container->singleton(LockTable::class);
 	}
 
-	/**
-	 * Register migration contributions, ledger access, and orchestration services.
-	 */
 	private function registerMigrations(): void {
 		$this->container->mergeArrayVar(self::MIGRATIONS, []);
-
-		$this->container->when(MigrationCollection::class)
-			->needs('$migrations')
+		$this->container->when(MigrationCollection::class)->needs('$migrations')
 			->give(static fn (C $c): iterable => $c->get(self::MIGRATIONS));
+		$this->container->when(SchemaPlanner::class)->needs('$tableOptions')->give(static function (C $c): array {
+			$source = $c->get(wpdb::class);
 
-		$this->container->when(Store::class)
-			->needs('$lockName')
-			->give(static fn (C $c): string => $c->get(self::LOCK_NAME));
-
-		$this->container->when(Store::class)
-			->needs('$lockTtl')
-			->give(static fn (C $c): int => $c->get(self::LOCK_TTL));
-
-		$this->container->when(Store::class)
-			->needs(Lock::class)
-			->give(static fn (C $c): DatabaseLock => $c->get(DatabaseLock::class));
-
+			return array_filter(['engine' => 'InnoDB', 'charset' => $source->charset, 'collation' => $source->collate]);
+		});
 		$this->container->singleton(MigrationCollection::class);
-		$this->container->singleton(MigrationRecordRepository::class);
-		$this->container->singleton(Repository::class, static fn (C $c): MigrationRecordRepository => $c->get(MigrationRecordRepository::class));
-		$this->container->singleton(LeaseFactory::class);
-		$this->container->singleton(SessionFactory::class);
-		$this->container->singleton(StoreSchema::class);
-		$this->container->singleton(Store::class);
+		$this->container->singleton(History::class);
+		$this->container->singleton(SchemaPlanner::class);
 		$this->container->singleton(Migrator::class);
-	}
-
-	/**
-	 * Register the WordPress database lock backend used by migrations.
-	 */
-	private function registerLocks(): void {
-		$this->container->singleton(DatabaseLock::class);
-	}
-
-	/**
-	 * Contribute the migration command for lazy registration during cli_init.
-	 */
-	private function registerCliCommands(): void {
-		$this->container->mergeArrayVar(WPCliProvider::COMMANDS, static fn (C $c): array => [
-			$c->get(Migrate::class),
-		]);
-	}
-
-	/**
-	 * Return a non-empty configured table name or its application-scoped default.
-	 */
-	private function tableName(mixed $configured, string $default): string {
-		return is_string($configured) && $configured !== '' ? $configured : $default;
 	}
 }

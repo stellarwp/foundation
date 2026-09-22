@@ -2,252 +2,277 @@
 
 namespace StellarWP\Foundation\Database\Migration;
 
-use StellarWP\Foundation\Database\Contracts\Migration;
-use StellarWP\Foundation\Database\Exceptions\DatabaseException;
-use StellarWP\Foundation\Database\Migration\Contracts\Repository;
-use StellarWP\Foundation\Database\Migration\Exceptions\InvalidRollbackBatch;
-use StellarWP\Foundation\Database\Migration\Exceptions\LedgerFailure;
-use StellarWP\Foundation\Database\Migration\Exceptions\MigrationFailed;
-use StellarWP\Foundation\Database\Migration\Exceptions\MigrationLockFailed;
-use StellarWP\Foundation\Database\Migration\Exceptions\UnavailableMigration;
-use StellarWP\Foundation\Database\Migration\Exceptions\UninitializedStore;
-use StellarWP\Foundation\Database\Migration\ValueObjects\Record;
-use StellarWP\Foundation\Database\Migration\ValueObjects\Result;
-use StellarWP\Foundation\Database\Migration\ValueObjects\Status;
-use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
+use Closure;
+use Doctrine\DBAL\Connection;
+use InvalidArgumentException;
+use StellarWP\Foundation\Database\Connection\WordPressSession;
+use StellarWP\Foundation\Database\Contracts\DatabaseScope;
+use StellarWP\Foundation\Database\Exceptions\MigrationInterrupted;
+use StellarWP\Foundation\Database\Migration\Contracts\DescribesMigration;
+use StellarWP\Foundation\Database\Migration\Contracts\MigratesData;
+use StellarWP\Foundation\Database\Migration\Contracts\Migration;
+use StellarWP\Foundation\Database\Migration\Schema\SchemaPlanner;
+use StellarWP\Foundation\Database\Migration\ValueObjects\MigrationStatus;
+use StellarWP\Foundation\Database\Migration\ValueObjects\Step;
+use Throwable;
 
 /**
- * Applies and rolls back configured database migrations through an initialized store.
+ * Apply or reverse declarative migrations by diffing desired states against the live schema.
+ *
+ * For each step the runner replays history in memory to obtain the desired schema before and
+ * after the migration, introspects the owned tables, and executes only the remaining difference.
+ * Work a previous attempt already completed produces no SQL; differences the migration never
+ * declared stop the run. All of this happens under one MySQL advisory lock on the shared session.
  */
-final readonly class Migrator
+final class Migrator
 {
+	public const string LATEST = 'latest';
+	public const string NONE   = '0';
+
 	/**
-	 * Create the migration entry point from configured migrations, ledger, and store services.
+	 * Receive the shared session, history, and planning services.
+	 *
+	 * @internal Constructed by Foundation; applications receive this object through provider wiring or migration callbacks.
 	 */
 	public function __construct(
-		private Collection $migrations,
-		private Repository $repository,
-		private Store $store
+		private readonly Connection $connection,
+		private readonly WordPressSession $session,
+		private readonly DatabaseScope $scope,
+		private readonly History $history,
+		private readonly SchemaPlanner $planner,
+		private readonly MigrationCollection $migrations,
 	) {
 	}
 
 	/**
-	 * Initialize or reconcile migration storage before other migration operations run.
+	 * Apply pending migrations up to the target, or reverse applied migrations above it.
 	 *
-	 * @throws DatabaseException        When migration storage cannot be initialized.
-	 * @throws MigrationLockFailed      When the lock cannot be acquired or ownership cannot be confirmed during release.
-	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
+	 * @throws Throwable When planning, DDL, a data step, the ledger, or lock ownership fails.
+	 *
+	 * @return list<Step>
 	 */
-	public function initialize(): void {
-		$this->store->initialize();
+	public function migrate(string $target = self::LATEST): array {
+		$this->assertTarget($target);
+
+		return $this->locked(fn (): array => $this->run($target, true));
 	}
 
 	/**
-	 * Drop the migration ledger while preserving shared lock storage.
+	 * Reverse the highest applied migration IDs, one by default.
 	 *
-	 * @throws DatabaseException        When migration storage cannot be dropped.
-	 * @throws MigrationLockFailed      When the lock cannot be acquired or ownership cannot be confirmed during release.
-	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
-	 * @throws UninitializedStore       When migration storage has not been initialized.
+	 * The target is selected from history read under the same lock that protects execution, so a
+	 * migration another process applies in the meantime cannot widen the reversal.
+	 *
+	 * @return list<Step>
 	 */
-	public function dropStore(): void {
-		$this->store->drop();
-	}
+	public function rollback(int $steps = 1): array {
+		if ($steps < 1) {
+			throw new InvalidArgumentException('Rollback steps must be positive.');
+		}
 
-	/**
-	 * Determine whether the complete migration store has been initialized.
-	 *
-	 * @throws DatabaseException When migration storage cannot be inspected.
-	 */
-	public function isInitialized(): bool {
-		return $this->store->isInitialized();
-	}
+		return $this->locked(function () use ($steps): array {
+			$applied = array_map('strval', array_keys($this->history->applied()));
 
-	/**
-	 * Run all pending configured migrations.
-	 *
-	 * @throws DatabaseException        When migration storage or schema access fails.
-	 * @throws LedgerFailure            When an applied migration cannot be recorded in the ledger.
-	 * @throws MigrationFailed          When a migration fails while running.
-	 * @throws MigrationLockFailed      When the lock cannot be acquired, renewed, or released.
-	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
-	 * @throws UninitializedStore       When migration storage has not been initialized.
-	 */
-	public function run(): Result {
-		$migrations = $this->migrations->all();
-
-		return $this->store->withMigrationLock(
-			fn (Session $session): Result => $this->runPending($migrations, $session)
-		);
-	}
-
-	/**
-	 * Roll back the latest recorded migration batch.
-	 *
-	 * @param int|null $expectedLatestBatch The expected latest batch, available as Status::$batch from status(). Pass null to roll back whichever batch is latest.
-	 *
-	 * @throws DatabaseException        When migration storage or schema access fails.
-	 * @throws InvalidRollbackBatch     When the requested batch does not match the latest recorded batch.
-	 * @throws LedgerFailure            When a rolled-back migration ledger record cannot be deleted.
-	 * @throws MigrationFailed          When a migration fails while rolling back.
-	 * @throws MigrationLockFailed      When the lock cannot be acquired, renewed, or released.
-	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
-	 * @throws UnavailableMigration     When a recorded migration implementation is unavailable.
-	 * @throws UninitializedStore       When migration storage has not been initialized.
-	 */
-	public function rollback(?int $expectedLatestBatch = null): Result {
-		return $this->store->withMigrationLock(function (Session $session) use ($expectedLatestBatch): Result {
-			$configured  = $this->migrations->all();
-			$latestBatch = $this->repository->latestBatch();
-
-			if ($expectedLatestBatch !== null && $expectedLatestBatch !== $latestBatch) {
-				throw new InvalidRollbackBatch($expectedLatestBatch, $latestBatch);
+			if ($applied === []) {
+				return [];
 			}
+			$remaining = array_slice($applied, 0, max(0, count($applied) - $steps));
 
-			if ($latestBatch === null) {
-				return new Result();
-			}
-
-			$batch = $latestBatch;
-
-			return $this->rollbackRecords(
-				$configured,
-				$this->repository->recordsForBatch($batch),
-				$session
-			);
+			return $this->run($remaining === [] ? self::NONE : (string) end($remaining), true, false);
 		});
 	}
 
 	/**
-	 * Roll back and rerun all configured migrations.
+	 * Reverse all migrations and reapply them under one uninterrupted migration lock.
 	 *
-	 * @throws DatabaseException        When migration storage or schema access fails.
-	 * @throws LedgerFailure            When an applied migration cannot be recorded in the ledger.
-	 * @throws MigrationFailed          When a migration fails while running or rolling back.
-	 * @throws MigrationLockFailed      When the lock cannot be acquired, renewed, or released.
-	 * @throws LockUnavailableException When the lock backend cannot determine the lock state.
-	 * @throws UnavailableMigration     When a recorded migration implementation is unavailable.
-	 * @throws UninitializedStore       When migration storage has not been initialized.
+	 * @throws Throwable When an inverse, execution, or ownership check fails.
+	 *
+	 * @return list<Step>
 	 */
-	public function refresh(): Result {
-		return $this->store->withMigrationLock(function (Session $session): Result {
-			$configured = $this->migrations->all();
-			$rollback   = $this->rollbackRecords($configured, array_values($this->repository->all()), $session);
-			$run        = $this->runPending($configured, $session);
+	public function refresh(): array {
+		return $this->locked(fn (): array => array_merge($this->run(self::NONE, true), $this->run(self::LATEST, true)));
+	}
 
-			return new Result(
-				ran: $run->ran,
-				rolledBack: $rollback->rolledBack,
-				skipped: $run->skipped
-			);
+	/**
+	 * One advisory lock per site ledger: independent plugins and sites never block each other.
+	 *
+	 * @template T
+	 *
+	 * @param Closure(): T $operation
+	 *
+	 * @return T
+	 */
+	private function locked(Closure $operation): mixed {
+		return $this->session->withAdvisoryLock($this->history->table(), function () use ($operation): mixed {
+			try {
+				return $operation();
+			} catch (Throwable $failure) {
+				try {
+					while ($this->connection->isTransactionActive()) {
+						$this->connection->rollBack();
+					}
+				} catch (Throwable) {
+					// Preserve the migration failure when transaction cleanup also fails.
+				}
+
+				throw $failure;
+			}
 		});
 	}
 
 	/**
-	 * Return the status of every configured and recorded migration.
+	 * Compute the SQL each step would execute, without executing or recording anything.
 	 *
-	 * @throws DatabaseException When migration storage cannot be inspected.
+	 * @return list<Step>
+	 */
+	public function preview(string $target = self::LATEST): array {
+		$this->assertTarget($target);
+
+		return $this->run($target, false);
+	}
+
+	/**
+	 * List registered and recorded migrations without mutating storage.
 	 *
-	 * @return list<Status>
+	 * @return list<MigrationStatus>
 	 */
 	public function status(): array {
-		$configured = $this->migrations->all();
+		$applied = $this->history->applied();
+		$rows    = [];
 
-		if (! $this->store->hasLedger()) {
-			return array_map(
-				static fn (Migration $migration): Status => Status::pending($migration->id()),
-				array_values($configured)
+		foreach ($this->migrations->all() as $id => $migration) {
+			$id        = (string) $id;
+			$rows[$id] = new MigrationStatus(
+				$id,
+				self::shortName($migration),
+				$migration instanceof DescribesMigration ? $migration->describe() : '',
+				$applied[$id] ?? null,
 			);
 		}
 
-		$records  = $this->repository->all();
-		$statuses = [];
-
-		foreach ($configured as $migration) {
-			$statuses[] = isset($records[$migration->id()])
-				? Status::applied($records[$migration->id()])
-				: Status::pending($migration->id());
-
-			unset($records[$migration->id()]);
+		foreach ($applied as $id => $appliedAt) {
+			$rows[$id] ??= new MigrationStatus((string) $id, null, '', $appliedAt);
 		}
+		ksort($rows, SORT_STRING);
 
-		foreach ($records as $record) {
-			$statuses[] = Status::unavailable($record);
-		}
-
-		return $statuses;
+		return array_values($rows);
 	}
 
 	/**
-	 * Roll back recorded migrations in reverse order after confirming every implementation is available.
-	 *
-	 * @param array<string, Migration> $migrations
-	 * @param list<Record>             $records    Ledger records in ascending execution order.
-	 * @param Session                  $session    The active migration session that maintains lock ownership.
-	 *
-	 * @throws LedgerFailure            When a rolled-back migration ledger record cannot be deleted.
-	 * @throws MigrationFailed          When a migration fails while rolling back.
-	 * @throws MigrationLockFailed      When the migration lock cannot be renewed.
-	 * @throws LockUnavailableException When the lock backend cannot determine the refresh result.
-	 * @throws UnavailableMigration     When a recorded migration implementation is unavailable.
+	 * @return list<Step>
 	 */
-	private function rollbackRecords(array $migrations, array $records, Session $session): Result {
-		$records     = array_reverse($records);
-		$unavailable = array_values(array_map(
-			static fn (Record $record): string => $record->migration,
-			array_filter($records, static fn (Record $record): bool => ! isset($migrations[$record->migration]))
-		));
+	private function run(string $target, bool $execute, bool $applyPending = true): array {
+		// Capture the operation's site and prefix; a change mid-run is rejected before any ledger write.
+		$site   = $this->scope->capture();
+		$prefix = $this->scope->resolveTableName('');
 
-		if ($unavailable !== []) {
-			throw new UnavailableMigration($unavailable);
+		if ($execute) {
+			$this->history->initialize();
 		}
+		$applied        = array_map('strval', array_keys($this->history->applied()));
+		$steps          = [];
+		$simulated      = null;
+		$simulatedNames = [];
 
-		$rolledBack = [];
+		foreach ($this->plan($target, $applied, $applyPending) as [$id, $reverse]) {
+			$migration = $this->migrations->get($id);
+			$afterIds  = $reverse ? array_values(array_diff($applied, [$id])) : array_merge($applied, [$id]);
+			$change    = $this->planner->plan($applied, $id, $reverse, $simulated, $simulatedNames);
+			$sql       = $change->sql;
 
-		foreach ($records as $record) {
-			$migration = $migrations[$record->migration];
-			$session->revert($migration);
+			if ($execute) {
+				foreach ($sql as $statement) {
+					$this->connection->executeStatement($statement);
+				}
+				$this->session->check();
 
-			if (! $this->repository->deleteRun($migration->id())) {
-				throw LedgerFailure::notDeletedAfterRollback($migration->id());
+				if (! $reverse && $migration instanceof MigratesData) {
+					$migration->migrate($this->connection);
+					$this->session->check();
+
+					if ($this->connection->isTransactionActive()) {
+						throw new MigrationInterrupted('A migration data callback left a transaction open; complete its transaction before returning.');
+					}
+				}
+				$this->assertScope($site, $prefix);
+
+				try {
+					$reverse ? $this->history->remove($id) : $this->history->record($id);
+				} catch (Throwable $failure) {
+					throw new Exceptions\LedgerFailure('Migration ' . $id . ' changed the schema but could not update its history; retry the migration.', 0, $failure);
+				}
+			} else {
+				$simulated      = $change->schema;
+				$simulatedNames = array_values(array_unique(array_merge($simulatedNames, array_map('strtolower', $change->tableNames))));
 			}
 
-			$rolledBack[] = $migration->id();
+			$applied = $afterIds;
+			$steps[] = new Step($id, self::shortName($migration), $reverse, $sql, ! $reverse && $migration instanceof MigratesData);
 		}
 
-		return new Result(rolledBack: $rolledBack);
+		return $steps;
 	}
 
 	/**
-	 * Run migrations that are absent from the ledger and record them in the next batch.
+	 * Select forward or reverse work. An explicit target names the version that must remain applied.
 	 *
-	 * @param array<string, Migration> $migrations
-	 * @param Session                  $session    The active migration session that maintains lock ownership.
+	 * @param list<string> $applied
 	 *
-	 * @throws DatabaseException        When migration ledger access fails.
-	 * @throws LedgerFailure            When an applied migration cannot be recorded in the ledger.
-	 * @throws MigrationFailed          When a migration fails while running.
-	 * @throws MigrationLockFailed      When the migration lock cannot be renewed.
-	 * @throws LockUnavailableException When the lock backend cannot determine the refresh result.
+	 * @return list<array{string, bool}>
 	 */
-	private function runPending(array $migrations, Session $session): Result {
-		$records = $this->repository->all();
-		$ran     = [];
-		$skipped = [];
-		$batch   = ($this->repository->latestBatch() ?? 0) + 1;
+	private function plan(string $target, array $applied, bool $applyPending): array {
+		$reverse = $target === self::LATEST ? [] : array_values(array_filter(
+			$applied,
+			static fn (string $id): bool => $target === self::NONE || strcmp($id, $target) > 0,
+		));
+		rsort($reverse, SORT_STRING);
+		$this->assertKnown($applied);
+		$plan = array_map(static fn (string $id): array => [$id, true], $reverse);
 
-		foreach ($migrations as $migration) {
-			if (isset($records[$migration->id()])) {
-				$skipped[] = $migration->id();
+		if ($target === self::NONE || ! $applyPending) {
+			return $plan;
+		}
+		foreach ($this->migrations->ids() as $id) {
+			if (in_array($id, $applied, true) || ($target !== self::LATEST && strcmp($id, $target) > 0)) {
 				continue;
 			}
-
-			$session->apply($migration);
-
-			$this->repository->recordRun($migration->id(), $batch);
-			$ran[] = $migration->id();
+			$plan[] = [$id, false];
 		}
 
-		return new Result(ran: $ran, skipped: $skipped);
+		return $plan;
+	}
+
+	/**
+	 * @param list<string> $ids
+	 */
+	private function assertKnown(array $ids): void {
+		foreach ($ids as $id) {
+			if (! $this->migrations->has($id)) {
+				throw new MigrationInterrupted('Restore the missing migration before reversing it: ' . $id);
+			}
+		}
+	}
+
+	private function assertTarget(string $target): void {
+		if (! in_array($target, [self::NONE, self::LATEST], true) && ! $this->migrations->has($target)) {
+			throw new InvalidArgumentException('Unknown migration target: ' . $target);
+		}
+	}
+
+	/**
+	 * @throws MigrationInterrupted When the WordPress site or table prefix changed during the run.
+	 */
+	private function assertScope(int $site, string $prefix): void {
+		$this->scope->assertCurrent($site);
+
+		if ($this->scope->resolveTableName('') !== $prefix) {
+			throw new MigrationInterrupted('The WordPress table prefix changed during the migration run.');
+		}
+	}
+
+	private static function shortName(Migration $migration): string {
+		$parts = explode('\\', $migration::class);
+
+		return (string) end($parts);
 	}
 }

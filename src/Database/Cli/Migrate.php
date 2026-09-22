@@ -3,6 +3,8 @@
 namespace StellarWP\Foundation\Database\Cli;
 
 use StellarWP\Foundation\Database\Migration\Migrator;
+use StellarWP\Foundation\Database\Migration\ValueObjects\MigrationStatus;
+use StellarWP\Foundation\Database\Migration\ValueObjects\Step;
 use StellarWP\Foundation\WPCli\Command;
 use WP_CLI;
 
@@ -10,198 +12,131 @@ use function WP_CLI\Utils\format_items;
 use function WP_CLI\Utils\get_flag_value;
 
 /**
- * WP-CLI command for inspecting and applying Foundation database migrations.
+ * Inspect, preview, apply, and reverse registered database migrations.
  */
 final class Migrate extends Command
 {
-	private const string FLAG_RUN        = 'run';
-	private const string FLAG_ROLLBACK   = 'rollback';
-	private const string FLAG_REFRESH    = 'refresh';
-	private const string FLAG_DROP_STORE = 'drop-store';
-	private const string FLAG_INITIALIZE = 'initialize';
-	private const string FLAG_YES        = 'yes';
-
+	/**
+	 * Receive the application's migration service.
+	 */
 	public function __construct(
-		private readonly Migrator $migrator
+		private readonly Migrator $migrator,
 	) {
 	}
 
 	/**
-	 * Dispatch the selected migration operation or display migration status.
+	 * Execute one migration operation, or display status when no operation is selected.
 	 *
-	 * @param list<mixed>         $args
-	 * @param array<string,mixed> $assocArgs
+	 * @param list<mixed>          $args
+	 * @param array<string, mixed> $assocArgs
+	 *
+	 * @throws \Throwable When migration planning, execution, or storage fails.
 	 */
 	public function runCommand(array $args = [], array $assocArgs = []): int {
-		$operation = $this->selectedOperation($assocArgs);
+		$operations = array_values(array_filter(['run', 'rollback', 'refresh'], static fn (string $flag): bool => (bool) get_flag_value($assocArgs, $flag, false)));
 
-		if ($operation !== null && $operation !== self::FLAG_INITIALIZE && ! $this->migrator->isInitialized()) {
-			WP_CLI::error($this->uninitializedMessage());
+		if (count($operations) > 1) {
+			WP_CLI::error('Choose only one of --run, --rollback, or --refresh.');
+		}
+		$operation = $operations[0] ?? null;
+		$dryRun    = (bool) get_flag_value($assocArgs, 'dry-run', false);
+
+		if ($dryRun && $operation !== 'run') {
+			WP_CLI::error('--dry-run requires --run.');
 		}
 
-		match ($operation) {
-			self::FLAG_RUN        => $this->runMigrations(),
-			self::FLAG_ROLLBACK   => $this->rollbackMigrations(),
-			self::FLAG_REFRESH    => $this->refreshMigrations($assocArgs),
-			self::FLAG_DROP_STORE => $this->dropStore($assocArgs),
-			self::FLAG_INITIALIZE => $this->initializeStore(),
-			default               => $this->showStatus(),
-		};
+		if (isset($assocArgs['to']) && ! in_array($operation, ['run', 'rollback'], true)) {
+			WP_CLI::error('--to requires --run or --rollback.');
+		}
+
+		if (isset($assocArgs['step']) && ($operation !== 'rollback' || isset($assocArgs['to']))) {
+			WP_CLI::error('--step requires --rollback and cannot be combined with --to.');
+		}
+		$steps = filter_var($assocArgs['step'] ?? 1, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+
+		if ($steps === false) {
+			WP_CLI::error('--step must be a positive integer.');
+
+			return self::ERROR;
+		}
+
+		if ($operation === null) {
+			$this->showStatus();
+
+			return self::SUCCESS;
+		}
+		$target = (string) ($assocArgs['to'] ?? Migrator::LATEST);
+
+		if ($operation === 'refresh') {
+			WP_CLI::confirm('Roll back and rerun all migrations? This can permanently delete application data.', $assocArgs);
+			$result = $this->migrator->refresh();
+		} elseif ($operation === 'rollback') {
+			$result = isset($assocArgs['to']) ? $this->migrator->migrate($target) : $this->migrator->rollback($steps);
+		} else {
+			$result = $dryRun ? $this->migrator->preview($target) : $this->migrator->migrate($target);
+		}
+		$this->showSteps($result, $dryRun);
 
 		return self::SUCCESS;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
 	protected function subcommand(): string {
 		return 'migrate';
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
 	protected function description(): string {
-		return 'List and manage database migrations.';
+		return 'Inspect, preview, apply, and reverse database migrations.';
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
 	protected function arguments(): array {
 		return [
-			[
-				'type'        => self::FLAG,
-				'name'        => self::FLAG_RUN,
-				'description' => 'Run pending migrations.',
-				'optional'    => true,
-				'default'     => false,
-			],
-			[
-				'type'        => self::FLAG,
-				'name'        => self::FLAG_ROLLBACK,
-				'description' => 'Rollback the latest migration batch.',
-				'optional'    => true,
-				'default'     => false,
-			],
-			[
-				'type'        => self::FLAG,
-				'name'        => self::FLAG_REFRESH,
-				'description' => 'Rollback and rerun all migrations.',
-				'optional'    => true,
-				'default'     => false,
-			],
-			[
-				'type'        => self::FLAG,
-				'name'        => self::FLAG_DROP_STORE,
-				'description' => 'Drop only the migration ledger.',
-				'optional'    => true,
-				'default'     => false,
-			],
-			[
-				'type'        => self::FLAG,
-				'name'        => self::FLAG_INITIALIZE,
-				'description' => 'Initialize or reconcile Foundation migration storage.',
-				'optional'    => true,
-				'default'     => false,
-			],
-			[
-				'type'        => self::FLAG,
-				'name'        => self::FLAG_YES,
-				'description' => 'Skip confirmation prompts for destructive actions.',
-				'optional'    => true,
-				'default'     => false,
-			],
+			['type' => self::FLAG, 'name' => 'run', 'description' => 'Apply pending migrations, or reconcile to --to.', 'optional' => true],
+			['type' => self::FLAG, 'name' => 'rollback', 'description' => 'Reverse the highest applied ID, or select --step or --to.', 'optional' => true],
+			['type' => self::FLAG, 'name' => 'refresh', 'description' => 'Reverse and reapply all migrations.', 'optional' => true],
+			['type' => self::FLAG, 'name' => 'dry-run', 'description' => 'Preview --run SQL without executing SQL or data callbacks.', 'optional' => true],
+			['type' => self::ASSOCIATIVE, 'name' => 'to', 'description' => 'Target migration ID, 0 for none, or latest for all.', 'optional' => true],
+			['type' => self::ASSOCIATIVE, 'name' => 'step', 'description' => 'Positive number of applied IDs to reverse.', 'optional' => true],
+			['type' => self::FLAG, 'name' => 'yes', 'description' => 'Confirm refresh without prompting.', 'optional' => true],
 		];
 	}
 
 	private function showStatus(): void {
-		if (! $this->migrator->isInitialized()) {
-			WP_CLI::warning($this->uninitializedMessage());
-		}
-
-		format_items('table', array_map(
-			static fn ($status): array => [
-				'migration' => $status->migration,
-				'status'    => $status->state(),
-				'batch'     => $status->batch ?? '',
-				'ran_at'    => $status->ranAt?->format('Y-m-d H:i:s') ?? '',
-			],
-			$this->migrator->status()
-		), [
-			'migration',
-			'status',
-			'batch',
-			'ran_at',
-		]);
+		format_items('table', array_map(static fn (MigrationStatus $status): array => [
+			'id'          => $status->id,
+			'migration'   => $status->migration ?? '(missing)',
+			'status'      => $status->state(),
+			'applied_at'  => $status->appliedAt ?? '',
+			'description' => $status->description,
+		], $this->migrator->status()), ['id', 'migration', 'status', 'applied_at', 'description']);
 	}
 
 	/**
-	 * Select the one migration operation requested by the command flags.
-	 *
-	 * @param array<string, mixed> $assocArgs
+	 * @param list<Step> $steps
 	 */
-	private function selectedOperation(array $assocArgs): ?string {
-		$operations = [
-			self::FLAG_RUN,
-			self::FLAG_ROLLBACK,
-			self::FLAG_REFRESH,
-			self::FLAG_DROP_STORE,
-			self::FLAG_INITIALIZE,
-		];
-		$selected = array_values(array_filter(
-			$operations,
-			static fn (string $operation): bool => (bool) get_flag_value($assocArgs, $operation, false)
-		));
+	private function showSteps(array $steps, bool $preview): void {
+		foreach ($steps as $step) {
+			WP_CLI::line(($step->reverse ? 'Down ' : 'Up ') . $step->id);
 
-		if (count($selected) > 1) {
-			WP_CLI::error(sprintf(
-				'Only one migration operation can be used at a time. Received: --%s.',
-				implode(', --', $selected)
-			));
+			if (! $preview) {
+				continue;
+			}
+			foreach ($step->sql as $sql) {
+				WP_CLI::line($sql . ';');
+			}
+
+			if ($step->hasDataStep) {
+				WP_CLI::line('Data callback will run after schema changes.');
+			}
 		}
-
-		return $selected[0] ?? null;
-	}
-
-	private function initializeStore(): void {
-		$this->migrator->initialize();
-		WP_CLI::success('Foundation migration storage is initialized.');
-	}
-
-	/**
-	 * Confirm and remove only the migration ledger.
-	 *
-	 * @param array<string, mixed> $assocArgs
-	 */
-	private function dropStore(array $assocArgs): void {
-		WP_CLI::confirm('Drop only the migration ledger? Application tables and shared lock storage remain, but all migrations will appear pending afterward.', $assocArgs);
-		$this->migrator->dropStore();
-		WP_CLI::success('The migration ledger was dropped. Application tables were not changed, and shared lock storage remains available.');
-	}
-
-	/**
-	 * Confirm, roll back, and rerun all configured migrations.
-	 *
-	 * @param array<string, mixed> $assocArgs
-	 */
-	private function refreshMigrations(array $assocArgs): void {
-		WP_CLI::confirm('Are you sure you want to roll back and rerun all Foundation database migrations?', $assocArgs);
-		$result = $this->migrator->refresh();
-
-		WP_CLI::success(sprintf('Rolled back %d migrations and ran %d migrations.', count($result->rolledBack), count($result->ran)));
-	}
-
-	private function rollbackMigrations(): void {
-		$result = $this->migrator->rollback();
-
-		WP_CLI::success(sprintf('Rolled back %d migrations.', count($result->rolledBack)));
-	}
-
-	private function runMigrations(): void {
-		$result = $this->migrator->run();
-
-		WP_CLI::success(sprintf('Ran %d migrations.', count($result->ran)));
-	}
-
-	private function uninitializedMessage(): string {
-		$command = $this->registeredCommandName();
-
-		if ($command === null) {
-			return 'Migration storage is not initialized. Run this command with --initialize first.';
-		}
-
-		return sprintf('Migration storage is not initialized. Run `wp %s --initialize` first.', $command);
+		WP_CLI::success(sprintf('%s %d migration steps.', $preview ? 'Previewed' : 'Completed', count($steps)));
 	}
 }

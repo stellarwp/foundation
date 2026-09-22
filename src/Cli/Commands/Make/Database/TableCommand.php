@@ -106,7 +106,7 @@ final class TableCommand extends Command
 		$output->writeln('');
 
 		if ($migration === null) {
-			$output->writeln('<comment>Create a migration that defines this table with Blueprint and Schema::create().</comment>');
+			$output->writeln('<comment>Create a migration that defines this table with Blueprint::create().</comment>');
 		} elseif ($providerPath === null && ! $this->providerExists($input)) {
 			$output->writeln(sprintf(
 				'<comment>Register %s and %s with your database provider.</comment>',

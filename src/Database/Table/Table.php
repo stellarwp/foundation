@@ -2,105 +2,130 @@
 
 namespace StellarWP\Foundation\Database\Table;
 
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception;
+use Doctrine\DBAL\ParameterType;
+use Doctrine\DBAL\Query\QueryBuilder;
+use Doctrine\DBAL\Types\Type;
+use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Table as TableContract;
-use StellarWP\Foundation\Database\Contracts\TableGateway;
+use StellarWP\Foundation\Database\Contracts\TableNameResolver;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
-use StellarWP\Foundation\Database\Exceptions\QueryException;
-use StellarWP\Foundation\Database\Query\QueryBuilder;
 
 /**
- * Provides a database gateway bound to one unprefixed WordPress table name.
+ * An application table with ordinary reads and writes on the shared connection.
  *
- * Extend this class for normal application tables. Implement {@see TableContract}
- * directly only when a custom table implementation does not need these operations.
+ * Subclasses inherit construction and declare their stable unprefixed name.
  */
 abstract readonly class Table implements TableContract
 {
 	/**
-	 * Bind this table gateway to the database service used for its operations.
+	 * Receive the application's shared connection and table-name policy.
 	 */
 	public function __construct(
-		private TableGateway $database
+		private Connection $connection,
+		private TableNameResolver $names,
 	) {
 	}
 
 	/**
-	 * Return the database service for custom operations scoped to this table.
-	 */
-	final protected function database(): TableGateway {
-		return $this->database;
-	}
-
-	/**
-	 * Return the stable table name before WordPress scope is applied.
+	 * Return the stable name before WordPress applies its site prefix.
 	 */
 	abstract public function unprefixedName(): string;
 
 	/**
-	 * Resolve a validated physical table name for the active WordPress database scope.
+	 * Resolve this table's physical name at the current site.
 	 *
-	 * Prefixing and MySQL identifier-length validation are owned by the database
-	 * name-resolution boundary so callers can rely on the returned name.
+	 * @throws DatabaseException When the physical name is invalid.
 	 *
-	 * @throws DatabaseException When the resolved physical table name is invalid.
+	 * @return non-empty-string
 	 */
 	final public function name(): string {
-		return $this->database->tableName($this);
+		return $this->names->tableName($this);
 	}
 
 	/**
-	 * Begin a query against this table.
+	 * Quote the resolved name for native Doctrine expressions and SQL.
+	 *
+	 * @throws DatabaseException When the physical name is invalid.
+	 * @throws Exception         When the platform cannot be determined.
+	 */
+	final public function quotedName(): string {
+		return $this->connection->getDatabasePlatform()->quoteSingleIdentifier($this->name());
+	}
+
+	/**
+	 * Start a fresh native query with this table as its source.
+	 *
+	 * @throws DatabaseException When the physical name is invalid.
+	 * @throws Exception         When the platform cannot be determined.
 	 */
 	final public function query(?string $alias = null): QueryBuilder {
-		return new QueryBuilder($this->database, $this, $alias);
+		return $this->connection->createQueryBuilder()->from($this->quotedName(), $alias);
 	}
 
 	/**
-	 * Insert one row into this table.
+	 * Insert a row and return its affected-row count.
 	 *
-	 * @param array<string, mixed> $data
+	 * @param array<string, mixed>                     $data  Application-owned column names and bound values.
+	 * @param array<string, string|ParameterType|Type> $types
 	 *
-	 * @throws DatabaseException When the resolved physical table name is invalid.
-	 * @throws QueryException    When the insert fails.
+	 * @throws DatabaseException When the physical name is invalid.
+	 * @throws Exception         When insertion fails.
 	 */
-	final public function insert(array $data): int {
-		return $this->database->insert($this, $data);
+	final public function insert(array $data, array $types = []): int|string {
+		return $this->connection->insert($this->quotedName(), $data, $types);
 	}
 
 	/**
-	 * Insert one row and return the connection's auto-increment identifier.
+	 * Insert a row and return its generated identifier without truncation.
 	 *
-	 * @param array<string, mixed> $data
+	 * @param array<string, mixed>                     $data
+	 * @param array<string, string|ParameterType|Type> $types
 	 *
-	 * @throws DatabaseException When the resolved physical table name is invalid.
-	 * @throws QueryException    When the insert fails.
+	 * @throws DatabaseException When the physical name is invalid.
+	 * @throws Exception         When insertion fails or no generated identifier is available.
 	 */
-	final public function insertGetId(array $data): int {
-		return $this->database->insertGetId($this, $data);
+	final public function insertGetId(array $data, array $types = []): int|string {
+		$this->insert($data, $types);
+
+		return $this->connection->lastInsertId();
 	}
 
 	/**
-	 * Update rows in this table matching equality-based column values.
+	 * Update rows matching equality criteria, returning the affected-row count.
 	 *
-	 * @param array<string, mixed> $data
-	 * @param array<string, mixed> $where
+	 * @param array<string, mixed>                     $data
+	 * @param array<string, mixed>                     $where
+	 * @param array<string, string|ParameterType|Type> $types
 	 *
-	 * @throws DatabaseException When the resolved physical table name is invalid.
-	 * @throws QueryException    When the update fails.
+	 * @throws InvalidArgumentException When criteria are empty.
+	 * @throws DatabaseException        When the physical name is invalid.
+	 * @throws Exception                When the update fails.
 	 */
-	final public function update(array $data, array $where): int {
-		return $this->database->update($this, $data, $where);
+	final public function update(array $data, array $where, array $types = []): int|string {
+		if ($where === []) {
+			throw new InvalidArgumentException('Table updates require criteria; use the connection for an intentional whole-table update.');
+		}
+
+		return $this->connection->update($this->quotedName(), $data, $where, $types);
 	}
 
 	/**
-	 * Delete rows from this table matching equality-based column values.
+	 * Delete rows matching equality criteria, returning the affected-row count.
 	 *
-	 * @param array<string, mixed> $where
+	 * @param array<string, mixed>                     $where
+	 * @param array<string, string|ParameterType|Type> $types
 	 *
-	 * @throws DatabaseException When the resolved physical table name is invalid.
-	 * @throws QueryException    When the delete fails.
+	 * @throws InvalidArgumentException When criteria are empty.
+	 * @throws DatabaseException        When the physical name is invalid.
+	 * @throws Exception                When deletion fails.
 	 */
-	final public function delete(array $where): int {
-		return $this->database->delete($this, $where);
+	final public function delete(array $where, array $types = []): int|string {
+		if ($where === []) {
+			throw new InvalidArgumentException('Table deletions require criteria; use the connection for an intentional whole-table delete.');
+		}
+
+		return $this->connection->delete($this->quotedName(), $where, $types);
 	}
 }

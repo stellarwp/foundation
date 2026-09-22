@@ -2,14 +2,14 @@
 
 namespace StellarWP\Foundation\Database\Table\Tables;
 
-use StellarWP\Foundation\Database\Contracts\TableGateway;
-use StellarWP\Foundation\Database\Migration\StoreSchema;
+use Doctrine\DBAL\Connection;
+use StellarWP\Foundation\Database\Contracts\TableNameResolver;
 use StellarWP\Foundation\Database\Table\Table;
 
 /**
  * Defines the migration ledger table used to record completed migrations.
  *
- * @see StoreSchema::initializeLedger()
+ * @internal Storage is initialized by the migration history.
  */
 final readonly class MigrationTable extends Table
 {
@@ -18,9 +18,10 @@ final readonly class MigrationTable extends Table
 	 */
 	public function __construct(
 		private string $unprefixedTableName,
-		TableGateway $database
+		Connection $connection,
+		TableNameResolver $names,
 	) {
-		parent::__construct($database);
+		parent::__construct($connection, $names);
 	}
 
 	/**
