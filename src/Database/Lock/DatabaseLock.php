@@ -32,7 +32,7 @@ final readonly class DatabaseLock implements Lock
 	 * Create a lock backend using the configured WordPress lock table.
 	 */
 	public function __construct(
-		private Connection $database,
+		private Connection $db,
 		private LockTable $table
 	) {
 	}
@@ -43,7 +43,7 @@ final readonly class DatabaseLock implements Lock
 	 * @throws Exception When storage cannot be inspected or created.
 	 */
 	public function initialize(): void {
-		$manager = $this->database->createSchemaManager();
+		$manager = $this->db->createSchemaManager();
 
 		if ($manager->tablesExist([$this->table->name()])) {
 			return;
@@ -80,7 +80,7 @@ final readonly class DatabaseLock implements Lock
 		try {
 			$table = $this->table->quotedName();
 
-			$this->database->executeStatement(
+			$this->db->executeStatement(
 				"INSERT INTO {$table} (name, owner, expires_at, created_at, updated_at)
 					VALUES (?, ?, TIMESTAMPADD(SECOND, ?, UTC_TIMESTAMP(6)), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
 					ON DUPLICATE KEY UPDATE
@@ -94,7 +94,7 @@ final readonly class DatabaseLock implements Lock
 				[$name, $owner, $ttl, $owner, $ttl]
 			);
 
-			$row = $this->database->fetchAssociative(
+			$row = $this->db->fetchAssociative(
 				"SELECT expires_at FROM {$table}
 					WHERE name = ? AND owner = ? AND expires_at > UTC_TIMESTAMP(6)
 					LIMIT 1",
@@ -122,7 +122,7 @@ final readonly class DatabaseLock implements Lock
 	 */
 	public function release(LockToken $token): bool {
 		try {
-			return $this->database->executeStatement(
+			return $this->db->executeStatement(
 				'DELETE FROM ' . $this->table->quotedName() . ' WHERE name = ? AND owner = ? AND expires_at > UTC_TIMESTAMP(6)',
 				[$token->name, $token->owner]
 			) > 0;
@@ -143,13 +143,13 @@ final readonly class DatabaseLock implements Lock
 		try {
 			$table = $this->table->quotedName();
 
-			$this->database->executeStatement(
+			$this->db->executeStatement(
 				"UPDATE {$table} SET expires_at = TIMESTAMPADD(SECOND, ?, UTC_TIMESTAMP(6)), updated_at = UTC_TIMESTAMP(6)
 					WHERE name = ? AND owner = ? AND expires_at > UTC_TIMESTAMP(6)",
 				[$ttl, $token->name, $token->owner]
 			);
 
-			$row = $this->database->fetchAssociative(
+			$row = $this->db->fetchAssociative(
 				"SELECT expires_at FROM {$table} WHERE name = ? AND owner = ? AND expires_at > UTC_TIMESTAMP(6) LIMIT 1",
 				[$token->name, $token->owner]
 			);
@@ -174,7 +174,7 @@ final readonly class DatabaseLock implements Lock
 		$this->assertValidName($name);
 
 		try {
-			return $this->database->fetchAssociative(
+			return $this->db->fetchAssociative(
 				'SELECT name FROM ' . $this->table->quotedName() . ' WHERE name = ? AND expires_at > UTC_TIMESTAMP(6) LIMIT 1',
 				[$name]
 			) !== false;
