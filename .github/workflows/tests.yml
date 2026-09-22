@@ -24,7 +24,7 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
           coverage: none
-          extensions: redis
+          extensions: redis, mysqli
 
       - name: Install Composer dependencies
         uses: ramsey/composer-install@v4
@@ -39,9 +39,21 @@ jobs:
 
   slic:
     runs-on: ubuntu-latest
-    name: SLIC Tests
+    name: SLIC Tests (${{ matrix.database.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        database:
+          - name: MariaDB
+            image: mariadb:11.8.3
+            healthcheck: healthcheck.sh --connect --innodb_initialized
+          - name: MySQL
+            image: mysql:8.0
+            healthcheck: mysqladmin ping --host=127.0.0.1 --silent
 
     env:
+      SLIC_DB_IMAGE: ${{ matrix.database.image }}
+      SLIC_DB_HEALTHCHECK: ${{ matrix.database.healthcheck }}
       COMPOSER_AUTH: '{"github-oauth": {"github.com": "${{ github.token }}"}}'
 
     steps:
@@ -150,7 +162,7 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-report
+          name: coverage-report-${{ matrix.database.name }}
           path: clover.xml
           if-no-files-found: error
           retention-days: 1
@@ -170,7 +182,7 @@ jobs:
       - name: Download coverage report
         uses: actions/download-artifact@v8
         with:
-          name: coverage-report
+          name: coverage-report-MariaDB
 
       - name: Monitor coverage
         uses: slavcodev/coverage-monitor-action@v1
