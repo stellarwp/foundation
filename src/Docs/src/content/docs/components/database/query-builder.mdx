@@ -1,44 +1,17 @@
 ---
-title: Query Builder
-description: Read and write WordPress tables through a small query API with inspectable SQL and bindings.
+title: Queries and Transactions
+description: Query application tables with Doctrine DBAL and choose reliable transaction boundaries.
 sidebar:
   order: 2
 ---
 
-import { LinkCard } from '@astrojs/starlight/components';
+[Register DatabaseProvider](/components/database/) and inject your concrete table into the service that owns its queries. A table can wrap an existing WordPress or third-party table without owning its migrations.
 
-Foundation Database wraps common `wpdb` operations with prepared bindings, quoted identifiers, consistent exceptions, and a small fluent query builder. It remains intentionally close to SQL so developers can inspect exactly what WordPress will execute.
+## Read and write rows
 
-<LinkCard
-  title="Database Overview"
-  description="Install the package and register DatabaseProvider before injecting application table classes."
-  href="/components/database/"
-/>
+A repository is an optional way to organize reusable application queries:
 
-Tables used for queries do not need to be managed by Foundation migrations. A wrapper around an existing WordPress, WooCommerce, or legacy table can extend the supplied `Table` base class and provide only its stable name. For example, `src/Database/Tables/Import_Log_Table.php` can target an externally managed table without declaring ownership of its schema:
-
-```php title="Import_Log_Table.php"
-<?php declare(strict_types=1);
-
-namespace Plugin\Database\Tables;
-
-use StellarWP\Foundation\Database\Table\Table;
-
-final readonly class Import_Log_Table extends Table {
-
-	public function unprefixedName(): string {
-		return 'import_log';
-	}
-}
-```
-
-The same table shape works whether Foundation migrations, another plugin, or an external system owns its schema.
-
-## Read rows
-
-Inject the table object into the class that owns its queries. The table keeps physical naming and common database operations together. For example, create `src/Report/Report_Repository.php`:
-
-```php title="Report_Repository.php"
+```php title="src/Report/Report_Repository.php"
 <?php declare(strict_types=1);
 
 namespace Plugin\Report;
@@ -46,202 +19,99 @@ namespace Plugin\Report;
 use Plugin\Database\Tables\Reports_Table;
 
 final readonly class Report_Repository {
-
 	public function __construct(
-		private Reports_Table $table
-	) {
-	}
+		private Reports_Table $reports,
+	) {}
 
-	/**
-	 * @return list<array<string, mixed>>
-	 */
-	public function published( int $limit = 100 ): array {
-		return $this->table
-			->query( 'r' )
-			->select( 'r.id', 'r.status', 'r.payload', 'r.created_at' )
-			->where( 'r.status', '=', 'published' )
-			->orderBy( 'r.created_at', 'DESC' )
-			->limit( $limit )
-			->get();
+	/** @return array<string, mixed>|false */
+	public function find( int $id ): array|false {
+		return $this->reports->query()
+			->select( 'id', 'title' )
+			->where( 'id = :id' )
+			->setParameter( 'id', $id )
+			->fetchAssociative();
 	}
 }
 ```
 
-`first()` returns one row or `null`. `get()` returns a list of associative rows. Qualified identifiers such as `r.created_at` are quoted as `` `r`.`created_at` `` rather than as one identifier.
-
-`max( 'column' )` returns the maximum value matching the builder's `where()` predicates. Aggregate queries ignore ordering and pagination because those clauses do not constrain the rows being aggregated.
-
-Use `null` with equality operators for SQL null checks:
+`query()` returns a fresh native Doctrine builder with the table configured as its source. Use `query('report')` for an alias. Supply SQL expressions yourself and bind external values using `setParameter()` or `setParameters()`. SQL fragments, column names, sorting, and aliases must come from application-owned choices, not request input.
 
 ```php
-$unpublished = $this->table
-	->query()
-	->where( 'published_at', '=', null )
-	->get();
+$rows = $this->reports->query()
+	->select( 'id', 'title' )
+	->where( 'status = :status' )
+	->setParameter( 'status', 'ready' )
+	->orderBy( 'id', 'DESC' )
+	->setMaxResults( 50 )
+	->fetchAllAssociative();
 
-$published = $this->table
-	->query()
-	->where( 'published_at', '!=', null )
-	->get();
+$count = $this->reports->query()->select( 'COUNT(*)' )->fetchOne();
 ```
 
-These comparisons compile to `IS NULL` and `IS NOT NULL`. Other operators with `null` are rejected because they do not have useful SQL semantics.
+Doctrine supplies `fetchAssociative()` (one row or `false`), `fetchAllAssociative()` (rows), `fetchOne()` (one value or `false`), and `executeQuery()` for a native result. Database drivers may return numeric values as strings. Convert results according to your application contract.
 
-## Write rows
-
-Use the table object for inserts, updates, and deletes so physical table naming stays in one place:
+Common writes stay table-scoped:
 
 ```php
-$reportId = $this->table->insertGetId( [
-	'status'     => 'draft',
-	'payload'    => wp_json_encode( $payload ),
-	'created_at' => current_time( 'mysql', true ),
-] );
+$id = $this->reports->insertGetId( [ 'title' => 'Weekly', 'status' => 'draft' ] );
+$this->reports->update( [ 'status' => 'ready' ], [ 'id' => $id ] );
+$this->reports->delete( [ 'id' => $id ] );
+```
 
-$updated = $this->table->update(
-	[
-		'status'     => 'published',
-		'updated_at' => current_time( 'mysql', true ),
-	],
-	[ 'id' => $reportId ]
+`insert()`, `update()`, and `delete()` return Doctrine's affected-row count (`int|string`). `insertGetId()` returns the generated identifier (`int|string`) without truncation. Each accepts an optional `$types` map for Doctrine parameter types. Update and delete criteria must be nonempty; use the connection for an intentional whole-table operation.
+
+Inject `Doctrine\DBAL\Connection` for joins, specialized SQL, and operations spanning tables. Resolve physical names through each table's `quotedName()`:
+
+```php
+$connection->executeStatement(
+	'UPDATE ' . $reports->quotedName() . ' SET status = ? WHERE id = ?',
+	[ 'ready', $id ],
 );
-
-$deleted = $this->table->delete( [ 'id' => $reportId ] );
 ```
 
-`insert()` returns the affected row count, while `insertGetId()` returns the generated integer ID. `update()` and `delete()` return affected row counts.
+Queries, results, types, and DBAL exceptions are supported native Doctrine APIs. See [Doctrine's query builder reference](https://www.doctrine-project.org/projects/doctrine-dbal/en/4.4/reference/query-builder.html) for expressions and advanced usage.
 
-### Add table-specific operations
+## Choose a transaction boundary
 
-Add an intent-revealing method to the table class when specialized SQL belongs to that table and should be reused by its consumers. The base `Table` exposes its table-scoped database gateway to subclasses through the protected `database()` method.
+Inject the shared connection into the service that owns the complete unit of work. Collaborating repositories can continue to use their injected tables.
 
-For example, add `archive_status()` to `src/Database/Tables/Reports_Table.php`:
+```php
+use Doctrine\DBAL\Connection;
+use Plugin\Database\Tables\Reports_Table;
 
-```php title="Reports_Table.php"
-/**
- * Archive reports with the supplied status.
- *
- * @throws \StellarWP\Foundation\Database\Exceptions\DatabaseException When the physical table name is invalid.
- * @throws \StellarWP\Foundation\Database\Exceptions\QueryException    When the update fails.
- */
-public function archive_status( string $status ): int {
-	return $this->database()->execute(
-		'UPDATE %i SET status = %s WHERE status = %s',
-		$this->name(),
-		'archived',
-		$status
-	);
+final readonly class Create_Report {
+	public function __construct(
+		private Connection $connection,
+		private Reports_Table $reports,
+	) {}
+
+	public function create( string $title ): int|string {
+		return $this->connection->transactional( function () use ( $title ): int|string {
+			return $this->reports->insertGetId( [ 'title' => $title, 'status' => 'draft' ] );
+		} );
+	}
 }
 ```
 
-The method uses the same database service as the inherited table operations. Calling `name()` resolves and validates the physical table name for the active WordPress site when the operation runs.
+`transactional()` returns the callback's value only after commit is acknowledged. `false` and `null` are ordinary callback results, not rollback signals. Throw an exception to cancel work. The original escaping exception is preserved if cleanup also fails.
 
-Keep these methods scoped to one table. Cross-table queries, multi-step workflows, and business rules belong in a repository or feature service.
+Nested transactions use savepoints. An inner success is provisional until the outer transaction commits. A database execution failure is terminal for the entire managed transaction, even if application code catches its exception. An inner business exception can be caught after its savepoint is rolled back.
 
-## Inspect and execute SQL
+### Handle failures deliberately
 
-Build a query before executing it when logging or diagnostics need the SQL shape and separate bindings:
+- Ordinary SQL failures use Doctrine exceptions, such as `Doctrine\DBAL\Exception\UniqueConstraintViolationException`.
+- `TransactionFailed` means a caught database failure prevented successful completion. Start fresh work at an application boundary after cleanup.
+- `CommitOutcomeUnknown` means the server did not confirm commit. The data may already be committed. Inspect durable application state or use an idempotency key before retrying.
+- A detected site or connection change interrupts managed work. Foundation never replays failed SQL or reconnects in the middle of a transaction.
 
-```php
-$query = $this->table
-	->query( 'r' )
-	->select( 'r.id', 'r.status' )
-	->where( 'r.status', '=', 'failed' )
-	->limit( 25 )
-	->toQuery();
+The Foundation exceptions above live under `StellarWP\Foundation\Database\Exceptions`.
 
-$sql         = $query->toSql();
-$bindings    = $query->bindings();
-$preparedSql = $query->toPreparedSql();
-$rows        = $query->get();
-```
-
-Prefer `toSql()` plus `bindings()` for structured diagnostics. A fully prepared SQL string may contain customer or application data and should not be logged without considering its sensitivity.
-
-:::caution[Rebuild materialized queries after changing sites]
-`toQuery()` captures SQL for the active WordPress database scope. If code calls `switch_to_blog()`, build a new query before executing it so the table name uses the new site's prefix. Calling `get()`, `first()`, or `max()` directly on the table query builder resolves the active scope as part of that operation. For a scalar result, call `value()` on the `Query` returned by `toQuery()`.
+:::caution[Keep managed work on the shared connection]
+Use transactional tables. Do not issue DDL, manual transaction-control SQL, direct WordPress queries, or `switch_to_blog()` inside a managed transaction. DDL can implicitly commit MySQL transactions, and writes through other sessions are outside this transaction. External HTTP calls cannot be rolled back with database writes.
 :::
 
-Inject `QueryReader` in addition to the table when specialized read SQL belongs to a repository workflow rather than one table, or when a query spans multiple tables. Add it explicitly to that repository's constructor:
+Between completed operations, WordPress may replace its mysqli connection. New queries and transactions use the replacement automatically. Prepared statements from the old connection are rejected; prepare them again for the new operation.
 
-```php
-use StellarWP\Foundation\Database\Contracts\QueryReader;
+## Test application behavior
 
-public function __construct(
-	private Reports_Table $table,
-	private QueryReader $database
-) {
-}
-```
-
-The contract exposes prepared low-level read operations:
-
-```php
-$row = $this->database->row(
-	'SELECT * FROM %i WHERE id = %d',
-	$this->table->name(),
-	$reportId
-);
-
-$count = $this->database->value(
-	'SELECT COUNT(*) FROM %i WHERE status = %s',
-	$this->table->name(),
-	'published'
-);
-```
-
-Use `QueryExecutor` instead when the same repository must also execute raw writes:
-
-```php
-use StellarWP\Foundation\Database\Contracts\QueryExecutor;
-
-public function __construct(
-	private Reports_Table $table,
-	private QueryExecutor $database
-) {
-}
-
-$affected = $this->database->execute(
-	'UPDATE %i SET status = %s WHERE status = %s',
-	$this->table->name(),
-	'archived',
-	'published'
-);
-```
-
-Use `prepare()` when another WordPress API requires the prepared SQL string. Keep values in placeholders instead of concatenating untrusted input.
-
-For normal application code, follow one of these paths:
-
-1. Inject the concrete table for queries and writes scoped to that table.
-2. Inject `QueryReader` for specialized raw or cross-table reads.
-3. Inject `QueryExecutor` when the same raw workflow also executes writes.
-
-The aggregate `Database` contract is available when one infrastructure collaborator genuinely needs the complete API. The narrower contracts are public extension capabilities for specialized raw-SQL repositories, adapters, and decorators. They are not setup choices every application must make: routine table-scoped repositories should continue injecting their concrete table.
-
-## Handle query failures
-
-Database operations throw `QueryException` when `wpdb` reports an error. The exception retains the SQL template, bindings, and database error separately:
-
-```php
-use Psr\Log\LoggerInterface;
-use StellarWP\Foundation\Database\Exceptions\QueryException;
-
-try {
-	$rows = $query->get();
-} catch ( QueryException $exception ) {
-	$this->logger->error( 'Report query failed.', [
-		'sql'            => $exception->sql(),
-		'bindings'       => $exception->bindings(),
-		'database_error' => $exception->databaseError(),
-	] );
-
-	throw $exception;
-}
-```
-
-Avoid exposing database errors or bindings to end users. They may contain schema details or sensitive values.
-
-## Testing
-
-Use `wpunit` tests for repositories and query behavior. Create the real table, exercise the real WordPress database, and remove the table during cleanup. This catches placeholder, collation, identifier, and MariaDB behavior that a mocked `wpdb` cannot reproduce.
+Unit-test application decisions against your own repository contracts when useful. Use integration tests with real InnoDB tables for transaction boundaries, SQL behavior, and recovery. Test that an observer on a second connection cannot see uncommitted rows, that a failed operation leaves prior rows intact, and that caught database failures cannot produce a successful result.

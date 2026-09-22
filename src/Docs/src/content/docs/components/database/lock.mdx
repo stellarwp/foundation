@@ -76,13 +76,13 @@ private const array PROVIDERS = [
 
 ### Initialize lock storage
 
-Create or reconcile the database lock table during deployment:
+Create the configured lock table during activation or deployment by resolving `DatabaseLock` and calling `initialize()` after registering the providers:
 
-```shell
-wp your-plugin migrate --initialize
+```php
+$container->get( DatabaseLock::class )->initialize();
 ```
 
-Replace `your-plugin` with the configured command prefix. The command is idempotent, so deployment automation can run it before migrations without first checking whether the table exists.
+Subsequent calls reuse the existing table. Initialize storage before services acquire locks. Normal lock operations perform no DDL and report `LockUnavailableException` if storage is unavailable.
 
 ## Usage
 
