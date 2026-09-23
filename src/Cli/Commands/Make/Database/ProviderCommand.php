@@ -27,7 +27,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 final class ProviderCommand extends Command
 {
 	public const string CONFIG_KEY        = 'database-provider';
-	public const string NAME              = 'make:' . self::CONFIG_KEY;
+	public const string NAME              = 'make:database:provider';
 	public const string DEFAULT_NAMESPACE = 'Database';
 
 	public function __construct(

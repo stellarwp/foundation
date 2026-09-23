@@ -54,7 +54,7 @@ composer run foundation -- list
 ### Generate a WP-CLI command
 
 ```shell
-vendor/bin/foundation make:wpcli-command Sync_Products_Command
+vendor/bin/foundation make:wpcli:command Sync_Products_Command
 ```
 
 The generated class extends Foundation's WP-CLI command base and demonstrates positional arguments, associative options, and flags. A command shipped by the plugin requires the runtime package:
@@ -74,13 +74,13 @@ composer require stellarwp/foundation-wpcli
 Generate the application provider first so later generators can register the table and migration automatically:
 
 ```shell
-vendor/bin/foundation make:database-provider
-vendor/bin/foundation make:database-table Reports_Table --migration
+vendor/bin/foundation make:database:provider
+vendor/bin/foundation make:database:table Reports_Table --migration
 ```
 
 The `--migration` flag creates and registers the table's initial migration in the same operation. Table `--namespace` and `--path` options affect only the table class; the migration uses its project-configured namespace and path, falling back to the Foundation convention. Use an explicit identifier such as `--migration-id=2026_09_04_143200_create_reports_table` only when the generated timestamp identifier must be replaced. The explicit ID determines that migration's position in Foundation's ascending execution order.
 
-Use `--table-name=<name>` when the table's unprefixed WordPress name should differ from the name derived from its class. On `make:database-migration`, `--table=<class>` instead selects the existing table class that an alteration migration changes.
+Use `--table-name=<name>` when the table's unprefixed WordPress name should differ from the name derived from its class. On `make:database:migration`, `--table=<class>` instead selects the existing table class that an alteration migration changes.
 
 Generated database classes require the runtime package:
 
@@ -94,9 +94,9 @@ The migration generator selects one of three modes:
 
 | Invocation | Generated behavior | Override stub |
 | --- | --- | --- |
-| `make:database-migration Create_Reports_Table --create=Reports_Table` | Creates the explicitly selected table; `down()` drops the table | `create-table-migration.stub` |
-| `make:database-migration Add_Status_To_Reports --table=Reports_Table` | Starts an explicit alteration blueprint; `down()` throws `IrreversibleMigration` until replaced | `alter-table-migration.stub` |
-| `make:database-migration Backfill_Report_Status` | Generates a generic migration; add service or table dependencies manually | `migration.stub` |
+| `make:database:migration Create_Reports_Table --create=Reports_Table` | Creates the explicitly selected table; `down()` drops the table | `create-table-migration.stub` |
+| `make:database:migration Add_Status_To_Reports --table=Reports_Table` | Starts an explicit alteration blueprint; `down()` throws `IrreversibleMigration` until replaced | `alter-table-migration.stub` |
+| `make:database:migration Backfill_Report_Status` | Generates a generic migration; add service or table dependencies manually | `migration.stub` |
 
 The `--create` and `--table` options are mutually exclusive. Each accepts a short class name from the configured table namespace (`Database\\Tables` by default), or a fully qualified table class. Migration names never select destructive behavior by themselves.
 
@@ -111,10 +111,10 @@ The `--create` and `--table` options are mutually exclusive. Each accepts a shor
 Use Symfony Console's built-in help for supported names, paths, namespaces, and feature-specific options:
 
 ```shell
-vendor/bin/foundation help make:wpcli-command
-vendor/bin/foundation help make:database-provider
-vendor/bin/foundation help make:database-table
-vendor/bin/foundation help make:database-migration
+vendor/bin/foundation help make:wpcli:command
+vendor/bin/foundation help make:database:provider
+vendor/bin/foundation help make:database:table
+vendor/bin/foundation help make:database:migration
 ```
 
 Without project overrides, generators use the first `autoload.psr-4` entry in the project's `composer.json` as their root namespace. Output directories follow the most specific Composer mapping for the selected namespace. Explicit `--namespace` and `--path` options override those defaults.
@@ -152,14 +152,14 @@ Namespaces are fully qualified application namespaces. With `Plugin\\` mapped to
 
 | Generator | Directory |
 | --- | --- |
-| `make:wpcli-command` | `src/Commands/` |
-| `make:database-provider` | `src/Persistence/` |
-| `make:database-table` | `src/Persistence/Tables/` |
-| `make:database-migration` | `src/Persistence/Migrations/` |
+| `make:wpcli:command` | `src/Commands/` |
+| `make:database:provider` | `src/Persistence/` |
+| `make:database:table` | `src/Persistence/Tables/` |
+| `make:database:migration` | `src/Persistence/Migrations/` |
 
 An explicit `--namespace` takes precedence over the configured namespace. Without either, the conventional suffixes are `Cli\\Commands`, `Database`, `Database\\Tables`, and `Database\\Migrations`, respectively. An explicit `--path` chooses the output directory for that invocation; it does not change the namespace or update Composer autoload mappings.
 
-Table and migration generators look for `Provider.php` in the configured database-provider namespace. Generate that provider first to enable automatic registration. Use `--provider` to select another provider file, including a provider generated with a custom class name. Paired migrations from `make:database-table --migration` use the migration setting independently of table options; short `--create` and `--table` references use the table setting.
+Table and migration generators look for `Provider.php` in the configured database-provider namespace. Generate that provider first to enable automatic registration. Use `--provider` to select another provider file, including a provider generated with a custom class name. Paired migrations from `make:database:table --migration` use the migration setting independently of table options; short `--create` and `--table` references use the table setting.
 
 Invalid settings for the selected generator or missing Composer mappings stop generation before files are written. Correct the setting or mapping before retrying. If the provider namespace has no mapping, correct `generators.database-provider.namespace` or its Composer mapping, or select an existing provider file with `--provider`.
 

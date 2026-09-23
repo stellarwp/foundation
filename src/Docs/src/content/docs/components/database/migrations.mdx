@@ -13,8 +13,8 @@ After [configuring DatabaseProvider](/components/database/), install the develop
 
 ```shell
 composer require --dev stellarwp/foundation-cli
-vendor/bin/foundation make:database-provider
-vendor/bin/foundation make:database-table reports --table-name=your_plugin_reports --migration
+vendor/bin/foundation make:database:provider
+vendor/bin/foundation make:database:table reports --table-name=your_plugin_reports --migration
 ```
 
 The generator creates a table and its initial migration, and adds their registrations to the generated provider. Register that provider after `DatabaseProvider` in your application's composition root.
@@ -106,7 +106,7 @@ All providers contribute to one globally sorted collection. IDs are compared in 
 Generate an alteration for an existing table:
 
 ```shell
-vendor/bin/foundation make:database-migration add-published-at --table=Reports_Table
+vendor/bin/foundation make:database:migration add-published-at --table=Reports_Table
 ```
 
 Its `up()` declares only this migration's changes:

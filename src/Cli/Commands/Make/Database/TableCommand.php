@@ -30,7 +30,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 final class TableCommand extends Command
 {
 	public const string CONFIG_KEY        = 'database-table';
-	public const string NAME              = 'make:' . self::CONFIG_KEY;
+	public const string NAME              = 'make:database:table';
 	public const string DEFAULT_NAMESPACE = 'Database\\Tables';
 
 	/**

@@ -190,12 +190,12 @@ composer require stellarwp/foundation-wpcli
 Then generate a starter WP-CLI command:
 
 ```bash
-vendor/bin/foundation make:wpcli-command Sync_Products_Command
+vendor/bin/foundation make:wpcli:command Sync_Products_Command
 ```
 
 The command reads the project's PSR-4 Composer autoload namespaces, writes a Snake_Case command class under `Cli/Commands` inside the selected PSR-4 root, and uses the default WP-CLI command stub from `foundation-wpcli`.
 
-If your project adds a Composer script such as `"foundation": "@php vendor/bin/foundation"`, you may run the command as `composer run foundation -- make:wpcli-command Sync_Products_Command`.
+If your project adds a Composer script such as `"foundation": "@php vendor/bin/foundation"`, you may run the command as `composer run foundation -- make:wpcli:command Sync_Products_Command`.
 
 `stellarwp/foundation-cli` is build-time developer tooling when installed as a split package. Do not register `StellarWP\Foundation\Cli\CliProvider` in a WordPress plugin application, and do not include the CLI split package in production plugin zips. Production split-package installs should normally run with Composer's `--no-dev` mode so the generator, Symfony Console, and other dev tooling are not packaged.
 

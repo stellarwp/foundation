@@ -24,7 +24,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 final class MigrationCommand extends Command
 {
 	public const string CONFIG_KEY        = 'database-migration';
-	public const string NAME              = 'make:' . self::CONFIG_KEY;
+	public const string NAME              = 'make:database:migration';
 	public const string DEFAULT_NAMESPACE = 'Database\\Migrations';
 
 	/**

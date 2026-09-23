@@ -57,9 +57,9 @@ final class CliProviderTest extends TestCase
 		$this->assertInstanceOf(StubResolver::class, $container->get(StubResolver::class));
 		$this->assertSame(getcwd(), $container->get(ProjectDirectory::class)->path);
 		$this->assertFalse($container->get(Application::class)->has('package:create'));
-		$this->assertTrue($container->get(Application::class)->has('make:database-migration'));
-		$this->assertTrue($container->get(Application::class)->has('make:database-provider'));
-		$this->assertTrue($container->get(Application::class)->has('make:database-table'));
-		$this->assertTrue($container->get(Application::class)->has('make:wpcli-command'));
+		$this->assertTrue($container->get(Application::class)->has('make:database:migration'));
+		$this->assertTrue($container->get(Application::class)->has('make:database:provider'));
+		$this->assertTrue($container->get(Application::class)->has('make:database:table'));
+		$this->assertTrue($container->get(Application::class)->has('make:wpcli:command'));
 	}
 }
