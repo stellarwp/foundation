@@ -7,6 +7,7 @@ use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\DatabaseProvider;
 use StellarWP\Foundation\Database\Migration\Contracts\Migration;
 use StellarWP\Foundation\Database\Migration\Schema\Blueprint;
+use StellarWP\Foundation\Database\Migration\ValueObjects\MigrationRegistration;
 use StellarWP\Foundation\WPCli\CommandContext;
 use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 
@@ -43,6 +44,6 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 			$schema->drop($this->table);
 		}
 	};
-	$container->mergeArrayVar(DatabaseProvider::MIGRATIONS, [$migration]);
+	$container->mergeArrayVar(DatabaseProvider::MIGRATIONS, [new MigrationRegistration($migration->id(), $migration)]);
 	$container->get(Migrate::class)->register(new CommandContext(new CommandPrefix('foundation')));
 });

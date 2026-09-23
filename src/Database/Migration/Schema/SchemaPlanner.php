@@ -13,6 +13,7 @@ use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Schema\TableDiff;
 use StellarWP\Foundation\Database\Contracts\TableNameResolver;
 use StellarWP\Foundation\Database\Migration\Exceptions\IncompatibleSchema;
+use StellarWP\Foundation\Database\Migration\Exceptions\IrreversibleMigration;
 use StellarWP\Foundation\Database\Migration\Exceptions\MigrationInterrupted;
 use StellarWP\Foundation\Database\Migration\MigrationCollection;
 use StellarWP\Foundation\Database\Migration\Schema\ValueObjects\SchemaPlan;
@@ -105,7 +106,13 @@ final readonly class SchemaPlanner
 	private function reverse(SchemaState $before, string $id): SchemaState {
 		$after     = clone $before;
 		$blueprint = new Blueprint($after, $this->names, $this->tableOptions);
-		$this->migrations->get($id)->down($blueprint);
+
+		try {
+			$this->migrations->get($id)->down($blueprint);
+		} catch (IrreversibleMigration $failure) {
+			throw new IrreversibleMigration(sprintf('Migration "%s" cannot be reversed: %s', $id, $failure->getMessage()), 0, $failure);
+		}
+
 		$this->apply($blueprint, $id);
 
 		return $after;

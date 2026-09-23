@@ -1,35 +1,26 @@
 <?php declare(strict_types=1);
 
-namespace {{ namespace }};
-
 use {{ foundation_database_migration }};
 use {{ foundation_database_schema }};
-use {{ table_namespace }}\{{ table_class }};
 
-final readonly class {{ class }} implements Migration {
+return new class extends Migration {
 
-	public const string ID = {{ id_php }};
-
-	public function __construct(
-		private {{ table_class }} $table
-	) {
-	}
-
-	public function id(): string {
-		return self::ID;
-	}
-
+	/**
+	 * Declare this migration's schema changes.
+	 */
 	public function up( Blueprint $schema ): void {
-		$table = $schema->create( $this->table );
+		$table = $schema->create( {{ table_php }} );
 
 		$table->bigIncrements( 'id' );
 
-		// Define the complete initial schema before running this migration.
-
+		// Add the initial columns and indexes before running this migration.
 	}
 
+	/**
+	 * Drop the table and its data.
+	 */
 	public function down( Blueprint $schema ): void {
-		$schema->drop( $this->table );
+		$schema->drop( {{ table_php }} );
 	}
 
-}
+};

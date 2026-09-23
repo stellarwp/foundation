@@ -19,6 +19,7 @@ use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\History;
 use StellarWP\Foundation\Database\Migration\MigrationCollection;
+use StellarWP\Foundation\Database\Migration\MigrationDiscovery;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Schema\SchemaPlanner;
 use StellarWP\Foundation\Database\Scope\SiteScope;
@@ -85,14 +86,32 @@ final class DatabaseProvider extends Provider
 	}
 
 	private function registerMigrations(): void {
-		$this->container->mergeArrayVar(self::MIGRATIONS, []);
-		$this->container->when(MigrationCollection::class)->needs('$migrations')
-			->give(static fn (C $c): iterable => $c->get(self::MIGRATIONS));
-		$this->container->when(SchemaPlanner::class)->needs('$tableOptions')->give(static function (C $c): array {
-			$source = $c->get(wpdb::class);
+		$this->container->when(MigrationDiscovery::class)
+			->needs('$root')
+			->give(fn (): ?string => $this->config->get('foundation.root'));
 
-			return array_filter(['engine' => 'InnoDB', 'charset' => $source->charset, 'collation' => $source->collate]);
-		});
+		$this->container->when(MigrationDiscovery::class)
+			->needs('$path')
+			->give(fn (): ?string => $this->config->get('database.migrations.path'));
+
+		$this->container->singleton(MigrationDiscovery::class);
+		$this->container->mergeArrayVar(
+			self::MIGRATIONS,
+			static fn (C $c): array => iterator_to_array($c->get(MigrationDiscovery::class)->migrations(), false)
+		);
+
+		$this->container->when(MigrationCollection::class)
+			->needs('$migrations')
+			->give(static fn (C $c): iterable => $c->get(self::MIGRATIONS));
+
+		$this->container->when(SchemaPlanner::class)
+			->needs('$tableOptions')
+			->give(static function (C $c): array {
+				$source = $c->get(wpdb::class);
+
+				return array_filter(['engine' => 'InnoDB', 'charset' => $source->charset, 'collation' => $source->collate]);
+			});
+
 		$this->container->singleton(MigrationCollection::class);
 		$this->container->singleton(History::class);
 		$this->container->singleton(SchemaPlanner::class);

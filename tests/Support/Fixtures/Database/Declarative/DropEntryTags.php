@@ -18,10 +18,6 @@ final readonly class DropEntryTags implements Migration
 	) {
 	}
 
-	public function id(): string {
-		return self::ID;
-	}
-
 	public function up(Blueprint $schema): void {
 		$schema->drop($this->table);
 	}

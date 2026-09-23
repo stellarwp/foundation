@@ -17,10 +17,6 @@ final readonly class WidenEntryName implements Migration
 	) {
 	}
 
-	public function id(): string {
-		return self::ID;
-	}
-
 	public function up(Blueprint $schema): void {
 		$schema->table($this->table)->comment('Imported entries')->string('name', 120)->nullable()->change();
 	}

@@ -1,28 +1,25 @@
 <?php declare(strict_types=1);
 
-namespace {{ namespace }};
-
 use {{ foundation_database_migration }};
 use {{ foundation_database_schema }};
 use {{ foundation_database_irreversible_migration }};
 
-final readonly class {{ class }} implements Migration {
+return new class extends Migration {
 
-	public const string ID = {{ id_php }};
-
-	public function id(): string {
-		return self::ID;
-	}
-
+	/**
+	 * Declare this migration's schema changes.
+	 */
 	public function up( Blueprint $schema ): void {
-		// Add migration behavior here.
+		// Declare schema changes using stable, unprefixed table names.
 	}
 
 	/**
+	 * Stop rollback until a safe inverse is supplied.
+	 *
 	 * @throws IrreversibleMigration Until a safe inverse is implemented.
 	 */
 	public function down( Blueprint $schema ): void {
-		throw IrreversibleMigration::forMigration( self::ID );
+		throw new IrreversibleMigration( 'Implement a safe down() declaration before rolling back this migration.' );
 	}
 
-}
+};

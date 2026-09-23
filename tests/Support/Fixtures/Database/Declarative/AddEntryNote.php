@@ -18,10 +18,6 @@ final readonly class AddEntryNote implements DescribesMigration, Migration
 	) {
 	}
 
-	public function id(): string {
-		return self::ID;
-	}
-
 	public function describe(): string {
 		return 'Add an optional note to entries';
 	}

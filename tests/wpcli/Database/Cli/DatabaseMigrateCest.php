@@ -14,7 +14,7 @@ final class DatabaseMigrateCest
 		$I->cli(['foundation', 'migrate']);
 		$I->seeResultCodeIs(0);
 		$I->seeInShellOutput('pending');
-		$I->seeInShellOutput('(anonymous)');
+		$I->seeInShellOutput("20260623000001\t20260623000001\tpending");
 		$I->cli(['foundation', 'migrate', '--run', '--dry-run']);
 		$I->seeResultCodeIs(0);
 		$I->seeInShellOutput('CREATE TABLE');

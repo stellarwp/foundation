@@ -17,10 +17,6 @@ final readonly class CreateEntries implements Migration
 	) {
 	}
 
-	public function id(): string {
-		return self::ID;
-	}
-
 	public function up(Blueprint $schema): void {
 		$entries = $schema->create($this->table)->comment('Application entries');
 

@@ -21,7 +21,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * Generates a database feature provider for registering Foundation Database classes.
  *
- * Use this before generating database tables or migrations when a consuming
+ * Use this before generating database tables when a consuming
  * project wants a single provider where generated database classes are wired.
  */
 final class ProviderCommand extends Command
@@ -61,7 +61,7 @@ final class ProviderCommand extends Command
 
 		$output->writeln(sprintf('<info>Created:</info> %s', $file->relativePath));
 		$output->writeln('');
-		$output->writeln('<comment>Register this provider in your application provider list before adding generated tables and migrations.</comment>');
+		$output->writeln('<comment>Register this provider in your application provider list to supply table and service wiring.</comment>');
 
 		$runtimeDependencyWarning = $this->runtimeDependencyWarning();
 

@@ -11,7 +11,7 @@ use StellarWP\Foundation\Database\Contracts\TableNameResolver;
  * The schema handed to up() and down(): declare tables to create, alter, or drop.
  *
  * Table names are resolved through the current site scope, so migrations name application
- * tables by their Table object and never repeat WordPress prefix handling.
+ * tables by their historical unprefixed names and never repeat WordPress prefix handling.
  */
 final class Blueprint
 {
@@ -33,7 +33,7 @@ final class Blueprint
 	/**
 	 * Declare a new table and its complete initial definition.
 	 */
-	public function create(Table $table): TableBlueprint {
+	public function create(Table|string $table): TableBlueprint {
 		$blueprint          = new TableBlueprint($this->resolve($table));
 		$this->operations[] = function () use ($blueprint): void {
 			$name = $blueprint->name();
@@ -51,7 +51,7 @@ final class Blueprint
 	/**
 	 * Declare additions, changes, and removals on an existing table.
 	 */
-	public function table(Table $table): TableBlueprint {
+	public function table(Table|string $table): TableBlueprint {
 		$blueprint          = new TableBlueprint($this->resolve($table));
 		$this->operations[] = function () use ($blueprint): void {
 			$this->replaceTable($blueprint->applyTo($this->state->schema->getTable($blueprint->name())->edit(), $this->state));
@@ -63,7 +63,7 @@ final class Blueprint
 	/**
 	 * Declare that the table no longer exists after this migration.
 	 */
-	public function drop(Table $table): void {
+	public function drop(Table|string $table): void {
 		$name               = $this->resolve($table);
 		$this->operations[] = function () use ($name): void {
 			$this->state->schema->dropTable($name);
@@ -80,7 +80,7 @@ final class Blueprint
 	 *
 	 * @return non-empty-string
 	 */
-	public function resolve(Table $table): string {
+	public function resolve(Table|string $table): string {
 		return $this->names->tableName($table);
 	}
 

@@ -28,6 +28,7 @@ Set a stable, unique application prefix in your root configuration:
 
 return [
 	'foundation' => [
+		'root'   => __DIR__,
 		'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? 'your-plugin',
 	],
 ];
@@ -38,14 +39,12 @@ Create your container using [ContainerFactory](/start/configure-the-container/),
 ```php
 use StellarWP\Foundation\Database\DatabaseProvider;
 use StellarWP\Foundation\WPCli\WPCliProvider;
-use Plugin\Database\Provider;
 
 $container->register( WPCliProvider::class );
 $container->register( DatabaseProvider::class );
-$container->register( Provider::class ); // Your application tables and migrations.
 ```
 
-`DatabaseProvider` supplies one shared `Doctrine\DBAL\Connection`. Tables and repositories resolved from the container participate in that connection's transactions. Registration is lazy: it creates no database tables.
+`DatabaseProvider` supplies one shared `Doctrine\DBAL\Connection`. Tables and repositories resolved from the container participate in that connection's transactions. Registration is lazy: it creates no database tables. Register an application provider afterward when you need custom service bindings. `foundation.root` supplies the project directory for automatic migration discovery.
 
 ### Query an application table
 

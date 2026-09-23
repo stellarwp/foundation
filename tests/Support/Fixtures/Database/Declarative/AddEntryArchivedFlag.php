@@ -18,10 +18,6 @@ final readonly class AddEntryArchivedFlag implements Migration
 	) {
 	}
 
-	public function id(): string {
-		return self::ID;
-	}
-
 	public function up(Blueprint $schema): void {
 		$schema->table($this->table)->boolean('archived')->default(false);
 	}

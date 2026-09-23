@@ -21,6 +21,7 @@ use StellarWP\Foundation\Database\Migration\MigrationCollection;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Schema\Blueprint;
 use StellarWP\Foundation\Database\Migration\Schema\SchemaPlanner;
+use StellarWP\Foundation\Database\Migration\ValueObjects\MigrationRegistration;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\DatabaseTestCase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\LostAdvisoryLockReply;
@@ -64,14 +65,14 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 			}
 			public function down(Blueprint $schema): void {
 			}
-			public function migrate(Connection $db): void {
+			public function migrate(Connection $db, TableNameResolver $names): void {
 				($this->operation)($db);
 			}
 		};
-		$migrations = new MigrationCollection([$migration]);
+		$migrations = new MigrationCollection([new MigrationRegistration($migration->id(), $migration)]);
 
 		return new Migrator($db, $container->get(WordPressSession::class), $scope,
-			new History($db, $table), new SchemaPlanner($db, $names, $migrations), $migrations);
+			new History($db, $table), new SchemaPlanner($db, $names, $migrations), $migrations, $names);
 	}
 
 	private function lockName(?string $resource = null): string {

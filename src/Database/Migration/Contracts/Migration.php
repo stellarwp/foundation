@@ -14,11 +14,6 @@ use StellarWP\Foundation\Database\Migration\Schema\Blueprint;
 interface Migration
 {
 	/**
-	 * Return the persistent identity that orders this migration, independent of its class name.
-	 */
-	public function id(): string;
-
-	/**
 	 * Declare the forward change.
 	 */
 	public function up(Blueprint $schema): void;

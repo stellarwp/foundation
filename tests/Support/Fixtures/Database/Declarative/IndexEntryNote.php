@@ -17,10 +17,6 @@ final readonly class IndexEntryNote implements Migration
 	) {
 	}
 
-	public function id(): string {
-		return self::ID;
-	}
-
 	public function up(Blueprint $schema): void {
 		$schema->table($this->table)->index('note_lookup', 'note');
 	}

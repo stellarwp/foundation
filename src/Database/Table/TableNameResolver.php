@@ -25,8 +25,8 @@ final readonly class TableNameResolver implements TableNameResolverContract
 	/**
 	 * {@inheritDoc}
 	 */
-	public function tableName(Table $table): string {
-		$unprefixed = $table->unprefixedName();
+	public function tableName(Table|string $table): string {
+		$unprefixed = is_string($table) ? $table : $table->unprefixedName();
 
 		if ($unprefixed === '' || trim($unprefixed) !== $unprefixed) {
 			throw new DatabaseException('The unprefixed database table name cannot be blank or contain surrounding whitespace.');

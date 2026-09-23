@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\Database\Migration;
 
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Migration\Contracts\Migration;
+use StellarWP\Foundation\Database\Migration\ValueObjects\MigrationRegistration;
 
 /**
  * Contributed migrations validated once and held in byte-exact identifier order.
@@ -22,7 +23,7 @@ final class MigrationCollection
 	/**
 	 * Validate provider contributions and sort their persistent identities.
 	 *
-	 * @param iterable<Migration> $migrations
+	 * @param iterable<MigrationRegistration> $migrations
 	 *
 	 * @throws InvalidArgumentException      When an identity is duplicated.
 	 * @throws Exceptions\InvalidMigrationId When an identity is invalid.
@@ -30,15 +31,24 @@ final class MigrationCollection
 	public function __construct(
 		iterable $migrations = [],
 	) {
-		foreach ($migrations as $migration) {
-			$id = (new ValueObjects\Id($migration->id()))->value;
-
-			if (isset($this->migrations[$id])) {
-				throw new InvalidArgumentException('Duplicate migration identity: ' . $id);
-			}
-			$this->migrations[$id] = $migration;
+		foreach ($migrations as $registration) {
+			$this->add($registration);
 		}
+
 		ksort($this->migrations, SORT_STRING);
+	}
+
+	/**
+	 * Validate and store a contribution without allowing duplicate identities.
+	 */
+	private function add(MigrationRegistration $registration): void {
+		$id = (new ValueObjects\Id($registration->id))->value;
+
+		if (isset($this->migrations[$id])) {
+			throw new InvalidArgumentException('Duplicate migration identity: ' . $id);
+		}
+
+		$this->migrations[$id] = $registration->migration;
 	}
 
 	/**

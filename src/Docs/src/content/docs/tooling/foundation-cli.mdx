@@ -71,22 +71,18 @@ composer require stellarwp/foundation-wpcli
 
 ### Generate a database feature
 
-Generate the application provider first so later generators can register the table and migration automatically:
-
-```shell
-vendor/bin/foundation make:database:provider
-vendor/bin/foundation make:database:table Reports_Table --migration
-```
-
-The `--migration` flag creates and registers the table's initial migration in the same operation. Table `--namespace` and `--path` options affect only the table class; the migration uses its project-configured namespace and path, falling back to the Foundation convention. Use an explicit identifier such as `--migration-id=2026_09_04_143200_create_reports_table` only when the generated timestamp identifier must be replaced. The explicit ID determines that migration's position in Foundation's ascending execution order.
-
-Use `--table-name=<name>` when the table's unprefixed WordPress name should differ from the name derived from its class. On `make:database:migration`, `--table=<class>` instead selects the existing table class that an alteration migration changes.
-
-Generated database classes require the runtime package:
+Install the runtime package, then generate a table with its initial migration:
 
 ```shell
 composer require stellarwp/foundation-database
+vendor/bin/foundation make:database:table Reports --table-name=your_plugin_reports --migration
 ```
+
+The command creates `Reports_Table.php` and a timestamped `db/migrations/<timestamp>_create_reports_table.php`. Add the columns to the migration, preview its SQL, and apply it through WP-CLI. Follow the [complete create-and-alter workflow](/components/database/migrations/) to configure discovery and run the generated code.
+
+`--table-name` supplies the stable name before WordPress adds its site prefix. `--migration` creates an initial migration whose rollback drops the complete table. Table `--namespace` and `--path` options affect only the table class. Migrations use `database.migrations.path` from root `config.php`, defaulting to `db/migrations`.
+
+If you want a provider for application table bindings, generate one with `make:database:provider` before generating tables. Table generation can update it; migration discovery does not require per-migration provider entries.
 
 Database table and migration generators refuse to overwrite existing files. Edit an unapplied migration directly, or create a new migration after the existing one has been deployed.
 
@@ -94,15 +90,15 @@ The migration generator selects one of three modes:
 
 | Invocation | Generated behavior | Override stub |
 | --- | --- | --- |
-| `make:database:migration Create_Reports_Table --create=Reports_Table` | Creates the explicitly selected table; `down()` drops the table | `create-table-migration.stub` |
-| `make:database:migration Add_Status_To_Reports --table=Reports_Table` | Starts an explicit alteration blueprint; `down()` throws `IrreversibleMigration` until replaced | `alter-table-migration.stub` |
-| `make:database:migration Backfill_Report_Status` | Generates a generic migration; add service or table dependencies manually | `migration.stub` |
+| `make:database:migration create_reports_table --create=your_plugin_reports` | Creates the explicitly selected table; `down()` drops the table | `create-table-migration.stub` |
+| `make:database:migration add_status_to_reports --table=your_plugin_reports` | Starts an explicit alteration blueprint; `down()` throws `IrreversibleMigration` until replaced | `alter-table-migration.stub` |
+| `make:database:migration Backfill_Report_Status` | Generates a generic migration; declare changes using historical table names | `migration.stub` |
 
-The `--create` and `--table` options are mutually exclusive. Each accepts a short class name from the configured table namespace (`Database\\Tables` by default), or a fully qualified table class. Migration names never select destructive behavior by themselves.
+The `--create` and `--table` options are mutually exclusive. Each accepts a stable, unprefixed database table name such as `your_plugin_reports`. Migration names never select destructive behavior by themselves.
 
 <LinkCard
   title="Create Database Migrations"
-  description="Define tables, register migration history, and run migrations during deployment."
+  description="Generate a table, declare later changes, and preview or apply migrations."
   href="/components/database/migrations/"
 />
 
@@ -117,7 +113,7 @@ vendor/bin/foundation help make:database:table
 vendor/bin/foundation help make:database:migration
 ```
 
-Without project overrides, generators use the first `autoload.psr-4` entry in the project's `composer.json` as their root namespace. Output directories follow the most specific Composer mapping for the selected namespace. Explicit `--namespace` and `--path` options override those defaults.
+For tables, providers, and WP-CLI commands, generators use the first `autoload.psr-4` entry in the project's `composer.json` as their root namespace. Output directories follow the most specific Composer mapping for the selected namespace. Explicit `--namespace` and `--path` options override those defaults.
 
 ## Customize generation
 
@@ -139,9 +135,6 @@ return [
 		'database-table' => [
 			'namespace' => 'Plugin\\Persistence\\Tables',
 		],
-		'database-migration' => [
-			'namespace' => 'Plugin\\Persistence\\Migrations',
-		],
 	],
 ];
 ```
@@ -155,11 +148,12 @@ Namespaces are fully qualified application namespaces. With `Plugin\\` mapped to
 | `make:wpcli:command` | `src/Commands/` |
 | `make:database:provider` | `src/Persistence/` |
 | `make:database:table` | `src/Persistence/Tables/` |
-| `make:database:migration` | `src/Persistence/Migrations/` |
 
-An explicit `--namespace` takes precedence over the configured namespace. Without either, the conventional suffixes are `Cli\\Commands`, `Database`, `Database\\Tables`, and `Database\\Migrations`, respectively. An explicit `--path` chooses the output directory for that invocation; it does not change the namespace or update Composer autoload mappings.
+An explicit `--namespace` takes precedence over the configured namespace. Without either, the conventional suffixes are `Cli\\Commands`, `Database`, and `Database\\Tables`, respectively. An explicit `--path` chooses the output directory for that invocation; it does not change the namespace or update Composer autoload mappings.
 
-Table and migration generators look for `Provider.php` in the configured database-provider namespace. Generate that provider first to enable automatic registration. Use `--provider` to select another provider file, including a provider generated with a custom class name. Paired migrations from `make:database:table --migration` use the migration setting independently of table options; short `--create` and `--table` references use the table setting.
+The table generator looks for `Provider.php` in the configured database-provider namespace. Generate that provider first to enable table registration. Use table `--provider` to select another provider file. Migration `--create` and `--table` options take stable, unprefixed database names.
+
+Migration placement is shared with runtime discovery through `database.migrations.path`. Configure the [migration directory](/components/database/migrations/#use-another-directory) once. Migration commands have no separate `--path`, `--namespace`, or `--provider` option. Use a name such as `reports/add_status` to generate inside a feature subfolder.
 
 Invalid settings for the selected generator or missing Composer mappings stop generation before files are written. Correct the setting or mapping before retrying. If the provider namespace has no mapping, correct `generators.database-provider.namespace` or its Composer mapping, or select an existing provider file with `--provider`.
 

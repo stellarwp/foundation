@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Database\Migration\Contracts;
 
 use Doctrine\DBAL\Connection;
+use StellarWP\Foundation\Database\Contracts\TableNameResolver;
 
 /**
  * Optional data step executed after a migration's schema change and before it is recorded.
@@ -12,7 +13,7 @@ use Doctrine\DBAL\Connection;
 interface MigratesData
 {
 	/**
-	 * Transform rows using the shared connection.
+	 * Transform rows using the shared connection and scoped historical table names.
 	 */
-	public function migrate(Connection $db): void;
+	public function migrate(Connection $db, TableNameResolver $names): void;
 }

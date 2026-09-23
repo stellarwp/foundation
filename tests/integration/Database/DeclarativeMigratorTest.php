@@ -9,6 +9,7 @@ use StellarWP\Foundation\Database\Migration\Exceptions\IncompatibleSchema;
 use StellarWP\Foundation\Database\Migration\Exceptions\MigrationAlreadyRunning;
 use StellarWP\Foundation\Database\Migration\Exceptions\MigrationInterrupted;
 use StellarWP\Foundation\Database\Migration\Migrator;
+use StellarWP\Foundation\Database\Migration\ValueObjects\MigrationRegistration;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Step;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\DatabaseTestCase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\Declarative\AddEntryNote;
@@ -47,9 +48,9 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 		$this->container->singleton(EntriesTable::class, $this->entries);
 		$this->container->when(BackfillEntryStatus::class)->needs('$physicalName')->give($this->entriesName);
 		$this->container->mergeArrayVar(DatabaseProvider::MIGRATIONS, static fn (C $c): array => [
-			$c->get(BackfillEntryStatus::class),
-			$c->get(AddEntryNote::class),
-			$c->get(CreateEntries::class),
+			new MigrationRegistration(BackfillEntryStatus::ID, $c->get(BackfillEntryStatus::class)),
+			new MigrationRegistration(AddEntryNote::ID, $c->get(AddEntryNote::class)),
+			new MigrationRegistration(CreateEntries::ID, $c->get(CreateEntries::class)),
 		]);
 	}
 

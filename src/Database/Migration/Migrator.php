@@ -7,6 +7,7 @@ use Doctrine\DBAL\Connection;
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Connection\WordPressSession;
 use StellarWP\Foundation\Database\Contracts\DatabaseScope;
+use StellarWP\Foundation\Database\Contracts\TableNameResolver;
 use StellarWP\Foundation\Database\Migration\Contracts\DescribesMigration;
 use StellarWP\Foundation\Database\Migration\Contracts\MigratesData;
 use StellarWP\Foundation\Database\Migration\Contracts\Migration;
@@ -41,6 +42,7 @@ final class Migrator
 		private readonly History $history,
 		private readonly SchemaPlanner $planner,
 		private readonly MigrationCollection $migrations,
+		private readonly TableNameResolver $names,
 	) {
 	}
 
@@ -157,7 +159,7 @@ final class Migrator
 			$id        = (string) $id;
 			$rows[$id] = new MigrationStatus(
 				$id,
-				self::shortName($migration),
+				self::displayName($migration, $id),
 				$migration instanceof DescribesMigration ? $migration->describe() : '',
 				$applied[$id] ?? null,
 			);
@@ -200,7 +202,7 @@ final class Migrator
 				$this->session->check();
 
 				if (! $reverse && $migration instanceof MigratesData) {
-					$migration->migrate($this->db);
+					$migration->migrate($this->db, $this->names);
 					$this->session->check();
 
 					if ($this->db->isTransactionActive()) {
@@ -220,7 +222,7 @@ final class Migrator
 			}
 
 			$applied = $afterIds;
-			$steps[] = new Step($id, self::shortName($migration), $reverse, $sql, ! $reverse && $migration instanceof MigratesData);
+			$steps[] = new Step($id, self::displayName($migration, $id), $reverse, $sql, ! $reverse && $migration instanceof MigratesData);
 		}
 
 		return $steps;
@@ -283,9 +285,9 @@ final class Migrator
 		}
 	}
 
-	private static function shortName(Migration $migration): string {
+	private static function displayName(Migration $migration, string $id): string {
 		if (str_contains($migration::class, "\0")) {
-			return '(anonymous)';
+			return $id;
 		}
 		$parts = explode('\\', $migration::class);
 

@@ -8,6 +8,7 @@ use StellarWP\Foundation\Database\Migration\Exceptions\IncompatibleSchema;
 use StellarWP\Foundation\Database\Migration\Exceptions\IrreversibleMigration;
 use StellarWP\Foundation\Database\Migration\Exceptions\MigrationAlreadyRunning;
 use StellarWP\Foundation\Database\Migration\Migrator;
+use StellarWP\Foundation\Database\Migration\ValueObjects\MigrationRegistration;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Step;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\DatabaseTestCase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\Declarative\AddEntryArchivedFlag;
@@ -48,17 +49,17 @@ final class DeclarativeMigratorEdgeCaseTest extends DatabaseTestCase
 		$this->container->singleton(EntriesTable::class, new EntriesTable($this->suffix . '_entries'));
 		$this->container->singleton(TagsTable::class, new TagsTable($this->suffix . '_tags'));
 		$this->container->mergeArrayVar(DatabaseProvider::MIGRATIONS, static fn (C $c): array => [
-			$c->get(ReduceCreatedAtPrecision::class),
-			$c->get(TrackEntryUpdates::class),
-			$c->get(WidenEntryName::class),
-			$c->get(AddEntryArchivedFlag::class),
-			$c->get(ReplaceNoteLookup::class),
-			$c->get(IndexEntryNote::class),
-			$c->get(AddEntryNote::class),
-			$c->get(RecreateEntryTags::class),
-			$c->get(DropEntryTags::class),
-			$c->get(CreateEntryTags::class),
-			$c->get(CreateEntries::class),
+			new MigrationRegistration(ReduceCreatedAtPrecision::ID, $c->get(ReduceCreatedAtPrecision::class)),
+			new MigrationRegistration(TrackEntryUpdates::ID, $c->get(TrackEntryUpdates::class)),
+			new MigrationRegistration(WidenEntryName::ID, $c->get(WidenEntryName::class)),
+			new MigrationRegistration(AddEntryArchivedFlag::ID, $c->get(AddEntryArchivedFlag::class)),
+			new MigrationRegistration(ReplaceNoteLookup::ID, $c->get(ReplaceNoteLookup::class)),
+			new MigrationRegistration(IndexEntryNote::ID, $c->get(IndexEntryNote::class)),
+			new MigrationRegistration(AddEntryNote::ID, $c->get(AddEntryNote::class)),
+			new MigrationRegistration(RecreateEntryTags::ID, $c->get(RecreateEntryTags::class)),
+			new MigrationRegistration(DropEntryTags::ID, $c->get(DropEntryTags::class)),
+			new MigrationRegistration(CreateEntryTags::ID, $c->get(CreateEntryTags::class)),
+			new MigrationRegistration(CreateEntries::ID, $c->get(CreateEntries::class)),
 		]);
 	}
 

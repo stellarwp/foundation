@@ -2,180 +2,135 @@
 
 namespace StellarWP\Foundation\Cli\Commands\Make\Database\Factories;
 
+use DateTimeImmutable;
+use DateTimeZone;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use RuntimeException;
-use StellarWP\Foundation\Cli\Commands\Make\Database\MigrationCommand;
-use StellarWP\Foundation\Cli\Commands\Make\Database\TableCommand;
-use StellarWP\Foundation\Cli\Commands\Make\Database\ValueObjects\GeneratedMigration;
 use StellarWP\Foundation\Cli\Composer\ComposerAutoloadResolver;
-use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\ComposerProject;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\PhpNamespace;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
+use StellarWP\Foundation\Container\Contracts\Configuration;
 use StellarWP\Foundation\Database\DatabaseStubPath;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Id;
+use StellarWP\Foundation\Database\Migration\ValueObjects\MigrationDirectory;
 
 /**
- * Creates generic, create-table, and alter-table migration artifacts.
+ * Create anonymous migration files with permanent, timestamped filenames.
  */
 final readonly class MigrationFileFactory
 {
 	/**
-	 * Create a migration factory rooted in the consuming Composer project.
+	 * Receive project configuration and migration rendering services.
 	 */
 	public function __construct(
 		private ProjectDirectory $projectDirectory,
 		private ComposerAutoloadResolver $autoloadResolver,
-		private GeneratorLocationResolver $locations,
 		private WordPressClassNameResolver $classNameResolver,
 		private StubResolver $stubResolver,
-		private StubRenderer $stubRenderer
+		private StubRenderer $stubRenderer,
+		private Configuration $config,
 	) {
 	}
 
 	/**
-	 * Build a migration artifact without implied table behavior.
+	 * Build a migration without implied table ownership.
 	 *
-	 * @throws RuntimeException When project metadata or generator input is invalid.
+	 * @throws RuntimeException          When generator input or project metadata is invalid.
+	 * @throws \InvalidArgumentException When the directory or identity is invalid.
 	 */
-	public function generic(string $name, ?string $namespace = null, ?string $path = null, ?string $id = null): GeneratedMigration {
-		$context = $this->context($name, $namespace, $path, $id);
-		$stub    = $this->stubResolver->resolve('database', 'migration', DatabaseStubPath::migration());
-
-		return $this->migration($context, $this->stubRenderer->render($stub, [
-			'namespace'                                  => $context['namespace'],
-			'class'                                      => $context['class'],
-			'id_php'                                     => $this->stubRenderer->phpStringLiteral($context['id']),
-			'foundation_database_migration'              => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Migration\\Contracts\\Migration'),
-			'foundation_database_schema'                 => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Migration\\Schema\\Blueprint'),
-			'foundation_database_irreversible_migration' => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration'),
-		]));
+	public function generic(string $name): GeneratedFile {
+		return $this->render($name, 'migration', DatabaseStubPath::migration());
 	}
 
 	/**
-	 * Build a migration that creates and owns the selected table.
+	 * Build a migration that creates and owns the named table.
 	 *
-	 * @throws RuntimeException When project metadata or generator input is invalid.
+	 * @throws RuntimeException          When generator input or project metadata is invalid.
+	 * @throws \InvalidArgumentException When the directory or identity is invalid.
 	 */
-	public function createTable(string $name, string $tableClass, ?string $namespace = null, ?string $path = null, ?string $id = null): GeneratedMigration {
-		$context = $this->context($name, $namespace, $path, $id);
-		$table   = $this->tableReference($tableClass, $context['project']);
-		$stub    = $this->stubResolver->resolve('database', 'create-table-migration', DatabaseStubPath::createTableMigration());
-
-		return $this->migration($context, $this->stubRenderer->render($stub, [
-			'namespace'                     => $context['namespace'],
-			'class'                         => $context['class'],
-			'id_php'                        => $this->stubRenderer->phpStringLiteral($context['id']),
-			'table_class'                   => $table['class'],
-			'table_namespace'               => $table['namespace'],
-			'foundation_database_migration' => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Migration\\Contracts\\Migration'),
-			'foundation_database_schema'    => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Migration\\Schema\\Blueprint'),
-		]));
+	public function createTable(string $name, string $table): GeneratedFile {
+		return $this->render($name, 'create-table-migration', DatabaseStubPath::createTableMigration(), $table);
 	}
 
 	/**
-	 * Build a migration that explicitly alters an existing table.
+	 * Build a migration that alters the named table.
 	 *
-	 * @throws RuntimeException When project metadata or generator input is invalid.
+	 * @throws RuntimeException          When generator input or project metadata is invalid.
+	 * @throws \InvalidArgumentException When the directory or identity is invalid.
 	 */
-	public function alterTable(string $name, string $tableClass, ?string $namespace = null, ?string $path = null, ?string $id = null): GeneratedMigration {
-		$context = $this->context($name, $namespace, $path, $id);
-		$table   = $this->tableReference($tableClass, $context['project']);
-		$stub    = $this->stubResolver->resolve('database', 'alter-table-migration', DatabaseStubPath::alterTableMigration());
-
-		return $this->migration($context, $this->stubRenderer->render($stub, [
-			'namespace'                                  => $context['namespace'],
-			'class'                                      => $context['class'],
-			'id_php'                                     => $this->stubRenderer->phpStringLiteral($context['id']),
-			'table_class'                                => $table['class'],
-			'table_namespace'                            => $table['namespace'],
-			'foundation_database_irreversible_migration' => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration'),
-			'foundation_database_migration'              => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Migration\\Contracts\\Migration'),
-			'foundation_database_schema'                 => $context['project']->foundationClass('StellarWP\\Foundation\\Database\\Migration\\Schema\\Blueprint'),
-		]));
+	public function alterTable(string $name, string $table): GeneratedFile {
+		return $this->render($name, 'alter-table-migration', DatabaseStubPath::alterTableMigration(), $table);
 	}
 
 	/**
-	 * Resolve and validate the metadata shared by every generated migration type.
-	 *
-	 * @throws RuntimeException When project metadata or generator input is invalid.
-	 *
-	 * @return array{project: ComposerProject, class: string, namespace: string, path: string, id: string}
+	 * Render a migration without loading application classes or bootstrapping WordPress.
 	 */
-	private function context(string $name, ?string $namespace, ?string $path, ?string $id): array {
-		$className = $this->classNameResolver->className($name);
-		$project   = $this->autoloadResolver->project();
-		$namespace = $this->locations->namespaceFor(MigrationCommand::CONFIG_KEY, MigrationCommand::DEFAULT_NAMESPACE, $project, $namespace);
-		$path      = $this->locations->directoryFor($namespace, $project, $path);
-		$id        = (new Id($id ?? $this->classNameResolver->migrationId($className)))->value;
+	private function render(string $name, string $stubName, string $defaultStub, ?string $table = null): GeneratedFile {
+		if ($table !== null && preg_match('/\A[A-Za-z0-9_]+\z/', $table) !== 1) {
+			throw new RuntimeException('Use an unprefixed table name containing only ASCII letters, numbers, and underscores.');
+		}
 
-		return [
-			'project'   => $project,
-			'class'     => $className,
-			'namespace' => $namespace,
-			'path'      => $path,
-			'id'        => $id,
-		];
-	}
-
-	/**
-	 * Wrap rendered source and its declared class details as a generated migration.
-	 *
-	 * @param array{project: ComposerProject, class: string, namespace: string, path: string, id: string} $context
-	 */
-	private function migration(array $context, string $contents): GeneratedMigration {
-		$file = new GeneratedFile(
-			path: $context['path'] . '/' . $context['class'] . '.php',
-			relativePath: $this->projectDirectory->relativePath($context['path'] . '/' . $context['class'] . '.php'),
-			contents: $contents
+		$directory = new MigrationDirectory(
+			$this->config->get('foundation.root', $this->projectDirectory->path),
+			$this->config->get('database.migrations.path', MigrationDirectory::DEFAULT_PATH),
 		);
 
-		return new GeneratedMigration($file, $context['class'], $context['namespace']);
+		$parts = explode('/', $name);
+
+		foreach ($parts as $part) {
+			if ($part === '' || $part === '.' || $part === '..' || str_contains($part, '\\')) {
+				throw new RuntimeException('Use a migration name or relative group/name, such as reports/add_published_at.');
+			}
+		}
+
+		$description = strtolower($this->classNameResolver->className(array_pop($parts)));
+		$groups      = array_map(fn (string $part): string => strtolower($this->classNameResolver->className($part)), $parts);
+		$id          = (new Id($this->nextTimestamp($directory->path) . '_' . $description))->value;
+		$path        = implode('/', [$directory->path, ...$groups, $id . '.php']);
+		$prefix      = $this->autoloadResolver->straussNamespacePrefix() ?? '';
+		$stub        = $this->stubResolver->resolve('database', $stubName, $defaultStub);
+
+		return new GeneratedFile(
+			path: $path,
+			relativePath: $this->projectDirectory->relativePath($path),
+			contents: $this->stubRenderer->render($stub, [
+				'table_php'                                  => $this->stubRenderer->phpStringLiteral($table ?? ''),
+				'foundation_database_migration'              => $prefix . 'StellarWP\\Foundation\\Database\\Migration\\Migration',
+				'foundation_database_schema'                 => $prefix . 'StellarWP\\Foundation\\Database\\Migration\\Schema\\Blueprint',
+				'foundation_database_irreversible_migration' => $prefix . 'StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration',
+			]),
+		);
 	}
 
 	/**
-	 * Resolve a short or fully qualified table class into an importable reference.
-	 *
-	 * @return array{class: string, namespace: string}
+	 * Keep sequentially generated migrations ordered even within the same second.
 	 */
-	private function tableReference(string $tableClass, ComposerProject $project): array {
-		$tableClass = trim($tableClass);
+	private function nextTimestamp(string $directory): string {
+		$now       = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+		$timestamp = $now->format('YmdHis');
 
-		if ($tableClass === '') {
-			throw new RuntimeException('The table class cannot be blank.');
+		if (! is_dir($directory)) {
+			return $timestamp;
 		}
 
-		if (str_contains($tableClass, '/')) {
-			throw new RuntimeException(sprintf('Table class "%s" is not a valid PHP class name.', $tableClass));
-		}
+		$files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, RecursiveDirectoryIterator::SKIP_DOTS));
 
-		$tableClass = ltrim($tableClass, '\\');
-		$separator  = strrpos($tableClass, '\\');
-
-		if ($separator === false) {
-			if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $tableClass) !== 1) {
-				throw new RuntimeException(sprintf('Table class "%s" is not a valid PHP class name.', $tableClass));
+		foreach ($files as $file) {
+			if (! $file->isFile() || preg_match('/^([0-9]{14})_[a-z0-9_]+\.php$/', $file->getFilename(), $matches) !== 1 || $matches[1] < $timestamp) {
+				continue;
 			}
 
-			return [
-				'class'     => $tableClass,
-				'namespace' => $this->locations->namespaceFor(TableCommand::CONFIG_KEY, TableCommand::DEFAULT_NAMESPACE, $project),
-			];
+			$previous = DateTimeImmutable::createFromFormat('!YmdHis', $matches[1], new DateTimeZone('UTC'));
+
+			if ($previous !== false) {
+				$timestamp = $previous->modify('+1 second')->format('YmdHis');
+			}
 		}
 
-		$namespace = substr($tableClass, 0, $separator);
-		$class     = substr($tableClass, $separator + 1);
-
-		if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $class) !== 1) {
-			throw new RuntimeException(sprintf('Table class "%s" is not a valid PHP class name.', $tableClass));
-		}
-
-		return [
-			'class'     => $class,
-			'namespace' => (new PhpNamespace($namespace))->value,
-		];
+		return $timestamp;
 	}
 }

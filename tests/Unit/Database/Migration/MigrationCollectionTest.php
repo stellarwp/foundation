@@ -8,31 +8,26 @@ use StellarWP\Foundation\Database\Migration\Contracts\Migration;
 use StellarWP\Foundation\Database\Migration\Exceptions\InvalidMigrationId;
 use StellarWP\Foundation\Database\Migration\MigrationCollection;
 use StellarWP\Foundation\Database\Migration\Schema\Blueprint;
+use StellarWP\Foundation\Database\Migration\ValueObjects\MigrationRegistration;
 
 final class MigrationCollectionTest extends TestCase
 {
-	private function migration(string $id): Migration {
-		return new class($id) implements Migration {
-			public function __construct(
-				private readonly string $identity,
-			) {
-			}
-			public function id(): string {
-				return $this->identity;
-			}
+	private function migration(string $id): MigrationRegistration {
+		return new MigrationRegistration($id, new class implements Migration {
 			public function up(Blueprint $schema): void {
 			}
 			public function down(Blueprint $schema): void {
 			}
-		};
+		});
 	}
 
 	public function test_order_and_identity_are_byte_exact_even_for_numeric_ids(): void {
-		$ids        = ['a', '10', '2', '01', 'A', '20260922000100'];
-		$collection = new MigrationCollection(array_map($this->migration(...), $ids));
+		$ids           = ['a', '10', '2', '01', 'A', '20260922000100'];
+		$registrations = array_map($this->migration(...), $ids);
+		$collection    = new MigrationCollection($registrations);
 		self::assertSame(['01', '10', '2', '20260922000100', 'A', 'a'], $collection->ids());
-		foreach ($ids as $id) {
-			self::assertSame($id, $collection->get($id)->id());
+		foreach ($registrations as $registration) {
+			self::assertSame($registration->migration, $collection->get($registration->id));
 		}
 		self::assertFalse($collection->has('missing'));
 	}

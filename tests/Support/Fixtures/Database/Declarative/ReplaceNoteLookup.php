@@ -17,10 +17,6 @@ final readonly class ReplaceNoteLookup implements Migration
 	) {
 	}
 
-	public function id(): string {
-		return self::ID;
-	}
-
 	public function up(Blueprint $schema): void {
 		$schema->table($this->table)->dropIndex('note_lookup')->unique('note_lookup', 'note');
 	}

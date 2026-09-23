@@ -17,10 +17,6 @@ final readonly class ReduceCreatedAtPrecision implements Migration
 	) {
 	}
 
-	public function id(): string {
-		return self::ID;
-	}
-
 	public function up(Blueprint $schema): void {
 		$schema->table($this->table)->dateTime('created_at', 3)->useCurrent()->useCurrentOnUpdate()->change();
 	}

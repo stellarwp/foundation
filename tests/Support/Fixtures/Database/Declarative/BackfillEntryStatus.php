@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database\Declarative;
 
 use Doctrine\DBAL\Connection;
+use StellarWP\Foundation\Database\Contracts\TableNameResolver;
 use StellarWP\Foundation\Database\Migration\Contracts\MigratesData;
 use StellarWP\Foundation\Database\Migration\Contracts\Migration;
 use StellarWP\Foundation\Database\Migration\Schema\Blueprint;
@@ -19,17 +20,13 @@ final readonly class BackfillEntryStatus implements MigratesData, Migration
 	) {
 	}
 
-	public function id(): string {
-		return self::ID;
-	}
-
 	public function up(Blueprint $schema): void {
 	}
 
 	public function down(Blueprint $schema): void {
 	}
 
-	public function migrate(Connection $db): void {
+	public function migrate(Connection $db, TableNameResolver $names): void {
 		$db->executeStatement("UPDATE `{$this->physicalName}` SET status = 'active' WHERE status = ''");
 	}
 }

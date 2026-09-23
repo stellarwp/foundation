@@ -17,10 +17,6 @@ final readonly class CreateEntryTags implements Migration
 	) {
 	}
 
-	public function id(): string {
-		return self::ID;
-	}
-
 	public function up(Blueprint $schema): void {
 		$tags = $schema->create($this->table);
 		$tags->bigIncrements('id');
