@@ -22,11 +22,11 @@ final readonly class CreateEntries implements Migration
 	}
 
 	public function up(Blueprint $schema): void {
-		$entries = $schema->create($this->table);
+		$entries = $schema->create($this->table)->comment('Application entries');
 
 		$entries->bigIncrements('id');
 		$entries->string('name', 50);
-		$entries->string('status', 20)->default('active');
+		$entries->string('status', 20)->default('active')->comment('Current processing state');
 		$entries->decimal('amount', 12, 4)->default('0');
 		$entries->binary('token', 16)->nullable();
 		$entries->dateTime('created_at', 6)->useCurrent();

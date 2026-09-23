@@ -26,6 +26,6 @@ final readonly class WidenEntryName implements Migration
 	}
 
 	public function down(Blueprint $schema): void {
-		$schema->table($this->table)->comment('')->string('name', 50)->change();
+		$schema->table($this->table)->comment('Application entries')->string('name', 50)->change();
 	}
 }

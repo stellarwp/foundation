@@ -15,11 +15,6 @@ declare(strict_types=1);
  * @method void lookForwardTo($achieveValue)
  * @method void comment($description)
  * @method void pause($vars = [])
- * @method void cli(string|array $command, array $args = [])
- * @method void seeResultCodeIs(int $code)
- * @method void seeInShellOutput(string $text)
- * @method string grabLastShellOutput()
- * @method string grabLastShellErrorOutput()
  *
  * @SuppressWarnings(PHPMD)
 */

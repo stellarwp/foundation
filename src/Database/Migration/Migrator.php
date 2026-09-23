@@ -7,10 +7,10 @@ use Doctrine\DBAL\Connection;
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Connection\WordPressSession;
 use StellarWP\Foundation\Database\Contracts\DatabaseScope;
-use StellarWP\Foundation\Database\Exceptions\MigrationInterrupted;
 use StellarWP\Foundation\Database\Migration\Contracts\DescribesMigration;
 use StellarWP\Foundation\Database\Migration\Contracts\MigratesData;
 use StellarWP\Foundation\Database\Migration\Contracts\Migration;
+use StellarWP\Foundation\Database\Migration\Exceptions\MigrationInterrupted;
 use StellarWP\Foundation\Database\Migration\Schema\SchemaPlanner;
 use StellarWP\Foundation\Database\Migration\ValueObjects\MigrationStatus;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Step;
@@ -80,6 +80,19 @@ final class Migrator
 
 			return $this->run($remaining === [] ? self::NONE : (string) end($remaining), true, false);
 		});
+	}
+
+	/**
+	 * Reverse applied migrations above the target without applying pending migrations.
+	 *
+	 * @throws Throwable When the target is unknown, an inverse fails, or ownership is lost.
+	 *
+	 * @return list<Step>
+	 */
+	public function rollbackTo(string $target): array {
+		$this->assertTarget($target);
+
+		return $this->locked(fn (): array => $this->run($target, true, false));
 	}
 
 	/**
@@ -248,7 +261,7 @@ final class Migrator
 	private function assertKnown(array $ids): void {
 		foreach ($ids as $id) {
 			if (! $this->migrations->has($id)) {
-				throw new MigrationInterrupted('Restore the missing migration before reversing it: ' . $id);
+				throw new MigrationInterrupted('Restore the missing migration before running migrations: ' . $id);
 			}
 		}
 	}
@@ -271,6 +284,9 @@ final class Migrator
 	}
 
 	private static function shortName(Migration $migration): string {
+		if (str_contains($migration::class, "\0")) {
+			return '(anonymous)';
+		}
 		$parts = explode('\\', $migration::class);
 
 		return (string) end($parts);

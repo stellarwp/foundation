@@ -4,9 +4,10 @@ namespace StellarWP\Foundation\Tests\Integration\Database;
 
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Database\DatabaseProvider;
-use StellarWP\Foundation\Database\Exceptions\MigrationAlreadyRunning;
-use StellarWP\Foundation\Database\Exceptions\MigrationInterrupted;
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Migration\Exceptions\IncompatibleSchema;
+use StellarWP\Foundation\Database\Migration\Exceptions\MigrationAlreadyRunning;
+use StellarWP\Foundation\Database\Migration\Exceptions\MigrationInterrupted;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Step;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\DatabaseTestCase;
@@ -139,6 +140,27 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 		self::assertSame([self::CREATE, self::ALTER], $this->history());
 	}
 
+	public function test_target_rollback_leaves_older_pending_migrations_pending(): void {
+		$this->migrator()->migrate();
+		$this->observer->delete($this->quotedHistory, ['version' => self::ALTER]);
+
+		$steps = $this->migrator()->rollbackTo(self::ALTER);
+
+		self::assertSame([self::BACKFILL], self::ids($steps));
+		self::assertTrue($steps[0]->reverse);
+		self::assertSame([self::CREATE], $this->history());
+		self::assertSame([], $this->migrator()->rollbackTo(self::ALTER));
+	}
+
+	public function test_unknown_rollback_target_is_rejected_without_creating_history(): void {
+		try {
+			$this->migrator()->rollbackTo('unknown');
+			self::fail('Unknown rollback target must fail.');
+		} catch (\InvalidArgumentException) {
+			self::assertFalse($this->observer->createSchemaManager()->tablesExist([$this->historyName]));
+		}
+	}
+
 	public function test_public_migration_workflow_uses_no_deprecated_dbal_api(): void {
 		\Doctrine\Deprecations\Deprecation::enableTrackingDeprecations();
 
@@ -250,6 +272,9 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 		self::assertSame([], $steps[0]->sql);
 		self::assertSame([self::CREATE], $this->history());
 		self::assertSame(['Survivor'], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->quotedEntries));
+		$table = $this->observer->createSchemaManager()->introspectTable($this->entriesName);
+		self::assertSame('Application entries', $table->getComment());
+		self::assertSame('Current processing state', $table->getColumn('status')->getComment());
 	}
 
 	public function test_undeclared_column_change_stops_the_run_and_names_the_column(): void {
@@ -313,13 +338,13 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 		self::assertTrue($steps[0]->reverse);
 		self::assertSame([self::CREATE, self::ALTER], $this->history());
 
-		$steps = $this->migrator()->migrate(self::CREATE);
+		$steps = $this->migrator()->rollbackTo(self::CREATE);
 		self::assertSame([self::ALTER], self::ids($steps));
 		self::assertStringNotContainsString('`note`', $this->createTableSql());
 		self::assertSame(['Original'], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->quotedEntries));
 		self::assertSame([self::CREATE], $this->history());
 
-		$this->migrator()->migrate(Migrator::NONE);
+		$this->migrator()->rollbackTo(Migrator::NONE);
 		self::assertSame([], $this->history());
 		self::assertFalse($this->observer->createSchemaManager()->tablesExist([$this->entriesName]));
 	}
@@ -345,7 +370,8 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 		try {
 			$this->migrator()->migrate();
 			self::fail('Expected contention.');
-		} catch (MigrationAlreadyRunning) {
+		} catch (DatabaseException $failure) {
+			self::assertInstanceOf(MigrationAlreadyRunning::class, $failure);
 			self::assertFalse($this->observer->createSchemaManager()->tablesExist([$this->historyName]));
 		} finally {
 			$this->observer->fetchOne('SELECT RELEASE_LOCK(?)', [$name]);

@@ -5,8 +5,8 @@ namespace StellarWP\Foundation\Database\Migration\Exceptions;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 
 /**
- * Schema work completed but recording its result failed; retry through the migrator.
+ * Another database session is upgrading this application's schema.
  */
-final class LedgerFailure extends DatabaseException
+final class MigrationAlreadyRunning extends DatabaseException
 {
 }

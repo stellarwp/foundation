@@ -13,6 +13,9 @@ for WordPress applications.
 composer require stellarwp/foundation-database
 ```
 
+The package includes `stellarwp/foundation-wpcli` for its migration command. Register
+`WPCliProvider` to enable it, or use `Migrator` programmatically.
+
 ## Documentation
 
 See the [Foundation Database documentation](https://foundation.nexcess.dev/components/database/)

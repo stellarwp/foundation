@@ -4,10 +4,9 @@ namespace StellarWP\Foundation\Database\Connection;
 
 use Doctrine\DBAL\Driver\Mysqli\Connection;
 use mysqli;
-use RuntimeException;
 use StellarWP\Foundation\Database\Contracts\DatabaseScope;
-use StellarWP\Foundation\Database\Exceptions\MigrationAlreadyRunning;
-use StellarWP\Foundation\Database\Exceptions\MigrationInterrupted;
+use StellarWP\Foundation\Database\Migration\Exceptions\MigrationAlreadyRunning;
+use StellarWP\Foundation\Database\Migration\Exceptions\MigrationInterrupted;
 use Throwable;
 
 /**
@@ -49,7 +48,7 @@ final class AdvisoryLock
 	 */
 	public function acquire(): void {
 		if ((int) $this->driver->query('SELECT @@session.autocommit')->fetchOne() !== 1) {
-			throw new RuntimeException('Migrations require autocommit to be enabled.');
+			throw new MigrationInterrupted('Migrations require autocommit to be enabled.');
 		}
 		// Reject an ambient transaction without implicitly committing it.
 		$this->driver->exec('SET TRANSACTION READ WRITE');
@@ -90,11 +89,11 @@ final class AdvisoryLock
 			$this->scope->assertCurrent($this->site);
 
 			if ($current !== $this->native || $this->native->thread_id !== $this->connectionId || $this->scope->resolveTableName('') !== $this->prefix) {
-				throw new RuntimeException('The migration connection or table prefix changed.');
+				throw new MigrationInterrupted('The migration connection or table prefix changed.');
 			}
 
 			if ((int) $this->driver->query("SELECT IS_USED_LOCK('{$this->name}')")->fetchOne() !== $this->connectionId) {
-				throw new RuntimeException('The migration session no longer owns its advisory lock.');
+				throw new MigrationInterrupted('The migration session no longer owns its advisory lock.');
 			}
 		} catch (Throwable $failure) {
 			$this->fail($failure);

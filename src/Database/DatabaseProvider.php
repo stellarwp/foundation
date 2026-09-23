@@ -32,8 +32,9 @@ use wpdb;
  */
 final class DatabaseProvider extends Provider
 {
-	public const string MIGRATIONS = self::class . '.migrations';
 	use ResolvesFoundationPrefix;
+
+	public const string MIGRATIONS = self::class . '.migrations';
 
 	/**
 	 * Register lazy database services without executing queries or creating storage.

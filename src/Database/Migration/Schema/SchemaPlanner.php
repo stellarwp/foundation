@@ -12,8 +12,8 @@ use Doctrine\DBAL\Schema\SchemaException;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Schema\TableDiff;
 use StellarWP\Foundation\Database\Contracts\TableNameResolver;
-use StellarWP\Foundation\Database\Exceptions\MigrationInterrupted;
 use StellarWP\Foundation\Database\Migration\Exceptions\IncompatibleSchema;
+use StellarWP\Foundation\Database\Migration\Exceptions\MigrationInterrupted;
 use StellarWP\Foundation\Database\Migration\MigrationCollection;
 use StellarWP\Foundation\Database\Migration\Schema\ValueObjects\SchemaPlan;
 
@@ -285,7 +285,7 @@ final readonly class SchemaPlanner
 					continue;
 				}
 				$this->require(in_array($key, $declaredChanges, true), $id, $table->getObjectName()->toString(), 'column ' . $column->getObjectName()->toString() . ' timestamp precision or ON UPDATE differs from its declaration');
-				$sql[] = 'ALTER TABLE ' . $platform->quoteIdentifier($table->getObjectName()->toString()) . ' MODIFY ' . $platform->getColumnDeclarationSQL($platform->quoteIdentifier($column->getObjectName()->toString()), $column->toArray());
+				$sql[] = 'ALTER TABLE ' . $platform->quoteSingleIdentifier($table->getObjectName()->toString()) . ' MODIFY ' . $platform->getColumnDeclarationSQL($platform->quoteSingleIdentifier($column->getObjectName()->toString()), $column->toArray());
 			}
 		}
 

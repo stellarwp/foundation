@@ -5,8 +5,8 @@ namespace StellarWP\Foundation\Database\Connection;
 use Closure;
 use Doctrine\DBAL\Driver\Mysqli\Connection;
 use mysqli;
-use RuntimeException;
 use StellarWP\Foundation\Database\Contracts\DatabaseScope;
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\TransactionFailed;
 use Throwable;
 use wpdb;
@@ -36,7 +36,7 @@ final class WordPressSession
 	/**
 	 * Return the current native connection without reconnecting or replaying SQL.
 	 *
-	 * @throws RuntimeException  When WordPress has no mysqli connection.
+	 * @throws DatabaseException When WordPress has no mysqli connection.
 	 * @throws TransactionFailed When an active operation has failed.
 	 */
 	public function native(): mysqli {
@@ -44,7 +44,7 @@ final class WordPressSession
 		$native = $this->wpdb->__get('dbh');
 
 		if (! $native instanceof mysqli) {
-			throw new RuntimeException('WordPress must have an open mysqli connection.');
+			throw new DatabaseException('WordPress must have an open mysqli connection.');
 		}
 
 		return $native;
@@ -70,7 +70,7 @@ final class WordPressSession
 	 */
 	public function withAdvisoryLock(string $resource, Closure $operation): mixed {
 		if ($this->advisoryLock !== null || $this->isActive()) {
-			throw new RuntimeException('Start migrations outside an existing transaction or migration run.');
+			throw new DatabaseException('Start migrations outside an existing transaction or migration run.');
 		}
 		$lock = new AdvisoryLock($this->native(), $this->scope, $resource);
 		$lock->acquire();
@@ -105,7 +105,7 @@ final class WordPressSession
 		$driver = new Connection($native);
 
 		if ((int) $driver->query('SELECT @@session.autocommit')->fetchOne() !== 1) {
-			throw new RuntimeException('Managed transactions require autocommit to be enabled.');
+			throw new DatabaseException('Managed transactions require autocommit to be enabled.');
 		}
 		// Both MySQL and MariaDB reject this inside an existing transaction.
 		// Unlike START TRANSACTION, it cannot implicitly commit the caller's work.
@@ -131,7 +131,7 @@ final class WordPressSession
 			$this->check();
 
 			if ($this->wpdb->__get('dbh') !== $native) {
-				throw new RuntimeException('The WordPress connection changed; start a fresh operation.');
+				throw new DatabaseException('The WordPress connection changed; start a fresh operation.');
 			}
 
 			return $operation();
@@ -167,11 +167,11 @@ final class WordPressSession
 			$this->scope->assertCurrent($this->site);
 
 			if ($this->scope->resolveTableName('') !== $this->prefix) {
-				throw new RuntimeException('The WordPress table prefix changed during a transaction.');
+				throw new DatabaseException('The WordPress table prefix changed during a transaction.');
 			}
 
 			if ($this->wpdb->__get('dbh') !== $this->owned) {
-				throw new RuntimeException('The WordPress connection changed during a transaction.');
+				throw new DatabaseException('The WordPress connection changed during a transaction.');
 			}
 		} catch (Throwable $failure) {
 			$this->failure = $failure;

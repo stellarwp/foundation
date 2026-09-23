@@ -21,7 +21,9 @@ The generator creates a table and its initial migration, and adds their registra
 
 The table owns only its stable name. The migration owns the initial schema:
 
-```php title="src/Database/Migrations/Create_Reports_Table.php"
+In `src/Database/Migrations/Create_Reports_Table.php`:
+
+```php title="Create_Reports_Table.php"
 <?php declare(strict_types=1);
 
 namespace Plugin\Database\Migrations;
@@ -31,11 +33,13 @@ use StellarWP\Foundation\Database\Migration\Contracts\Migration;
 use StellarWP\Foundation\Database\Migration\Schema\Blueprint;
 
 final readonly class Create_Reports_Table implements Migration {
+
 	public const string ID = '2026_09_22_000001_create_reports_table';
 
 	public function __construct(
 		private Reports_Table $table,
-	) {}
+	) {
+	}
 
 	public function id(): string {
 		return self::ID;
@@ -71,7 +75,9 @@ The first run creates the migration ledger automatically. The command prefix com
 
 Providers contribute migration objects lazily. Registration order does not determine execution order:
 
-```php title="src/Database/Provider.php"
+In `src/Database/Provider.php`:
+
+```php title="Provider.php"
 <?php declare(strict_types=1);
 
 namespace Plugin\Database;
@@ -83,6 +89,7 @@ use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Database\DatabaseProvider;
 
 final class Provider extends Service_Provider {
+
 	public function register(): void {
 		$this->container->singleton( Reports_Table::class );
 		$this->container->mergeArrayVar( DatabaseProvider::MIGRATIONS, static fn ( C $c ): array => [
@@ -167,16 +174,25 @@ Foundation runs this callback after schema changes and before writing history. I
 | Reconcile to a registered ID | `wp your-plugin migrate --run --to=<id>` |
 | Reverse the highest applied ID | `wp your-plugin migrate --rollback` |
 | Reverse several applied IDs | `wp your-plugin migrate --rollback --step=2` |
-| Reconcile to a rollback target | `wp your-plugin migrate --rollback --to=<id>` |
-| Reverse all applied migrations | `wp your-plugin migrate --rollback --to=0` |
+| Reverse applied IDs above a target | `wp your-plugin migrate --rollback --to=<id>` |
+| Reverse all applied migrations | `wp your-plugin migrate --rollback --to=0 --yes` |
 | Reverse and rerun everything | `wp your-plugin migrate --refresh` |
 
-Programmatic equivalents are `Migrator::status()`, `preview($target)`, `migrate($target)`, `rollback($steps)`, and `refresh()`. Migration operations return step objects containing the stable ID, direction, SQL, and whether a forward data callback was involved. Optional `DescribesMigration::describe()` supplies a status description.
+Programmatic equivalents are `Migrator::status()`, `preview($target)`, `migrate($target)`, `rollback($steps)`, `rollbackTo($target)`, and `refresh()`. Migration operations return step objects containing the stable ID, direction, SQL, and whether a forward data callback was involved. To add a readable status description, implement `DescribesMigration` alongside `Migration`:
 
-An explicit target reverses applied IDs above it in descending order, then applies pending IDs through it in ascending order. `latest` applies all pending migrations. Rollback counts IDs, not deployment batches. Developers own dependencies and choosing a safe target, especially when a newly enabled package adds an older ID. Missing applied migration classes must be restored before execution can continue.
+```php
+use StellarWP\Foundation\Database\Migration\Contracts\DescribesMigration;
+
+// Add DescribesMigration to the migration's implements list.
+public function describe(): string {
+	return 'Create report storage';
+}
+```
+
+`migrate($target)` and `--run --to=<id>` reverse applied IDs above the target in descending order, then apply pending IDs through it in ascending order. `latest` applies all pending migrations. `rollbackTo($target)` and `--rollback --to=<id>` only reverse applied IDs above the target; any pending IDs, including the target itself, remain pending. Rollback counts IDs, not deployment batches. Developers own dependencies and choosing a safe target, especially when a newly enabled package adds an older ID. Missing applied migration classes must be restored before execution can continue.
 
 :::danger[Rollback can delete data]
-`down()` is application code. Reversing an initial migration drops its complete table, including rows and additions made later. Review the inverse and take the application's required backup before rolling back. `--refresh` prompts for confirmation because it reverses and recreates everything; use `--yes` only when that data loss is intended.
+`down()` is application code. Reversing an initial migration drops its complete table, including rows and additions made later. Review the inverse and take the application's required backup before rolling back. `--refresh`, `--run --to=0`, and `--rollback --to=0` prompt for confirmation because they reverse every applied migration. Use `--yes` only when that data loss is intended. `--run --to=0 --dry-run` previews the reversal without prompting or executing it.
 :::
 
 ### Interrupted schema changes
@@ -185,11 +201,22 @@ MySQL DDL can commit before the history write. A retry compares the actual schem
 
 An incompatible existing declaration stops the run with `IncompatibleSchema`; Foundation does not silently reconcile unrelated drift. Inspect and correct the mismatch before retrying. `LedgerFailure` means a history write failed after migration work; fix the storage failure and retry with the same declarations. Any data callback must tolerate repetition.
 
+### Repair inconsistent history
+
+If the ledger itself is wrong, pause all application upgrade triggers and migration workers for the affected site and take a backup. Restore missing migration classes first, then compare the ledger's exact IDs with the live schema and each migration's schema and data effects.
+
+Use your database administration tool against the configured physical ledger table, including its WordPress site prefix. For a confirmed bookkeeping error:
+
+- Insert the migration's exact `version` only after verifying that its complete `up()` and any `migrate()` data callback already succeeded. The ledger supplies `applied_at` automatically.
+- Delete its `version` row only after verifying that its complete inverse has already been performed and that recorded dependent migrations remain valid.
+
+These are deliberate manual SQL changes, not schema repairs. Do not change history to suppress a genuine `IncompatibleSchema` mismatch. Restore the intended schema first when history is accurate. After correcting history, inspect status and preview the next run before resuming upgrades. Keep an operational record of the repair.
+
 ### Concurrent upgrades
 
 One database advisory lock covers planning, schema execution, data callbacks, and history writes. The lock survives DDL commits and lasts until release or session termination. It has no lease TTL to configure. `MigrationAlreadyRunning` means another session is migrating this application's site ledger: defer and retry after it finishes. This is distinct from a database failure.
 
-`MigrationInterrupted` means ownership or the starting session could not be confirmed. Foundation stops and releases only the original session's lock where possible. Never change sites or sessions during a migration, even temporarily. These two exceptions live under `Database\Exceptions`; schema and history exceptions live under `Database\Migration\Exceptions`.
+`MigrationInterrupted` means ownership or the starting session could not be confirmed. Foundation stops and releases only the original session's lock where possible. Never change sites or sessions during a migration, even temporarily. Migration exceptions live under `StellarWP\Foundation\Database\Migration\Exceptions` and extend `StellarWP\Foundation\Database\Exceptions\DatabaseException`. Catch a specific exception when choosing whether to defer, retry, or stop.
 
 All migration participants must reach the same primary database server. Advisory locks are local to that server; a proxy that moves statements between sessions or servers cannot provide this guarantee. Preview and status are observations and can become stale before a later run.
 

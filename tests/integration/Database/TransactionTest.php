@@ -6,6 +6,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use RuntimeException;
 use StellarWP\Foundation\Database\Exceptions\CommitOutcomeUnknown;
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\TransactionFailed;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\DatabaseTestCase;
 use Throwable;
@@ -246,7 +247,8 @@ final class TransactionTest extends DatabaseTestCase
 				$this->killConnection();
 			});
 			self::fail('Expected uncertain commit.');
-		} catch (CommitOutcomeUnknown) {
+		} catch (DatabaseException $failure) {
+			self::assertInstanceOf(CommitOutcomeUnknown::class, $failure);
 			$this->assertOriginal();
 		}
 	}

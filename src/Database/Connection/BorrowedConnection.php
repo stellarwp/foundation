@@ -7,7 +7,7 @@ use Doctrine\DBAL\Driver\Middleware\AbstractConnectionMiddleware;
 use Doctrine\DBAL\Driver\Result;
 use Doctrine\DBAL\Driver\Statement;
 use mysqli;
-use RuntimeException;
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 
 /**
  * Observe native execution failures across Doctrine's query and statement paths.
@@ -60,12 +60,12 @@ final class BorrowedConnection extends AbstractConnectionMiddleware
 	/**
 	 * Start the native transaction and require a positive acknowledgement.
 	 *
-	 * @throws RuntimeException When mysqli cannot start the transaction.
+	 * @throws DatabaseException When mysqli cannot start the transaction.
 	 */
 	public function beginTransaction(): void {
 		$this->session->execute($this->native, function (): void {
 			if (! $this->native->begin_transaction()) {
-				throw new RuntimeException('Unable to start the transaction: ' . $this->native->error);
+				throw new DatabaseException('Unable to start the transaction: ' . $this->native->error);
 			}
 		});
 	}
@@ -73,24 +73,27 @@ final class BorrowedConnection extends AbstractConnectionMiddleware
 	/**
 	 * Commit the native transaction and require a positive acknowledgement.
 	 *
-	 * @throws RuntimeException When mysqli cannot confirm the commit.
+	 * @throws DatabaseException When mysqli cannot confirm the commit.
 	 */
 	public function commit(): void {
 		$this->session->execute($this->native, function (): void {
 			if (! $this->native->commit()) {
-				throw new RuntimeException('The database did not acknowledge the commit.');
+				throw new DatabaseException('The database did not acknowledge the commit.');
 			}
 		});
 	}
 
 	/**
-	 * Roll back when DBAL is used outside the managed callback entry point.
+	 * Roll back the captured native session when DBAL invokes driver cleanup.
 	 *
-	 * @throws RuntimeException When mysqli cannot confirm rollback.
+	 * Deliberately bypass the normal execution guard: cleanup must remain possible after
+	 * terminal failure or a WordPress scope change, and must never target a replacement session.
+	 *
+	 * @throws DatabaseException When mysqli cannot confirm rollback.
 	 */
 	public function rollBack(): void {
 		if (! $this->native->rollback()) {
-			throw new RuntimeException('The database did not acknowledge rollback.');
+			throw new DatabaseException('The database did not acknowledge rollback.');
 		}
 	}
 }

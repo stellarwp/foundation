@@ -8,6 +8,7 @@ use Doctrine\DBAL\Driver\Connection as DriverConnection;
 use LogicException;
 use mysqli;
 use StellarWP\Foundation\Database\Exceptions\CommitOutcomeUnknown;
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use Throwable;
 
 /**
@@ -166,7 +167,7 @@ final class WordPressConnection extends Connection
 		$session->finish();
 
 		if (! $rolledBack && ! $failed) {
-			throw new \RuntimeException('The database did not acknowledge rollback.');
+			throw new DatabaseException('The database did not acknowledge rollback.');
 		}
 	}
 

@@ -67,11 +67,15 @@ final class Migrate extends Command
 		}
 		$target = (string) ($assocArgs['to'] ?? Migrator::LATEST);
 
+		if (! $dryRun && $target === Migrator::NONE) {
+			WP_CLI::confirm('Roll back all migrations? This can permanently delete application data.', $assocArgs);
+		}
+
 		if ($operation === 'refresh') {
 			WP_CLI::confirm('Roll back and rerun all migrations? This can permanently delete application data.', $assocArgs);
 			$result = $this->migrator->refresh();
 		} elseif ($operation === 'rollback') {
-			$result = isset($assocArgs['to']) ? $this->migrator->migrate($target) : $this->migrator->rollback($steps);
+			$result = isset($assocArgs['to']) ? $this->migrator->rollbackTo($target) : $this->migrator->rollback($steps);
 		} else {
 			$result = $dryRun ? $this->migrator->preview($target) : $this->migrator->migrate($target);
 		}
@@ -105,7 +109,7 @@ final class Migrate extends Command
 			['type' => self::FLAG, 'name' => 'dry-run', 'description' => 'Preview --run SQL without executing SQL or data callbacks.', 'optional' => true],
 			['type' => self::ASSOCIATIVE, 'name' => 'to', 'description' => 'Target migration ID, 0 for none, or latest for all.', 'optional' => true],
 			['type' => self::ASSOCIATIVE, 'name' => 'step', 'description' => 'Positive number of applied IDs to reverse.', 'optional' => true],
-			['type' => self::FLAG, 'name' => 'yes', 'description' => 'Confirm refresh without prompting.', 'optional' => true],
+			['type' => self::FLAG, 'name' => 'yes', 'description' => 'Confirm refresh or --to=0 without prompting.', 'optional' => true],
 		];
 	}
 

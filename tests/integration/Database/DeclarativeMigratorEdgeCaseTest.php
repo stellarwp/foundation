@@ -4,9 +4,9 @@ namespace StellarWP\Foundation\Tests\Integration\Database;
 
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Database\DatabaseProvider;
-use StellarWP\Foundation\Database\Exceptions\MigrationAlreadyRunning;
 use StellarWP\Foundation\Database\Migration\Exceptions\IncompatibleSchema;
 use StellarWP\Foundation\Database\Migration\Exceptions\IrreversibleMigration;
+use StellarWP\Foundation\Database\Migration\Exceptions\MigrationAlreadyRunning;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\ValueObjects\Step;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\DatabaseTestCase;

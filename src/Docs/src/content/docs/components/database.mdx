@@ -17,7 +17,9 @@ Install the runtime package:
 composer require stellarwp/foundation-database
 ```
 
-Foundation requires PHP 8.3, mysqli, and Doctrine DBAL 4.4. Database services borrow the active WordPress connection. Use the primary MySQL or MariaDB database and InnoDB tables for transactional application data.
+Foundation requires PHP 8.3, mysqli, and Doctrine DBAL 4.4. The package includes `stellarwp/foundation-wpcli` as a runtime dependency for its migration command. Register `WPCliProvider` to enable that command; applications using only programmatic migrations may omit that provider. Command loading is deferred until WP-CLI initializes.
+
+Database services borrow the active WordPress connection. Use the primary MySQL or MariaDB database and InnoDB tables for transactional application data.
 
 Set a stable, unique application prefix in your root configuration:
 
@@ -49,7 +51,9 @@ $container->register( Provider::class ); // Your application tables and migratio
 
 Application tables declare their stable name and inherit their infrastructure constructor:
 
-```php title="src/Database/Tables/Reports_Table.php"
+In `src/Database/Tables/Reports_Table.php`:
+
+```php title="Reports_Table.php"
 <?php declare(strict_types=1);
 
 namespace Plugin\Database\Tables;
@@ -57,6 +61,7 @@ namespace Plugin\Database\Tables;
 use StellarWP\Foundation\Database\Table\Table;
 
 final readonly class Reports_Table extends Table {
+
 	public function unprefixedName(): string {
 		return 'your_plugin_reports';
 	}

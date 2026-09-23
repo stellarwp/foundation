@@ -11,7 +11,9 @@ sidebar:
 
 A repository is an optional way to organize reusable application queries:
 
-```php title="src/Report/Report_Repository.php"
+In `src/Report/Report_Repository.php`:
+
+```php title="Report_Repository.php"
 <?php declare(strict_types=1);
 
 namespace Plugin\Report;
@@ -19,11 +21,15 @@ namespace Plugin\Report;
 use Plugin\Database\Tables\Reports_Table;
 
 final readonly class Report_Repository {
+
 	public function __construct(
 		private Reports_Table $reports,
-	) {}
+	) {
+	}
 
-	/** @return array<string, mixed>|false */
+	/**
+	 * @return array<string, mixed>|false
+	 */
 	public function find( int $id ): array|false {
 		return $this->reports->query()
 			->select( 'id', 'title' )
@@ -80,10 +86,12 @@ use Doctrine\DBAL\Connection;
 use Plugin\Database\Tables\Reports_Table;
 
 final readonly class Create_Report {
+
 	public function __construct(
 		private Connection $db,
 		private Reports_Table $reports,
-	) {}
+	) {
+	}
 
 	public function create( string $title ): int|string {
 		return $this->db->transactional( function () use ( $title ): int|string {
@@ -104,7 +112,7 @@ Nested transactions use savepoints. An inner success is provisional until the ou
 - `CommitOutcomeUnknown` means the server did not confirm commit. The data may already be committed. Inspect durable application state or use an idempotency key before retrying.
 - A detected site or connection change interrupts managed work. Foundation never replays failed SQL or reconnects in the middle of a transaction.
 
-The Foundation exceptions above live under `StellarWP\Foundation\Database\Exceptions`.
+The Foundation exceptions above live under `StellarWP\Foundation\Database\Exceptions` and extend `DatabaseException`. Native Doctrine SQL exceptions retain their own hierarchy.
 
 :::caution[Keep managed work on the shared connection]
 Use transactional tables. Do not issue DDL, manual transaction-control SQL, direct WordPress queries, or `switch_to_blog()` inside a managed transaction. DDL can implicitly commit MySQL transactions, and writes through other sessions are outside this transaction. External HTTP calls cannot be rolled back with database writes.

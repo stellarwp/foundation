@@ -2,15 +2,15 @@
 
 namespace StellarWP\Foundation\Database\Migration\Exceptions;
 
-use RuntimeException;
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 
 /**
  * The live schema differs from recorded history in a way the pending migration did not declare.
  *
  * The runner never repairs such differences silently; inspect the named table and column,
- * then write a corrective migration or repair the ledger deliberately.
+ * then restore the intended schema or correct inaccurate history before retrying.
  */
-final class IncompatibleSchema extends RuntimeException
+final class IncompatibleSchema extends DatabaseException
 {
 	/**
 	 * Name the migration and the undeclared difference.

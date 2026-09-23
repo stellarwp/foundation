@@ -14,6 +14,7 @@ final class DatabaseMigrateCest
 		$I->cli(['foundation', 'migrate']);
 		$I->seeResultCodeIs(0);
 		$I->seeInShellOutput('pending');
+		$I->seeInShellOutput('(anonymous)');
 		$I->cli(['foundation', 'migrate', '--run', '--dry-run']);
 		$I->seeResultCodeIs(0);
 		$I->seeInShellOutput('CREATE TABLE');
@@ -39,10 +40,37 @@ final class DatabaseMigrateCest
 		$I->cli(['foundation', 'migrate', '--refresh', '--yes']);
 		$I->seeResultCodeIs(0);
 		$I->seeInShellOutput('Completed 2 migration steps.');
-		$I->cli(['foundation', 'migrate', '--rollback', '--to=0']);
+		$I->cli(['foundation', 'migrate', '--rollback', '--to=0', '--yes']);
 		$I->seeResultCodeIs(0);
 		$I->cli(['foundation', 'migrate']);
 		$I->seeInShellOutput('pending');
+	}
+
+	public function test_target_rollback_does_not_apply_a_pending_target(WPCLITester $I): void {
+		$I->cli(['foundation', 'migrate', '--rollback', '--to=20260623000001']);
+		$I->seeResultCodeIs(0);
+		$I->seeInShellOutput('Completed 0 migration steps.');
+		$I->cli(['foundation', 'migrate']);
+		$I->seeInShellOutput('pending');
+	}
+
+	public function test_full_reversals_require_confirmation_but_previews_do_not(WPCLITester $I): void {
+		foreach (['--run', '--rollback'] as $operation) {
+			$I->cli(['foundation', 'migrate', '--run']);
+			$I->seeResultCodeIs(0);
+			$I->cli(['foundation', 'migrate', $operation, '--to=0'], null, "n\n");
+			$I->seeInShellOutput('Roll back all migrations?');
+			$I->cli(['foundation', 'migrate']);
+			$I->seeInShellOutput('applied');
+			$I->cli(['foundation', 'migrate', '--run', '--to=0', '--dry-run']);
+			$I->seeResultCodeIs(0);
+			$I->seeInShellOutput('Previewed 1 migration steps.');
+			$I->cli(['foundation', 'migrate', $operation, '--to=0', '--yes']);
+			$I->seeResultCodeIs(0);
+			$I->seeInShellOutput('Completed 1 migration steps.');
+			$I->cli(['foundation', 'migrate']);
+			$I->seeInShellOutput('pending');
+		}
 	}
 
 	public function test_invalid_options_fail_before_migration_execution(WPCLITester $I): void {

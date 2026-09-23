@@ -17,3 +17,4 @@ settings:
   memory_limit: 1024M
 params:
   - .env.testing.slic
+  - tests/codeception-params.php
