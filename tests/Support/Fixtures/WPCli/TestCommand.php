@@ -61,6 +61,13 @@ final class TestCommand extends Command
 		return $this->ask($question);
 	}
 
+	/**
+	 * Expose batch cleanup for WordPress integration tests.
+	 */
+	public function clearRuntimeCache(): void {
+		parent::clearRuntimeCache();
+	}
+
 	public function defaultInput(): mixed {
 		return $this->input();
 	}

@@ -102,6 +102,27 @@ abstract class Command extends WP_CLI_Command implements RegistrableCommand
 	}
 
 	/**
+	 * Release saved queries and supported runtime object caches between completed batches.
+	 *
+	 * Requires WordPress to be loaded. Cache backends without runtime-flush support are
+	 * left intact; persistent cache entries and WordPress hook state are preserved.
+	 *
+	 * @throws \Throwable When the cache backend throws during runtime cleanup.
+	 */
+	protected function clearRuntimeCache(): void {
+		global $wpdb;
+
+		// Reset queries.
+		$wpdb->queries = [];
+
+		if (! wp_cache_supports('flush_runtime')) {
+			return;
+		}
+
+		wp_cache_flush_runtime();
+	}
+
+	/**
 	 * Ask a question and retrieve a normalized answer from STDIN.
 	 */
 	protected function ask(string $question): string {
