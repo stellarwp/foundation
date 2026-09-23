@@ -38,6 +38,7 @@ final class Migrate extends Command
 		if (count($operations) > 1) {
 			WP_CLI::error('Choose only one of --run, --rollback, or --refresh.');
 		}
+
 		$operation = $operations[0] ?? null;
 		$dryRun    = (bool) get_flag_value($assocArgs, 'dry-run', false);
 
@@ -52,6 +53,7 @@ final class Migrate extends Command
 		if (isset($assocArgs['step']) && ($operation !== 'rollback' || isset($assocArgs['to']))) {
 			WP_CLI::error('--step requires --rollback and cannot be combined with --to.');
 		}
+
 		$steps = filter_var($assocArgs['step'] ?? 1, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 
 		if ($steps === false) {
@@ -65,6 +67,7 @@ final class Migrate extends Command
 
 			return self::SUCCESS;
 		}
+
 		$target = (string) ($assocArgs['to'] ?? Migrator::LATEST);
 
 		if (! $dryRun && $target === Migrator::NONE) {
@@ -79,6 +82,7 @@ final class Migrate extends Command
 		} else {
 			$result = $dryRun ? $this->migrator->preview($target) : $this->migrator->migrate($target);
 		}
+
 		$this->showSteps($result, $dryRun);
 
 		return self::SUCCESS;
@@ -133,6 +137,7 @@ final class Migrate extends Command
 			if (! $preview) {
 				continue;
 			}
+
 			foreach ($step->sql as $sql) {
 				WP_CLI::line($sql . ';');
 			}
@@ -141,6 +146,7 @@ final class Migrate extends Command
 				WP_CLI::line('Data callback will run after schema changes.');
 			}
 		}
+
 		WP_CLI::success(sprintf('%s %d migration steps.', $preview ? 'Previewed' : 'Completed', count($steps)));
 	}
 }
