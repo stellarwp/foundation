@@ -14,5 +14,5 @@ interface MigratesData
 	/**
 	 * Transform rows using the shared connection.
 	 */
-	public function migrate(Connection $connection): void;
+	public function migrate(Connection $db): void;
 }

@@ -21,7 +21,7 @@ final readonly class History
 	 * Receive the shared connection and configured ledger table.
 	 */
 	public function __construct(
-		private Connection $connection,
+		private Connection $db,
 		private MigrationTable $table,
 	) {
 	}
@@ -41,7 +41,7 @@ final readonly class History
 	 * @throws Exception When inspection or creation fails.
 	 */
 	public function initialize(): void {
-		$manager = $this->connection->createSchemaManager();
+		$manager = $this->db->createSchemaManager();
 
 		if ($manager->tablesExist([$this->table()])) {
 			return;
@@ -67,10 +67,10 @@ final readonly class History
 	 * @return array<string, string>
 	 */
 	public function applied(): array {
-		if (! $this->connection->createSchemaManager()->tablesExist([$this->table()])) {
+		if (! $this->db->createSchemaManager()->tablesExist([$this->table()])) {
 			return [];
 		}
-		$rows = $this->connection->fetchAllKeyValue('SELECT version, applied_at FROM ' . $this->quoted() . ' ORDER BY version');
+		$rows = $this->db->fetchAllKeyValue('SELECT version, applied_at FROM ' . $this->quoted() . ' ORDER BY version');
 
 		return array_map('strval', $rows);
 	}
@@ -81,7 +81,7 @@ final readonly class History
 	 * @throws Exception When the ledger write fails; the schema change has already committed.
 	 */
 	public function record(string $id): void {
-		$this->connection->insert($this->quoted(), ['version' => $id]);
+		$this->db->insert($this->quoted(), ['version' => $id]);
 	}
 
 	/**
@@ -90,7 +90,7 @@ final readonly class History
 	 * @throws Exception When the ledger delete fails; the inverse has already committed.
 	 */
 	public function remove(string $id): void {
-		$this->connection->delete($this->quoted(), ['version' => $id]);
+		$this->db->delete($this->quoted(), ['version' => $id]);
 	}
 
 	private function quoted(): string {

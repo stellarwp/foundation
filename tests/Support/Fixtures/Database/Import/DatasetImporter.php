@@ -16,7 +16,7 @@ final readonly class DatasetImporter
 	 * Share the same connection with the repository participating in the transaction.
 	 */
 	public function __construct(
-		private Connection $connection,
+		private Connection $db,
 		private EntryRepository $entries,
 	) {
 	}
@@ -29,7 +29,7 @@ final readonly class DatasetImporter
 	 * @throws Throwable When the replacement fails or commit is uncertain.
 	 */
 	public function replace(array $records): int {
-		return $this->connection->transactional(function () use ($records): int {
+		return $this->db->transactional(function () use ($records): int {
 			$this->entries->deleteAll();
 
 			return $this->entries->insertBatch($records);

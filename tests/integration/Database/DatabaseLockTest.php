@@ -65,7 +65,7 @@ final class DatabaseLockTest extends DatabaseTestCase
 		$lock->initialize();
 		$token = $lock->acquire('resource', 60);
 		self::assertInstanceOf(LockToken::class, $token);
-		$this->connection->executeStatement('UPDATE ' . $this->container->get(LockTable::class)->quotedName() . ' SET expires_at = UTC_TIMESTAMP(6) - INTERVAL 1 SECOND');
+		$this->db->executeStatement('UPDATE ' . $this->container->get(LockTable::class)->quotedName() . ' SET expires_at = UTC_TIMESTAMP(6) - INTERVAL 1 SECOND');
 		$replacement = $lock->acquire('resource', 60);
 		self::assertInstanceOf(LockToken::class, $replacement);
 		self::assertNotSame($token->owner, $replacement->owner);

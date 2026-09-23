@@ -63,7 +63,7 @@ $this->reports->delete( [ 'id' => $id ] );
 Inject `Doctrine\DBAL\Connection` for joins, specialized SQL, and operations spanning tables. Resolve physical names through each table's `quotedName()`:
 
 ```php
-$connection->executeStatement(
+$db->executeStatement(
 	'UPDATE ' . $reports->quotedName() . ' SET status = ? WHERE id = ?',
 	[ 'ready', $id ],
 );
@@ -81,12 +81,12 @@ use Plugin\Database\Tables\Reports_Table;
 
 final readonly class Create_Report {
 	public function __construct(
-		private Connection $connection,
+		private Connection $db,
 		private Reports_Table $reports,
 	) {}
 
 	public function create( string $title ): int|string {
-		return $this->connection->transactional( function () use ( $title ): int|string {
+		return $this->db->transactional( function () use ( $title ): int|string {
 			return $this->reports->insertGetId( [ 'title' => $title, 'status' => 'draft' ] );
 		} );
 	}

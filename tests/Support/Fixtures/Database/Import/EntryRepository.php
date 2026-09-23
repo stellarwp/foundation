@@ -17,7 +17,7 @@ final readonly class EntryRepository
 	 * Configure the dataset's stable, unprefixed table name.
 	 */
 	public function __construct(
-		private Connection $connection,
+		private Connection $db,
 		private DatabaseScope $scope,
 		private string $tableName,
 	) {
@@ -29,7 +29,7 @@ final readonly class EntryRepository
 	 * @throws Exception When the database cannot delete the rows.
 	 */
 	public function deleteAll(): void {
-		$this->connection->executeStatement('DELETE FROM ' . $this->table());
+		$this->db->executeStatement('DELETE FROM ' . $this->table());
 	}
 
 	/**
@@ -49,7 +49,7 @@ final readonly class EntryRepository
 				$parameters[] = $record['id'];
 				$parameters[] = $record['name'];
 			}
-			$count += (int) $this->connection->executeStatement("INSERT INTO {$table} (id, name) VALUES {$values}", $parameters);
+			$count += (int) $this->db->executeStatement("INSERT INTO {$table} (id, name) VALUES {$values}", $parameters);
 		}
 
 		return $count;
@@ -63,7 +63,7 @@ final readonly class EntryRepository
 	 * @return list<array<string, mixed>>
 	 */
 	public function findByName(string $name): array {
-		return $this->connection->createQueryBuilder()
+		return $this->db->createQueryBuilder()
 			->select('id', 'name')
 			->from($this->table())
 			->where('name = :name')
@@ -75,6 +75,6 @@ final readonly class EntryRepository
 	}
 
 	private function table(): string {
-		return $this->connection->getDatabasePlatform()->quoteSingleIdentifier($this->scope->resolveTableName($this->tableName));
+		return $this->db->getDatabasePlatform()->quoteSingleIdentifier($this->scope->resolveTableName($this->tableName));
 	}
 }

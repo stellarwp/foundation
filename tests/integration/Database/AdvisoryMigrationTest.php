@@ -48,11 +48,11 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 	 * @param Closure(Connection): void $operation
 	 */
 	private function runner(Container $container, Closure $operation, ?string $resource = null): Migrator {
-		$connection = $container->get(Connection::class);
-		$scope      = $container->get(DatabaseScope::class);
-		$names      = $container->get(TableNameResolver::class);
+		$db    = $container->get(Connection::class);
+		$scope = $container->get(DatabaseScope::class);
+		$names = $container->get(TableNameResolver::class);
 		$resource ??= $scope->resolveTableName($this->suffix . '_ledger');
-		$table     = new MigrationTable(substr($resource, strlen($scope->resolveTableName(''))), $connection, $names);
+		$table     = new MigrationTable(substr($resource, strlen($scope->resolveTableName(''))), $db, $names);
 		$migration = new class($operation) implements MigratesData, Migration {
 			/** @param Closure(Connection): void $operation */
 			public function __construct(private readonly Closure $operation) {
@@ -64,14 +64,14 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 			}
 			public function down(Blueprint $schema): void {
 			}
-			public function migrate(Connection $connection): void {
-				($this->operation)($connection);
+			public function migrate(Connection $db): void {
+				($this->operation)($db);
 			}
 		};
 		$migrations = new MigrationCollection([$migration]);
 
-		return new Migrator($connection, $container->get(WordPressSession::class), $scope,
-			new History($connection, $table), new SchemaPlanner($connection, $names, $migrations), $migrations);
+		return new Migrator($db, $container->get(WordPressSession::class), $scope,
+			new History($db, $table), new SchemaPlanner($db, $names, $migrations), $migrations);
 	}
 
 	private function lockName(?string $resource = null): string {
@@ -84,27 +84,27 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 
 	public function test_an_unclosed_data_transaction_is_rolled_back_without_recording_success(): void {
 		try {
-			$this->runner($this->container, function (Connection $connection): void {
-				$connection->beginTransaction();
-				$connection->executeStatement("UPDATE {$this->table} SET name = 'Uncommitted'");
+			$this->runner($this->container, function (Connection $db): void {
+				$db->beginTransaction();
+				$db->executeStatement("UPDATE {$this->table} SET name = 'Uncommitted'");
 			})->migrate();
 			self::fail('A callback cannot return success with an open transaction.');
 		} catch (MigrationInterrupted $failure) {
 			self::assertStringContainsString('left a transaction open', $failure->getMessage());
 			$this->assertOriginal();
-			self::assertFalse($this->connection->isTransactionActive());
+			self::assertFalse($this->db->isTransactionActive());
 			self::assertSame(0, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $this->ledger));
 			$this->assertLockAvailable();
 		}
 	}
 
 	public function test_competing_runner_cannot_plan_until_ddl_and_history_finish(): void {
-		$second = $this->runner($this->contender, function (Connection $connection): void {
-			$connection->executeStatement("UPDATE {$this->table} SET name = CONCAT(name, '|duplicate')");
+		$second = $this->runner($this->contender, function (Connection $db): void {
+			$db->executeStatement("UPDATE {$this->table} SET name = CONCAT(name, '|duplicate')");
 		});
-		$first = $this->runner($this->container, function (Connection $connection) use ($second): void {
-			$connection->executeStatement("ALTER TABLE {$this->table} ADD migrated INT NOT NULL DEFAULT 1");
-			$connection->executeStatement("UPDATE {$this->table} SET name = CONCAT(name, '|once')");
+		$first = $this->runner($this->container, function (Connection $db) use ($second): void {
+			$db->executeStatement("ALTER TABLE {$this->table} ADD migrated INT NOT NULL DEFAULT 1");
+			$db->executeStatement("UPDATE {$this->table} SET name = CONCAT(name, '|once')");
 
 			try {
 				$second->migrate();
@@ -161,14 +161,14 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 	}
 
 	public function test_lock_survives_commits_and_rollbacks_in_a_migration(): void {
-		$this->runner($this->container, function (Connection $connection): void {
-			$connection->transactional(function (Connection $connection): void {
-				$connection->executeStatement("UPDATE {$this->table} SET name = 'Committed'");
+		$this->runner($this->container, function (Connection $db): void {
+			$db->transactional(function (Connection $db): void {
+				$db->executeStatement("UPDATE {$this->table} SET name = 'Committed'");
 			});
 			self::assertSame(0, (int) $this->observer->fetchOne('SELECT IS_FREE_LOCK(?)', [$this->lockName()]));
 
 			try {
-				$connection->transactional(static function (): void {
+				$db->transactional(static function (): void {
 					throw new RuntimeException('Discard this inner transaction');
 				});
 			} catch (RuntimeException) {
@@ -180,11 +180,11 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 
 	public function test_killed_session_cannot_record_success_after_a_caught_error(): void {
 		try {
-			$this->runner($this->container, function (Connection $connection): void {
+			$this->runner($this->container, function (Connection $db): void {
 				$this->killConnection();
 
 				try {
-					$connection->executeStatement("UPDATE {$this->table} SET name = 'Wrong'");
+					$db->executeStatement("UPDATE {$this->table} SET name = 'Wrong'");
 				} catch (Throwable) {
 					// Simulate migration code that catches and ignores a lost connection.
 				}
@@ -249,11 +249,11 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 		$native = $this->native($this->source);
 
 		try {
-			$this->runner($this->container, function (Connection $connection) use ($native): void {
+			$this->runner($this->container, function (Connection $db) use ($native): void {
 				$this->source->__set('dbh', $this->native($this->observerSource));
 
 				try {
-					$connection->executeStatement("UPDATE {$this->table} SET name = 'Wrong'");
+					$db->executeStatement("UPDATE {$this->table} SET name = 'Wrong'");
 				} catch (Throwable $failure) {
 					self::assertInstanceOf(MigrationInterrupted::class, $failure);
 					$this->source->__set('dbh', $native);
@@ -271,10 +271,10 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 
 	public function test_caught_sql_failure_remains_terminal_after_inner_transaction_cleanup(): void {
 		try {
-			$this->runner($this->container, function (Connection $connection): void {
+			$this->runner($this->container, function (Connection $db): void {
 				try {
-					$connection->transactional(function (Connection $connection): void {
-						$connection->insert(trim($this->table, '`'), ['id' => 1, 'name' => 'Duplicate']);
+					$db->transactional(function (Connection $db): void {
+						$db->insert(trim($this->table, '`'), ['id' => 1, 'name' => 'Duplicate']);
 					});
 				} catch (Throwable) {
 					// The transaction ends, but this migration must remain failed.

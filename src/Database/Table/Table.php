@@ -23,7 +23,7 @@ abstract readonly class Table implements TableContract
 	 * Receive the application's shared connection and table-name policy.
 	 */
 	public function __construct(
-		private Connection $connection,
+		private Connection $db,
 		private TableNameResolver $names,
 	) {
 	}
@@ -51,7 +51,7 @@ abstract readonly class Table implements TableContract
 	 * @throws Exception         When the platform cannot be determined.
 	 */
 	final public function quotedName(): string {
-		return $this->connection->getDatabasePlatform()->quoteSingleIdentifier($this->name());
+		return $this->db->getDatabasePlatform()->quoteSingleIdentifier($this->name());
 	}
 
 	/**
@@ -61,7 +61,7 @@ abstract readonly class Table implements TableContract
 	 * @throws Exception         When the platform cannot be determined.
 	 */
 	final public function query(?string $alias = null): QueryBuilder {
-		return $this->connection->createQueryBuilder()->from($this->quotedName(), $alias);
+		return $this->db->createQueryBuilder()->from($this->quotedName(), $alias);
 	}
 
 	/**
@@ -74,7 +74,7 @@ abstract readonly class Table implements TableContract
 	 * @throws Exception         When insertion fails.
 	 */
 	final public function insert(array $data, array $types = []): int|string {
-		return $this->connection->insert($this->quotedName(), $data, $types);
+		return $this->db->insert($this->quotedName(), $data, $types);
 	}
 
 	/**
@@ -89,7 +89,7 @@ abstract readonly class Table implements TableContract
 	final public function insertGetId(array $data, array $types = []): int|string {
 		$this->insert($data, $types);
 
-		return $this->connection->lastInsertId();
+		return $this->db->lastInsertId();
 	}
 
 	/**
@@ -108,7 +108,7 @@ abstract readonly class Table implements TableContract
 			throw new InvalidArgumentException('Table updates require criteria; use the connection for an intentional whole-table update.');
 		}
 
-		return $this->connection->update($this->quotedName(), $data, $where, $types);
+		return $this->db->update($this->quotedName(), $data, $where, $types);
 	}
 
 	/**
@@ -126,6 +126,6 @@ abstract readonly class Table implements TableContract
 			throw new InvalidArgumentException('Table deletions require criteria; use the connection for an intentional whole-table delete.');
 		}
 
-		return $this->connection->delete($this->quotedName(), $where, $types);
+		return $this->db->delete($this->quotedName(), $where, $types);
 	}
 }

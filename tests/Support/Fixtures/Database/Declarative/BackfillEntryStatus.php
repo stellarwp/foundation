@@ -29,7 +29,7 @@ final readonly class BackfillEntryStatus implements MigratesData, Migration
 	public function down(Blueprint $schema): void {
 	}
 
-	public function migrate(Connection $connection): void {
-		$connection->executeStatement("UPDATE `{$this->physicalName}` SET status = 'active' WHERE status = ''");
+	public function migrate(Connection $db): void {
+		$db->executeStatement("UPDATE `{$this->physicalName}` SET status = 'active' WHERE status = ''");
 	}
 }

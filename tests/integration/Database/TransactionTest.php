@@ -16,12 +16,12 @@ final class TransactionTest extends DatabaseTestCase
 		$prefix = $this->source->prefix;
 
 		try {
-			$this->connection->transactional(function () use ($prefix): void {
-				$this->connection->executeStatement("UPDATE {$this->table} SET name = 'Wrong'");
+			$this->db->transactional(function () use ($prefix): void {
+				$this->db->executeStatement("UPDATE {$this->table} SET name = 'Wrong'");
 				$this->source->set_prefix($prefix . 'changed_');
 
 				try {
-					$this->connection->fetchOne('SELECT 1');
+					$this->db->fetchOne('SELECT 1');
 				} catch (\RuntimeException) {
 					$this->source->set_prefix($prefix);
 				}
@@ -35,16 +35,16 @@ final class TransactionTest extends DatabaseTestCase
 	}
 
 	public function test_provider_shares_one_connection_and_borrows_wordpress_session(): void {
-		self::assertSame($this->connection, $this->container->get(Connection::class));
-		self::assertSame($this->native($this->source), $this->connection->getNativeConnection());
+		self::assertSame($this->db, $this->container->get(Connection::class));
+		self::assertSame($this->native($this->source), $this->db->getNativeConnection());
 	}
 
 	public function test_commit_publishes_all_work_at_once_and_returns_the_callback_result(): void {
-		$result = $this->connection->transactional(function (): int {
-			$this->connection->executeStatement('DELETE FROM ' . $this->table);
-			$this->connection->insert($this->table, ['id' => 2, 'name' => 'First']);
+		$result = $this->db->transactional(function (): int {
+			$this->db->executeStatement('DELETE FROM ' . $this->table);
+			$this->db->insert($this->table, ['id' => 2, 'name' => 'First']);
 			$this->assertOriginal();
-			$this->connection->insert($this->table, ['id' => 3, 'name' => 'Second']);
+			$this->db->insert($this->table, ['id' => 3, 'name' => 'Second']);
 			$this->assertOriginal();
 
 			return 2;
@@ -55,37 +55,37 @@ final class TransactionTest extends DatabaseTestCase
 
 	public function test_manual_transactions_use_void_and_publish_only_at_outer_commit(): void {
 		foreach (['beginTransaction', 'commit', 'rollBack'] as $method) {
-			self::assertSame('void', (string) (new \ReflectionMethod($this->connection, $method))->getReturnType());
+			self::assertSame('void', (string) (new \ReflectionMethod($this->db, $method))->getReturnType());
 		}
 
-		$this->connection->beginTransaction();
-		$this->connection->update($this->table, ['name' => 'Outer'], ['id' => 1]);
-		$this->connection->beginTransaction();
-		$this->connection->update($this->table, ['name' => 'Nested'], ['id' => 1]);
-		$this->connection->commit();
+		$this->db->beginTransaction();
+		$this->db->update($this->table, ['name' => 'Outer'], ['id' => 1]);
+		$this->db->beginTransaction();
+		$this->db->update($this->table, ['name' => 'Nested'], ['id' => 1]);
+		$this->db->commit();
 		$this->assertOriginal();
-		$this->connection->rollBack();
+		$this->db->rollBack();
 		$this->assertOriginal();
 
-		$this->connection->beginTransaction();
-		$this->connection->update($this->table, ['name' => 'Committed'], ['id' => 1]);
-		$this->connection->commit();
+		$this->db->beginTransaction();
+		$this->db->update($this->table, ['name' => 'Committed'], ['id' => 1]);
+		$this->db->commit();
 		self::assertSame('Committed', $this->observer->fetchOne('SELECT name FROM ' . $this->table));
-		self::assertFalse($this->connection->isTransactionActive());
+		self::assertFalse($this->db->isTransactionActive());
 	}
 
 	public function test_false_and_null_callback_results_are_successful_committed_work(): void {
 		foreach ([false, null] as $expected) {
 			$name   = $expected === false ? 'False result' : 'Null result';
-			$result = $this->connection->transactional(function () use ($expected, $name): ?bool {
-				$this->connection->update($this->table, ['name' => $name], ['id' => 1]);
+			$result = $this->db->transactional(function () use ($expected, $name): ?bool {
+				$this->db->update($this->table, ['name' => $name], ['id' => 1]);
 
 				return $expected;
 			});
 
 			self::assertSame($expected, $result);
 			self::assertSame($name, $this->observer->fetchOne('SELECT name FROM ' . $this->table));
-			self::assertFalse($this->connection->isTransactionActive());
+			self::assertFalse($this->db->isTransactionActive());
 		}
 	}
 
@@ -93,9 +93,9 @@ final class TransactionTest extends DatabaseTestCase
 		$failure = new RuntimeException('Invalid later batch');
 
 		try {
-			$this->connection->transactional(function () use ($failure): void {
-				$this->connection->executeStatement('DELETE FROM ' . $this->table);
-				$this->connection->insert($this->table, ['id' => 2, 'name' => 'Provisional']);
+			$this->db->transactional(function () use ($failure): void {
+				$this->db->executeStatement('DELETE FROM ' . $this->table);
+				$this->db->insert($this->table, ['id' => 2, 'name' => 'Provisional']);
 
 				throw $failure;
 			});
@@ -103,15 +103,15 @@ final class TransactionTest extends DatabaseTestCase
 			self::assertSame($failure, $caught);
 		}
 		$this->assertOriginal();
-		self::assertSame(42, $this->connection->transactional(static fn (): int => 42));
+		self::assertSame(42, $this->db->transactional(static fn (): int => 42));
 	}
 
 	public function test_caught_prepared_statement_failure_is_terminal(): void {
-		$statement = $this->connection->prepare('INSERT INTO ' . $this->table . ' (id, name) VALUES (?, ?)');
+		$statement = $this->db->prepare('INSERT INTO ' . $this->table . ' (id, name) VALUES (?, ?)');
 
 		try {
-			$this->connection->transactional(function () use ($statement): void {
-				$this->connection->update($this->table, ['name' => 'Provisional'], ['id' => 1]);
+			$this->db->transactional(function () use ($statement): void {
+				$this->db->update($this->table, ['name' => 'Provisional'], ['id' => 1]);
 
 				try {
 					$statement->bindValue(1, 1);
@@ -128,14 +128,14 @@ final class TransactionTest extends DatabaseTestCase
 
 	public function test_caught_query_failure_blocks_further_queries(): void {
 		try {
-			$this->connection->transactional(function (): void {
+			$this->db->transactional(function (): void {
 				try {
-					$this->connection->executeQuery('SELECT missing_column FROM ' . $this->table);
+					$this->db->executeQuery('SELECT missing_column FROM ' . $this->table);
 				} catch (Throwable) {
 				}
 
 				try {
-					$this->connection->insert($this->table, ['id' => 2, 'name' => 'Must not execute']);
+					$this->db->insert($this->table, ['id' => 2, 'name' => 'Must not execute']);
 					self::fail('A failed transaction must reject further SQL.');
 				} catch (Throwable $failure) {
 					self::assertInstanceOf(TransactionFailed::class, $failure);
@@ -148,19 +148,19 @@ final class TransactionTest extends DatabaseTestCase
 	}
 
 	public function test_nested_application_failure_uses_savepoint_and_outer_can_continue(): void {
-		$this->connection->transactional(function (): void {
-			$this->connection->insert($this->table, ['id' => 2, 'name' => 'Outer']);
+		$this->db->transactional(function (): void {
+			$this->db->insert($this->table, ['id' => 2, 'name' => 'Outer']);
 
 			try {
-				$this->connection->transactional(function (): void {
-					$this->connection->insert($this->table, ['id' => 3, 'name' => 'Inner']);
+				$this->db->transactional(function (): void {
+					$this->db->insert($this->table, ['id' => 3, 'name' => 'Inner']);
 
 					throw new RuntimeException('Skip inner work');
 				});
 			} catch (RuntimeException) {
 			}
-			$this->connection->transactional(function (): void {
-				$this->connection->insert($this->table, ['id' => 4, 'name' => 'Nested success']);
+			$this->db->transactional(function (): void {
+				$this->db->insert($this->table, ['id' => 4, 'name' => 'Nested success']);
 			});
 		});
 		self::assertSame([1, 2, 4], array_map('intval', $this->observer->fetchFirstColumn('SELECT id FROM ' . $this->table . ' ORDER BY id')));
@@ -168,9 +168,9 @@ final class TransactionTest extends DatabaseTestCase
 
 	public function test_outer_rollback_includes_successful_nested_work(): void {
 		try {
-			$this->connection->transactional(function (): void {
-				$this->connection->transactional(function (): void {
-					$this->connection->insert($this->table, ['id' => 2, 'name' => 'Nested']);
+			$this->db->transactional(function (): void {
+				$this->db->transactional(function (): void {
+					$this->db->insert($this->table, ['id' => 2, 'name' => 'Nested']);
 				});
 
 				throw new RuntimeException('Outer failure');
@@ -186,7 +186,7 @@ final class TransactionTest extends DatabaseTestCase
 		$native->query('UPDATE ' . $this->table . " SET name = 'Ambient'");
 
 		try {
-			$this->connection->transactional(static function (): void {
+			$this->db->transactional(static function (): void {
 				self::fail('Callback must not run.');
 			});
 		} catch (Throwable $failure) {
@@ -204,7 +204,7 @@ final class TransactionTest extends DatabaseTestCase
 		$native->autocommit(false);
 
 		try {
-			$this->connection->transactional(static function (): void {
+			$this->db->transactional(static function (): void {
 				self::fail('Callback must not run.');
 			});
 		} catch (RuntimeException $failure) {
@@ -216,18 +216,18 @@ final class TransactionTest extends DatabaseTestCase
 
 	public function test_lost_connection_cannot_replay_a_write_even_if_wordpress_reconnects(): void {
 		try {
-			@$this->connection->transactional(function (): void {
-				$this->connection->executeStatement('DELETE FROM ' . $this->table);
+			@$this->db->transactional(function (): void {
+				$this->db->executeStatement('DELETE FROM ' . $this->table);
 				$this->killConnection();
 
 				try {
-					$this->connection->insert($this->table, ['id' => 2, 'name' => 'Must not replay']);
+					$this->db->insert($this->table, ['id' => 2, 'name' => 'Must not replay']);
 				} catch (Throwable) {
 					$this->source->db_connect(false);
 				}
 
 				try {
-					$this->connection->insert($this->table, ['id' => 3, 'name' => 'Must not adopt']);
+					$this->db->insert($this->table, ['id' => 3, 'name' => 'Must not adopt']);
 				} catch (Throwable) {
 				}
 			});
@@ -235,14 +235,14 @@ final class TransactionTest extends DatabaseTestCase
 		} catch (TransactionFailed) {
 			$this->assertOriginal();
 		}
-		self::assertSame(7, $this->connection->transactional(static fn (): int => 7));
-		self::assertSame($this->native($this->source), $this->connection->getNativeConnection());
+		self::assertSame(7, $this->db->transactional(static fn (): int => 7));
+		self::assertSame($this->native($this->source), $this->db->getNativeConnection());
 	}
 
 	public function test_lost_commit_acknowledgement_reports_uncertain_outcome(): void {
 		try {
-			@$this->connection->transactional(function (): void {
-				$this->connection->update($this->table, ['name' => 'Lost'], ['id' => 1]);
+			@$this->db->transactional(function (): void {
+				$this->db->update($this->table, ['name' => 'Lost'], ['id' => 1]);
 				$this->killConnection();
 			});
 			self::fail('Expected uncertain commit.');
@@ -255,7 +255,7 @@ final class TransactionTest extends DatabaseTestCase
 		$failure = new RuntimeException('Original business failure');
 
 		try {
-			$this->connection->transactional(function () use ($failure): void {
+			$this->db->transactional(function () use ($failure): void {
 				$this->native($this->source)->close();
 
 				throw $failure;
@@ -270,12 +270,12 @@ final class TransactionTest extends DatabaseTestCase
 		self::assertIsInt($otherSite);
 
 		try {
-			$this->connection->transactional(function () use ($otherSite): void {
-				$this->connection->update($this->table, ['name' => 'Wrong scope'], ['id' => 1]);
+			$this->db->transactional(function () use ($otherSite): void {
+				$this->db->update($this->table, ['name' => 'Wrong scope'], ['id' => 1]);
 				switch_to_blog($otherSite);
 
 				try {
-					$this->connection->executeQuery('SELECT 1');
+					$this->db->executeQuery('SELECT 1');
 				} catch (Throwable) {
 				} finally {
 					restore_current_blog();
@@ -289,12 +289,12 @@ final class TransactionTest extends DatabaseTestCase
 
 	public function test_caught_nested_database_failure_still_aborts_outer_work(): void {
 		try {
-			$this->connection->transactional(function (): void {
-				$this->connection->update($this->table, ['name' => 'Provisional'], ['id' => 1]);
+			$this->db->transactional(function (): void {
+				$this->db->update($this->table, ['name' => 'Provisional'], ['id' => 1]);
 
 				try {
-					$this->connection->transactional(function (): void {
-						$this->connection->insert($this->table, ['id' => 1, 'name' => 'Duplicate']);
+					$this->db->transactional(function (): void {
+						$this->db->insert($this->table, ['id' => 1, 'name' => 'Duplicate']);
 					});
 				} catch (UniqueConstraintViolationException) {
 				}
@@ -309,9 +309,9 @@ final class TransactionTest extends DatabaseTestCase
 		$business = new RuntimeException('Application failure');
 
 		try {
-			$this->connection->transactional(function () use ($business): void {
+			$this->db->transactional(function () use ($business): void {
 				try {
-					$this->connection->executeQuery('SELECT missing_column FROM ' . $this->table);
+					$this->db->executeQuery('SELECT missing_column FROM ' . $this->table);
 				} catch (Throwable) {
 				}
 
@@ -325,8 +325,8 @@ final class TransactionTest extends DatabaseTestCase
 
 	public function test_replacing_a_live_wordpress_session_prevents_commit(): void {
 		try {
-			$this->connection->transactional(function (): void {
-				$this->connection->executeStatement('DELETE FROM ' . $this->table);
+			$this->db->transactional(function (): void {
+				$this->db->executeStatement('DELETE FROM ' . $this->table);
 				$this->source->db_connect(false);
 			});
 			self::fail('Expected connection replacement to abort the operation.');
@@ -334,15 +334,15 @@ final class TransactionTest extends DatabaseTestCase
 			self::assertStringContainsString('connection changed', $failure->getMessage());
 			$this->assertOriginal();
 		}
-		self::assertSame(9, $this->connection->transactional(static fn (): int => 9));
+		self::assertSame(9, $this->db->transactional(static fn (): int => 9));
 	}
 
 	public function test_native_logging_middleware_can_wrap_the_wordpress_driver(): void {
 		$logger  = new \Monolog\Logger('doctrine-evaluation');
 		$handler = new \Monolog\Handler\TestHandler();
 		$logger->pushHandler($handler);
-		$connection = $this->withLogging($logger);
-		self::assertSame(1, (int) $connection->transactional(static fn (Connection $connection): mixed => $connection->fetchOne('SELECT 1')));
+		$db = $this->withLogging($logger);
+		self::assertSame(1, (int) $db->transactional(static fn (Connection $db): mixed => $db->fetchOne('SELECT 1')));
 		self::assertTrue($handler->hasDebugThatContains('Committing transaction'));
 	}
 
@@ -356,11 +356,11 @@ final class TransactionTest extends DatabaseTestCase
 
 			return $record;
 		});
-		$connection = $this->withLogging($logger);
-		$called     = false;
+		$db     = $this->withLogging($logger);
+		$called = false;
 
 		try {
-			@$connection->transactional(static function () use (&$called): void {
+			@$db->transactional(static function () use (&$called): void {
 				$called = true;
 			});
 			self::fail('Expected begin failure.');
@@ -381,13 +381,13 @@ final class TransactionTest extends DatabaseTestCase
 
 			return $record;
 		});
-		$connection = $this->withLogging($logger);
+		$db = $this->withLogging($logger);
 
 		try {
-			@$connection->transactional(function () use ($connection): void {
+			@$db->transactional(function () use ($db): void {
 				try {
-					$connection->transactional(function () use ($connection): void {
-						$connection->update($this->table, ['name' => 'Nested'], ['id' => 1]);
+					$db->transactional(function () use ($db): void {
+						$db->update($this->table, ['name' => 'Nested'], ['id' => 1]);
 					});
 				} catch (Throwable) {
 				}
@@ -399,11 +399,11 @@ final class TransactionTest extends DatabaseTestCase
 	}
 
 	public function test_stale_prepared_statement_cannot_write_to_an_old_session(): void {
-		$statement = $this->connection->prepare('UPDATE ' . $this->table . ' SET name = ?');
+		$statement = $this->db->prepare('UPDATE ' . $this->table . ' SET name = ?');
 		$this->source->db_connect(false);
 
 		try {
-			$this->connection->transactional(static function () use ($statement): void {
+			$this->db->transactional(static function () use ($statement): void {
 				try {
 					$statement->bindValue(1, 'Stale');
 					$statement->executeStatement();
@@ -420,21 +420,21 @@ final class TransactionTest extends DatabaseTestCase
 		$this->source->close();
 		$this->expectException(RuntimeException::class);
 		$this->expectExceptionMessage('WordPress must have an open mysqli connection.');
-		$this->connection->transactional(static function (): void {
+		$this->db->transactional(static function (): void {
 			self::fail('Must not invoke work.');
 		});
 	}
 
 	public function test_native_manual_rollback_remains_available(): void {
-		$this->connection->beginTransaction();
-		$this->connection->update($this->table, ['name' => 'Provisional'], ['id' => 1]);
-		$this->connection->rollBack();
+		$this->db->beginTransaction();
+		$this->db->update($this->table, ['name' => 'Provisional'], ['id' => 1]);
+		$this->db->rollBack();
 		$this->assertOriginal();
-		$this->connection->beginTransaction();
+		$this->db->beginTransaction();
 		$this->killConnection();
 		$this->expectException(RuntimeException::class);
 		$this->expectExceptionMessage('The database did not acknowledge rollback.');
-		@$this->connection->rollBack();
+		@$this->db->rollBack();
 	}
 
 	private function withLogging(\Psr\Log\LoggerInterface $logger): Connection {
@@ -444,11 +444,11 @@ final class TransactionTest extends DatabaseTestCase
 			new \StellarWP\Foundation\Database\Connection\WordPressMiddleware($this->container->get(\StellarWP\Foundation\Database\Connection\WordPressSession::class)),
 			new \Doctrine\DBAL\Logging\Middleware($logger),
 		]);
-		$connection = \Doctrine\DBAL\DriverManager::getConnection([
+		$db = \Doctrine\DBAL\DriverManager::getConnection([
 			'driver'       => 'mysqli',
 			'wrapperClass' => \StellarWP\Foundation\Database\Connection\WordPressConnection::class,
 		], $configuration);
 
-		return $connection;
+		return $db;
 	}
 }

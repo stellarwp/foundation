@@ -35,7 +35,7 @@ final class Migrator
 	 * @internal Constructed by Foundation; applications receive this object through provider wiring or migration callbacks.
 	 */
 	public function __construct(
-		private readonly Connection $connection,
+		private readonly Connection $db,
 		private readonly WordPressSession $session,
 		private readonly DatabaseScope $scope,
 		private readonly History $history,
@@ -108,8 +108,8 @@ final class Migrator
 				return $operation();
 			} catch (Throwable $failure) {
 				try {
-					while ($this->connection->isTransactionActive()) {
-						$this->connection->rollBack();
+					while ($this->db->isTransactionActive()) {
+						$this->db->rollBack();
 					}
 				} catch (Throwable) {
 					// Preserve the migration failure when transaction cleanup also fails.
@@ -182,15 +182,15 @@ final class Migrator
 
 			if ($execute) {
 				foreach ($sql as $statement) {
-					$this->connection->executeStatement($statement);
+					$this->db->executeStatement($statement);
 				}
 				$this->session->check();
 
 				if (! $reverse && $migration instanceof MigratesData) {
-					$migration->migrate($this->connection);
+					$migration->migrate($this->db);
 					$this->session->check();
 
-					if ($this->connection->isTransactionActive()) {
+					if ($this->db->isTransactionActive()) {
 						throw new MigrationInterrupted('A migration data callback left a transaction open; complete its transaction before returning.');
 					}
 				}

@@ -42,8 +42,8 @@ final class NativeConnectionFactory
 				};
 			}
 		}]);
-		$connection = DriverManager::getConnection(['driver' => 'mysqli', 'dbname' => $database], $configuration);
+		$db = DriverManager::getConnection(['driver' => 'mysqli', 'dbname' => $database], $configuration);
 
-		return $connection;
+		return $db;
 	}
 }

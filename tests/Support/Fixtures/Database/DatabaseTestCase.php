@@ -18,7 +18,7 @@ abstract class DatabaseTestCase extends WPTestCase
 {
 	protected wpdb $source;
 	protected wpdb $observerSource;
-	protected Connection $connection;
+	protected Connection $db;
 	protected Connection $observer;
 	protected string $table;
 	protected string $suffix;
@@ -41,9 +41,9 @@ abstract class DatabaseTestCase extends WPTestCase
 		$this->observerSource = new wpdb(constant('DB_USER'), constant('DB_PASSWORD'), constant('DB_NAME'), constant('DB_HOST'));
 		$this->container->register(DatabaseProvider::class);
 		$this->container->singleton(wpdb::class, $this->source);
-		$this->connection = $this->container->get(Connection::class);
-		$this->observer   = (new NativeConnectionFactory())->create($this->native($this->observerSource), constant('DB_NAME'));
-		$this->table      = $this->privateTable($this->suffix);
+		$this->db       = $this->container->get(Connection::class);
+		$this->observer = (new NativeConnectionFactory())->create($this->native($this->observerSource), constant('DB_NAME'));
+		$this->table    = $this->privateTable($this->suffix);
 		$this->observer->executeStatement("CREATE TABLE {$this->table} (id INT PRIMARY KEY, name VARCHAR(50) NOT NULL) ENGINE=InnoDB");
 		$this->observer->insert($this->table, ['id' => 1, 'name' => 'Original']);
 	}

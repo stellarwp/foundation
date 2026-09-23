@@ -26,7 +26,7 @@ final class TableTest extends DatabaseTestCase
 		self::assertSame(1, (int) $this->entries->query()->select('active')->fetchOne());
 
 		try {
-			$this->connection->transactional(function (): void {
+			$this->db->transactional(function (): void {
 				$this->entries->insert(['name' => 'Rolled back']);
 
 				throw new \RuntimeException('Cancel');
@@ -62,12 +62,12 @@ final class TableTest extends DatabaseTestCase
 
 	public function test_idle_connection_replacement_supports_queries_and_transactions(): void {
 		$old          = $this->native($this->source);
-		$oldStatement = $this->connection->prepare('SELECT CONNECTION_ID()');
+		$oldStatement = $this->db->prepare('SELECT CONNECTION_ID()');
 		$this->source->__set('dbh', $this->native($this->observerSource));
 
 		try {
-			self::assertSame($this->native($this->observerSource)->thread_id, (int) $this->connection->fetchOne('SELECT CONNECTION_ID()'));
-			self::assertSame('updated', $this->connection->transactional(function (Connection $connection): string {
+			self::assertSame($this->native($this->observerSource)->thread_id, (int) $this->db->fetchOne('SELECT CONNECTION_ID()'));
+			self::assertSame('updated', $this->db->transactional(function (Connection $db): string {
 				$this->entries->insert(['name' => 'Reconnected']);
 
 				return 'updated';

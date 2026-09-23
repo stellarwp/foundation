@@ -147,8 +147,8 @@ use Doctrine\DBAL\Connection;
 use StellarWP\Foundation\Database\Migration\Contracts\MigratesData;
 
 // Add MigratesData to the migration's implements list.
-public function migrate( Connection $connection ): void {
-	$connection->executeStatement(
+public function migrate( Connection $db ): void {
+	$db->executeStatement(
 		'UPDATE ' . $this->table->quotedName() . ' SET status = ? WHERE status IS NULL',
 		[ 'draft' ],
 	);

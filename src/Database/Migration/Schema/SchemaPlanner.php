@@ -33,7 +33,7 @@ final readonly class SchemaPlanner
 	 * @param array<string, mixed> $tableOptions Defaults such as charset/collation applied to created tables.
 	 */
 	public function __construct(
-		private Connection $connection,
+		private Connection $db,
 		private TableNameResolver $names,
 		private MigrationCollection $migrations,
 		private array $tableOptions = [],
@@ -121,7 +121,7 @@ final readonly class SchemaPlanner
 	 * @param list<string> $simulated Lower-cased names of every table an earlier preview step decided on.
 	 */
 	private function introspect(array $names, ?SchemaState $overlay = null, array $simulated = []): SchemaState {
-		$manager    = $this->connection->createSchemaManager();
+		$manager    = $this->db->createSchemaManager();
 		$tables     = [];
 		$timestamps = $this->timestampAttributes($names);
 
@@ -166,7 +166,7 @@ final readonly class SchemaPlanner
 		if ($names === []) {
 			return [];
 		}
-		$rows = $this->connection->fetchAllAssociative(
+		$rows = $this->db->fetchAllAssociative(
 			'SELECT TABLE_NAME, COLUMN_NAME, DATETIME_PRECISION, EXTRA FROM information_schema.COLUMNS'
 			. ' WHERE TABLE_SCHEMA = DATABASE() AND DATA_TYPE IN (\'datetime\', \'timestamp\') AND TABLE_NAME IN ('
 			. implode(', ', array_fill(0, count($names), '?')) . ')',
@@ -264,7 +264,7 @@ final readonly class SchemaPlanner
 	 * @return list<string> SQL statements for attributes DBAL does not compare.
 	 */
 	private function timestampSql(SchemaState $actual, SchemaState $desired, SchemaDiff $remaining, array $declaredChanges, string $id): array {
-		$platform = $this->connection->getDatabasePlatform();
+		$platform = $this->db->getDatabasePlatform();
 		$sql      = [];
 		$covered  = $this->columnsRewrittenBy($remaining);
 
@@ -299,7 +299,7 @@ final readonly class SchemaPlanner
 	 */
 	private function commentSql(SchemaState $actual, SchemaState $before, SchemaState $after, string $id): array {
 		$sql      = [];
-		$platform = $this->connection->getDatabasePlatform();
+		$platform = $this->db->getDatabasePlatform();
 		foreach ($after->schema->getTables() as $table) {
 			$name = $table->getObjectName()->toString();
 
@@ -359,7 +359,7 @@ final readonly class SchemaPlanner
 	 * Compare two snapshots using the configured Doctrine platform.
 	 */
 	private function compare(SchemaState $from, SchemaState $to): SchemaDiff {
-		return $this->connection->createSchemaManager()->createComparator((new ComparatorConfig())->withReportModifiedIndexes(false))->compareSchemas($from->schema, $to->schema);
+		return $this->db->createSchemaManager()->createComparator((new ComparatorConfig())->withReportModifiedIndexes(false))->compareSchemas($from->schema, $to->schema);
 	}
 
 	/**
@@ -368,7 +368,7 @@ final readonly class SchemaPlanner
 	 * @return list<string>
 	 */
 	private function sql(SchemaDiff $diff): array {
-		return $this->connection->getDatabasePlatform()->getAlterSchemaSQL($diff);
+		return $this->db->getDatabasePlatform()->getAlterSchemaSQL($diff);
 	}
 
 	/**

@@ -18,10 +18,10 @@ final readonly class LockTable extends Table
 	 */
 	public function __construct(
 		private string $unprefixedTableName,
-		Connection $connection,
+		Connection $db,
 		TableNameResolver $names,
 	) {
-		parent::__construct($connection, $names);
+		parent::__construct($db, $names);
 	}
 
 	/**
