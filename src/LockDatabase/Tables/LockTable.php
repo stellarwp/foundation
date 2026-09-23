@@ -1,6 +1,6 @@
 <?php declare(strict_types=1);
 
-namespace StellarWP\Foundation\Database\Table\Tables;
+namespace StellarWP\Foundation\LockDatabase\Tables;
 
 use Doctrine\DBAL\Connection;
 use StellarWP\Foundation\Database\Contracts\TableNameResolver;

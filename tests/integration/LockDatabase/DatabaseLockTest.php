@@ -1,22 +1,31 @@
 <?php declare(strict_types=1);
 
-namespace StellarWP\Foundation\Tests\Integration\Database;
+namespace StellarWP\Foundation\Tests\Integration\LockDatabase;
 
-use StellarWP\Foundation\Database\Lock\DatabaseLock;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Database\Migration\Migrator;
-use StellarWP\Foundation\Database\Table\Tables\LockTable;
+use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
+use StellarWP\Foundation\Lock\LockLease;
+use StellarWP\Foundation\Lock\LockOperation;
 use StellarWP\Foundation\Lock\LockToken;
+use StellarWP\Foundation\LockDatabase\DatabaseLock;
+use StellarWP\Foundation\LockDatabase\LockDatabaseProvider;
+use StellarWP\Foundation\LockDatabase\Tables\LockTable;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\DatabaseTestCase;
 
 final class DatabaseLockTest extends DatabaseTestCase
 {
 	protected function configuration(): array {
-		return ['database' => ['locks_table' => $this->suffix . '_locks', 'migrations_table' => $this->suffix . '_history']];
+		return [
+			'database' => ['migrations_table' => $this->suffix . '_history'],
+			'lock'     => ['database' => ['table' => $this->suffix . '_locks']],
+		];
 	}
 
 	protected function setUp(): void {
 		parent::setUp();
+		$this->container->register(LockDatabaseProvider::class);
 		$this->privateTable($this->suffix . '_locks');
 		$this->privateTable($this->suffix . '_history');
 	}
@@ -26,6 +35,23 @@ final class DatabaseLockTest extends DatabaseTestCase
 		self::assertFalse($this->observer->createSchemaManager()->tablesExist([$this->container->get(LockTable::class)->name()]));
 		$this->expectException(LockUnavailableException::class);
 		$this->container->get(DatabaseLock::class)->acquire('test', 60);
+	}
+
+	public function test_application_selection_supports_managed_lock_operations(): void {
+		$this->container->singleton(Lock::class, static fn (C $c): DatabaseLock => $c->get(DatabaseLock::class));
+		$lock = $this->container->get(DatabaseLock::class);
+		$lock->initialize();
+
+		$result = $this->container->get(LockOperation::class)->run('import', 60, static function (LockLease $lease) use ($lock): string {
+			self::assertTrue($lock->isAcquired('import'));
+			self::assertNull($lock->acquire('import', 60));
+			$lease->renew();
+
+			return 'imported';
+		});
+
+		self::assertSame('imported', $result);
+		self::assertFalse($lock->isAcquired('import'));
 	}
 
 	public function test_a_missing_wordpress_connection_is_reported_through_the_lock_contract(): void {

@@ -83,7 +83,7 @@ $report = $this->reports->query()
 
 ## Configure resource names
 
-`foundation.prefix = your-plugin` gives the migration ledger the unprefixed name `your_plugin_foundation_migrations`. The optional database lock uses `your_plugin_foundation_locks`. WordPress adds its current site prefix. The migration advisory lock is derived from the database and ledger names, so applications with different ledgers migrate independently.
+`foundation.prefix = your-plugin` gives the migration ledger the unprefixed name `your_plugin_foundation_migrations`. WordPress adds its current site prefix. The migration advisory lock is derived from the database and ledger names, so applications with different ledgers migrate independently.
 
 Override table names when necessary:
 
@@ -94,7 +94,6 @@ return [
 	],
 	'database' => [
 		'migrations_table' => $_ENV['FOUNDATION_DATABASE_MIGRATIONS_TABLE'] ?? 'your_plugin_migrations',
-		'locks_table'      => $_ENV['FOUNDATION_DATABASE_LOCKS_TABLE'] ?? 'your_plugin_locks',
 	],
 ];
 ```
@@ -114,5 +113,5 @@ Applications can replace `DatabaseScope` and `TableNameResolver` when they own a
 <CardGrid>
   <LinkCard title="Migrations" description="Generate historical changes, preview SQL, and recover interrupted deployments." href="/components/database/migrations/" />
   <LinkCard title="Queries and transactions" description="Use application tables and native Doctrine operations." href="/components/database/query-builder/" />
-  <LinkCard title="Database Lock" description="Choose database-backed coordination for application work." href="/components/database/lock/" />
+  <LinkCard title="Database Lock" description="Choose database-backed coordination for application work." href="/components/lock/database/" />
 </CardGrid>

@@ -1,7 +1,7 @@
 {
-    "name": "stellarwp/foundation-database",
+    "name": "stellarwp/foundation-lock-database",
     "type": "library",
-    "description": "Doctrine DBAL tables, managed transactions, and declarative migrations for WordPress.",
+    "description": "Database-backed expiring locks using Foundation's shared WordPress connection.",
     "license": "GPL-2.0-or-later",
     "config": {
         "vendor-dir": "vendor",
@@ -10,13 +10,12 @@
     "require": {
         "php": ">=8.3",
         "stellarwp/foundation-container": "^2.0",
-        "stellarwp/foundation-wpcli": "^2.0",
-        "doctrine/dbal": "^4.4",
-        "ext-mysqli": "*"
+        "stellarwp/foundation-database": "^2.0",
+        "stellarwp/foundation-lock": "^2.0"
     },
     "autoload": {
         "psr-4": {
-            "StellarWP\\Foundation\\Database\\": ""
+            "StellarWP\\Foundation\\LockDatabase\\": ""
         }
     },
     "extra": {

@@ -9,6 +9,7 @@ Split packages:
 - `stellarwp/foundation-container`
 - `stellarwp/foundation-log`
 - `stellarwp/foundation-lock`
+- `stellarwp/foundation-lock-database`
 - `stellarwp/foundation-lock-redis`
 - `stellarwp/foundation-database`
 - `stellarwp/foundation-identifier`

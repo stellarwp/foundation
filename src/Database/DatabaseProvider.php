@@ -16,14 +16,12 @@ use StellarWP\Foundation\Database\Connection\WordPressSession;
 use StellarWP\Foundation\Database\Contracts\DatabaseScope;
 use StellarWP\Foundation\Database\Contracts\TableNameResolver;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
-use StellarWP\Foundation\Database\Lock\DatabaseLock;
 use StellarWP\Foundation\Database\Migration\History;
 use StellarWP\Foundation\Database\Migration\MigrationCollection;
 use StellarWP\Foundation\Database\Migration\MigrationDiscovery;
 use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Database\Migration\Schema\SchemaPlanner;
 use StellarWP\Foundation\Database\Scope\SiteScope;
-use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
 use StellarWP\Foundation\WPCli\WPCliProvider;
 use wpdb;
@@ -46,7 +44,6 @@ final class DatabaseProvider extends Provider
 		$this->registerConnection();
 		$this->registerTables();
 		$this->registerMigrations();
-		$this->container->singleton(DatabaseLock::class);
 		$this->container->mergeArrayVar(WPCliProvider::COMMANDS, static fn (C $c): array => [$c->get(Migrate::class)]);
 	}
 
@@ -77,12 +74,10 @@ final class DatabaseProvider extends Provider
 
 	private function registerTables(): void {
 		$prefix = str_replace('-', '_', $this->foundationPrefix());
-		$this->container->when(MigrationTable::class)->needs('$unprefixedTableName')
+		$this->container->when(MigrationTable::class)
+			->needs('$unprefixedTableName')
 			->give($this->config->get('database.migrations_table', $prefix . '_foundation_migrations'));
-		$this->container->when(LockTable::class)->needs('$unprefixedTableName')
-			->give($this->config->get('database.locks_table', $prefix . '_foundation_locks'));
 		$this->container->singleton(MigrationTable::class);
-		$this->container->singleton(LockTable::class);
 	}
 
 	private function registerMigrations(): void {

@@ -1,23 +1,24 @@
 <?php declare(strict_types=1);
 
-namespace StellarWP\Foundation\Database\Lock;
+namespace StellarWP\Foundation\LockDatabase;
 
 use DateMalformedStringException;
 use DateTimeImmutable;
 use DateTimeZone;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception;
+use Doctrine\DBAL\Exception\TableExistsException;
 use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\PrimaryKeyConstraint;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Types;
 use InvalidArgumentException;
-use StellarWP\Foundation\Database\Table\Tables\LockTable;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use StellarWP\Foundation\Lock\LockToken;
 use StellarWP\Foundation\Lock\Traits\GeneratesLockOwner;
 use StellarWP\Foundation\Lock\Traits\ValidatesLockTtl;
+use StellarWP\Foundation\LockDatabase\Tables\LockTable;
 use Throwable;
 
 /**
@@ -48,6 +49,7 @@ final readonly class DatabaseLock implements Lock
 		if ($manager->tablesExist([$this->table->name()])) {
 			return;
 		}
+
 		$table = Table::editor()->setUnquotedName($this->table->name())->setOptions(['engine' => 'InnoDB'])
 			->setColumns(
 				Column::editor()->setUnquotedName('name')->setTypeName(Types::BINARY)->setLength(191)->setNotNull(true)->create(),
@@ -60,7 +62,7 @@ final readonly class DatabaseLock implements Lock
 
 		try {
 			$manager->createTable($table);
-		} catch (\Doctrine\DBAL\Exception\TableExistsException) {
+		} catch (TableExistsException) {
 			// Another activation created the same configured storage concurrently.
 		}
 	}

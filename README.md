@@ -16,8 +16,9 @@ See the [Foundation documentation](https://foundation.nexcess.dev/) for installa
 | [stellarwp/foundation-log](https://github.com/stellarwp/foundation-log) | Services need a configured PSR logger | Runtime |
 | [stellarwp/foundation-shutdown](https://github.com/stellarwp/foundation-shutdown) | Deferred work should run during PHP shutdown, optionally after finishing the response | Runtime |
 | [stellarwp/foundation-lock](https://github.com/stellarwp/foundation-lock) | Code needs the portable lock contract or process-local test implementation | Runtime |
+| [stellarwp/foundation-lock-database](https://github.com/stellarwp/foundation-lock-database) | Requests and workers coordinate through the primary WordPress database | Runtime |
 | [stellarwp/foundation-lock-redis](https://github.com/stellarwp/foundation-lock-redis) | Multiple processes or servers coordinate through dedicated Redis | Runtime |
-| [stellarwp/foundation-database](https://github.com/stellarwp/foundation-database) | A WordPress application needs queries, migrations, or database-backed locks | Runtime |
+| [stellarwp/foundation-database](https://github.com/stellarwp/foundation-database) | A WordPress application needs queries, managed transactions, or migrations | Runtime |
 | [stellarwp/foundation-identifier](https://github.com/stellarwp/foundation-identifier) | Services need injectable ULID generation and validation | Runtime |
 | [stellarwp/foundation-view](https://github.com/stellarwp/foundation-view) | Services need scoped PHP template rendering without global state | Runtime |
 | [stellarwp/foundation-wpcli](https://github.com/stellarwp/foundation-wpcli) | A shipped WordPress plugin exposes WP-CLI commands | Runtime |

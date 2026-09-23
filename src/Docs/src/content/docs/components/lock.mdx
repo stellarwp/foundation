@@ -17,7 +17,7 @@ For WordPress applications where every participant can reach the same primary da
 
 | Implementation | Package | Coordinates work across |
 | --- | --- | --- |
-| `DatabaseLock` | `stellarwp/foundation-database` | Requests and workers sharing the primary WordPress database |
+| `DatabaseLock` | `stellarwp/foundation-lock-database` | Requests and workers sharing the primary WordPress database |
 | `RedisLock` | `stellarwp/foundation-lock-redis` | Requests and workers sharing a Redis endpoint |
 | `InMemoryLock` | `stellarwp/foundation-lock` | One PHP process |
 
@@ -44,10 +44,10 @@ The examples assume the application has a composition root that registers provid
 
 ### Use the WordPress database
 
-Install the database package:
+Install the database lock backend:
 
 ```shell
-composer require stellarwp/foundation-database
+composer require stellarwp/foundation-lock-database
 ```
 
 Follow the database lock guide to register its providers, initialize the lock table, and select `DatabaseLock` as your application's `Lock` implementation. Then continue to [Usage](#usage) below.
@@ -55,7 +55,7 @@ Follow the database lock guide to register its providers, initialize the lock ta
 <LinkCard
   title="Configure Database Lock"
   description="Select DatabaseLock and initialize its WordPress table during deployment."
-  href="/components/database/lock/"
+  href="/components/lock/database/"
 />
 
 ### Use Redis
