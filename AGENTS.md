@@ -75,6 +75,8 @@ Encapsulate meaningful closed state behind named factories and predicates such a
 
 ## Source Conventions
 
+Write every non-empty PHP array literal across multiple lines, including single-element arrays, nested arrays, return values, and arguments. Put each element on its own line, include a trailing comma, and place the closing bracket on its own line. Apply this consistently in source code, tests, stubs, and documentation examples. Empty arrays may remain `[]`.
+
 Separate control statements (`if`, loops, `switch`, and `try`) from surrounding statements with a blank line before and after the complete construct. This includes a blank line between a closing control-flow brace and a following assignment or method call. Do not add blank lines between connected clauses such as `} elseif`, `} else`, `} catch`, or `} finally`, or next to an enclosing block's opening or closing brace solely for this rule.
 
 Do not declare empty constructors when PHP's implicit public constructor suffices. Private empty constructors may prevent instantiation of static utilities or constants holders.
