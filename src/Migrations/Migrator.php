@@ -6,7 +6,6 @@ use Closure;
 use Doctrine\DBAL\Connection;
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\AdvisorySession;
-use StellarWP\Foundation\Database\Contracts\DatabaseScope;
 use StellarWP\Foundation\Database\Contracts\TableNameResolver;
 use StellarWP\Foundation\Database\Exceptions\AdvisoryLockContended;
 use StellarWP\Foundation\Database\Exceptions\AdvisoryLockInterrupted;
@@ -41,7 +40,6 @@ final class Migrator
 	public function __construct(
 		private readonly Connection $db,
 		private readonly AdvisorySession $session,
-		private readonly DatabaseScope $scope,
 		private readonly History $history,
 		private readonly SchemaPlanner $planner,
 		private readonly MigrationCollection $migrations,
@@ -186,10 +184,6 @@ final class Migrator
 	 * @return list<Step>
 	 */
 	private function run(string $target, bool $execute, bool $applyPending = true): array {
-		// Capture the operation's site and prefix; a change mid-run is rejected before any ledger write.
-		$site   = $this->scope->capture();
-		$prefix = $this->scope->resolveTableName('');
-
 		if ($execute) {
 			$this->history->initialize();
 		}
@@ -218,7 +212,6 @@ final class Migrator
 						throw new MigrationInterrupted('A migration data callback left a transaction open; complete its transaction before returning.');
 					}
 				}
-				$this->assertScope($site, $prefix);
 
 				try {
 					$reverse ? $this->history->remove($id) : $this->history->record($id);
@@ -280,17 +273,6 @@ final class Migrator
 	private function assertTarget(string $target): void {
 		if (! in_array($target, [self::NONE, self::LATEST], true) && ! $this->migrations->has($target)) {
 			throw new InvalidArgumentException('Unknown migration target: ' . $target);
-		}
-	}
-
-	/**
-	 * @throws MigrationInterrupted When the WordPress site or table prefix changed during the run.
-	 */
-	private function assertScope(int $site, string $prefix): void {
-		$this->scope->assertCurrent($site);
-
-		if ($this->scope->resolveTableName('') !== $prefix) {
-			throw new MigrationInterrupted('The WordPress table prefix changed during the migration run.');
 		}
 	}
 

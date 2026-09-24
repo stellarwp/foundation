@@ -84,7 +84,6 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 		return new Migrator(
 			$db,
 			$container->get(AdvisorySession::class),
-			$scope,
 			new History($db, $table),
 			new SchemaPlanner(
 				$db,
