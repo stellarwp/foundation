@@ -45,6 +45,7 @@ export default defineConfig({
               items: [
                 { slug: 'components/lock', label: 'Overview' },
                 { slug: 'components/lock/database' },
+                { slug: 'components/lock/redis' },
               ],
             },
             { slug: 'components/migrations' },
