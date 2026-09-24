@@ -7,6 +7,8 @@ sidebar:
 
 `stellarwp/foundation-migrations` manages the history of your application's database schema. Each migration declares one change in `up()` and its inverse in `down()`. Foundation loads migration files, runs pending changes in order under a database lock, and records successful migrations.
 
+Unlike WordPress’s [`dbDelta()`](https://developer.wordpress.org/reference/functions/dbdelta/), which does not manage foreign-key constraints, Foundation supports creating, changing, and removing relationships between tables. See [foreign keys](#relate-tables-with-foreign-keys) for the complete workflow.
+
 ## Create and change a table
 
 ### Set up migrations
@@ -236,6 +238,99 @@ $table = $schema->table( 'your_plugin_reports' );
 $table->dropIndex( 'status_lookup' );
 $table->index( 'status_lookup', 'status', 'published_at' );
 ```
+
+### Relate tables with foreign keys
+
+Foreign keys let the database enforce relationships between your application's tables.
+
+For example, an order item must belong to an existing order. Create the parent table before its dependent table:
+
+```shell
+vendor/bin/foundation make:database:migration create_orders --create=your_plugin_orders
+vendor/bin/foundation make:database:migration create_order_items --create=your_plugin_order_items
+```
+
+The first migration's generated `bigIncrements( 'id' )` supplies the order's primary key. In the second migration, complete `up()` with the item columns, supporting index, and relationship:
+
+```php
+public function up( Blueprint $schema ): void {
+	$table = $schema->create( 'your_plugin_order_items' );
+
+	$table->bigIncrements( 'id' );
+	$table->unsignedBigInteger( 'order_id' );
+	$table->string( 'description' );
+	$table->index( 'order_lookup', 'order_id' );
+	$table->foreignKey( 'order', 'order_id' )
+		->references( 'your_plugin_orders', 'id' )
+		->cascadeOnDelete();
+}
+```
+
+Keep the generated `down()` that drops `your_plugin_order_items`. The later migration ID ensures rollback drops items before orders. When adding a relationship to existing tables, use `--table=your_plugin_order_items` and `$schema->table()` instead.
+
+`order` is the relationship's stable logical name within the items table. Foundation scopes the physical constraint name to that table, so another table can also use `order`. Pass the same logical name to `dropForeignKey()` later. `references()` takes the historical, unprefixed application table name; Foundation resolves both tables for the current WordPress site.
+
+Declare columns and indexes explicitly. The local and referenced column types must match, including integer size and unsignedness. Reference a primary or unique key. Foundation-created tables use InnoDB, which enforces these constraints.
+
+Preview and apply as usual:
+
+```shell
+wp your-plugin migrate --run --dry-run
+wp your-plugin migrate --run
+```
+
+The database now rejects an item whose `order_id` has no matching order. Deleting an order also deletes its items because this example chooses `cascadeOnDelete()`.
+
+:::caution[Check existing data before adding a relationship]
+Adding a foreign key fails if existing child rows reference missing parents. Repair those rows in an earlier [data migration](#transform-existing-data), then add the constraint in a later migration. A data callback on the constraint migration runs after DDL, so it cannot repair rows before that constraint is added.
+:::
+
+#### Choose deletion and update behavior
+
+Without an action method, both deletion and referenced-key updates are restrictive: the database rejects the parent change while child rows reference it.
+
+| Delete action | Referenced-key update action | Effect on child rows |
+| --- | --- | --- |
+| `restrictOnDelete()` | `restrictOnUpdate()` | Reject the parent change while references exist |
+| `cascadeOnDelete()` | `cascadeOnUpdate()` | Delete dependent rows, or propagate the new key |
+| `nullOnDelete()` | `nullOnUpdate()` | Set the referencing columns to `NULL` |
+
+For either null action, declare every local column as `nullable()`:
+
+```php
+$table->unsignedBigInteger( 'order_id' )->nullable();
+$table->index( 'order_lookup', 'order_id' );
+$table->foreignKey( 'order', 'order_id' )
+	->references( 'your_plugin_orders', 'id' )
+	->nullOnDelete();
+```
+
+Changing an existing relationship requires a new migration. Drop and redeclare the same logical name with its complete replacement definition:
+
+```php
+$table = $schema->table( 'your_plugin_order_items' );
+
+$table->dropForeignKey( 'order' );
+$table->foreignKey( 'order', 'order_id' )
+	->references( 'your_plugin_orders', 'id' )
+	->restrictOnDelete();
+```
+
+Its `down()` can drop and redeclare the relationship with the original action. To remove a relationship entirely, use only `dropForeignKey( 'order' )`. This retains its columns and indexes; remove those separately when that migration owns their removal. Remove dependent relationships or child tables before dropping a referenced parent table.
+
+#### Reference a composite key
+
+Supply columns in corresponding order on both sides. For example, given an orders table with a unique key over `account_id` and `order_number`, declare matching item columns and their index:
+
+```php
+$table->unsignedBigInteger( 'account_id' );
+$table->unsignedBigInteger( 'order_number' );
+$table->index( 'order_lookup', 'account_id', 'order_number' );
+$table->foreignKey( 'order', 'account_id', 'order_number' )
+	->references( 'your_plugin_orders', 'account_id', 'order_number' );
+```
+
+The earlier parent migration must declare those column types and `$table->unique( 'account_order', 'account_id', 'order_number' )`. Each local value pairs with the referenced column in the same position.
 
 ### Choose a scaffold
 

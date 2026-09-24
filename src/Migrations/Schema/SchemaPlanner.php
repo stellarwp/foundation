@@ -4,7 +4,6 @@ namespace StellarWP\Foundation\Migrations\Schema;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Schema\Column;
-use Doctrine\DBAL\Schema\ComparatorConfig;
 use Doctrine\DBAL\Schema\Index;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\SchemaDiff;
@@ -16,13 +15,11 @@ use StellarWP\Foundation\Migrations\Exceptions\IncompatibleSchema;
 use StellarWP\Foundation\Migrations\Exceptions\IrreversibleMigration;
 use StellarWP\Foundation\Migrations\Exceptions\MigrationInterrupted;
 use StellarWP\Foundation\Migrations\MigrationCollection;
+use StellarWP\Foundation\Migrations\Schema\Factories\MigrationComparatorFactory;
 use StellarWP\Foundation\Migrations\Schema\ValueObjects\SchemaPlan;
 
 /**
  * Compute desired schema states from migration declarations and compare them with the live schema.
- *
- * This is the only class that speaks to Doctrine's schema, comparator, and platform APIs for
- * planning against the DBAL 4 backend.
  *
  * @internal
  */
@@ -37,6 +34,7 @@ final readonly class SchemaPlanner
 		private Connection $db,
 		private TableNameResolver $names,
 		private MigrationCollection $migrations,
+		private MigrationComparatorFactory $comparators,
 		private array $tableOptions = [],
 	) {
 	}
@@ -51,13 +49,17 @@ final readonly class SchemaPlanner
 	 * @throws \Throwable         When a declaration or schema inspection fails.
 	 */
 	public function plan(array $applied, string $id, bool $reverse, ?SchemaState $simulated = null, array $simulatedNames = []): SchemaPlan {
-		$before    = $this->replay($applied);
-		$after     = $reverse ? $this->reverse($before, $id) : $this->replay([...$applied, $id]);
-		$expected  = $this->compare($before, $after);
-		$names     = $this->tableNames($before, $after);
-		$actual    = $this->introspect($names, $simulated, $simulatedNames);
-		$desired   = $this->preserveUndeclared($actual, $before, $after);
-		$remaining = $this->compare($actual, $desired);
+		$before = $this->replay($applied);
+		$after  = $reverse ? $this->reverse($before, $id) : $this->replay([
+			...$applied,
+			$id,
+		]);
+		$comparator = $this->comparators->create();
+		$expected   = $comparator->compareSchemas($before->schema, $after->schema);
+		$names      = $this->tableNames($before, $after);
+		$actual     = $this->introspect($names, $simulated, $simulatedNames);
+		$desired    = $this->preserveUndeclared($actual, $before, $after);
+		$remaining  = $comparator->compareSchemas($actual->schema, $desired->schema);
 		$this->assertContained($remaining, $expected, $id);
 		$sql = array_merge(
 			$this->sql($remaining),
@@ -143,6 +145,7 @@ final readonly class SchemaPlanner
 		}
 
 		$facts = [];
+
 		foreach ($tables as $table) {
 			$name = strtolower($table->getObjectName()->toString());
 
@@ -173,15 +176,27 @@ final readonly class SchemaPlanner
 		if ($names === []) {
 			return [];
 		}
-		$rows = $this->db->fetchAllAssociative(
-			'SELECT TABLE_NAME, COLUMN_NAME, DATETIME_PRECISION, EXTRA FROM information_schema.COLUMNS'
-			. ' WHERE TABLE_SCHEMA = DATABASE() AND DATA_TYPE IN (\'datetime\', \'timestamp\') AND TABLE_NAME IN ('
-			. implode(', ', array_fill(0, count($names), '?')) . ')',
+
+		$placeholders = implode(', ', array_fill(0, count($names), '?'));
+		$rows         = $this->db->fetchAllAssociative(
+			"SELECT TABLE_NAME, COLUMN_NAME, DATETIME_PRECISION, EXTRA
+			FROM information_schema.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE()
+				AND DATA_TYPE IN ('datetime', 'timestamp')
+				AND TABLE_NAME IN ({$placeholders})",
 			$names,
 		);
+
 		$attributes = [];
+
 		foreach ($rows as $row) {
-			$attributes[strtolower((string) $row['TABLE_NAME'])][strtolower((string) $row['COLUMN_NAME'])] = ['precision' => (int) $row['DATETIME_PRECISION'], 'on_update' => stripos((string) $row['EXTRA'], 'on update') !== false];
+			$table  = strtolower((string) $row['TABLE_NAME']);
+			$column = strtolower((string) $row['COLUMN_NAME']);
+
+			$attributes[$table][$column] = [
+				'precision' => (int) $row['DATETIME_PRECISION'],
+				'on_update' => stripos((string) $row['EXTRA'], 'on update') !== false,
+			];
 		}
 
 		return $attributes;
@@ -216,6 +231,7 @@ final readonly class SchemaPlanner
 	private function preserveUndeclared(SchemaState $actual, SchemaState $before, SchemaState $after): SchemaState {
 		$preserved = clone $after;
 		$tables    = [];
+
 		foreach ($preserved->schema->getTables() as $target) {
 			$name = $target->getObjectName()->toString();
 
@@ -223,9 +239,11 @@ final readonly class SchemaPlanner
 				$tables[] = $target;
 				continue;
 			}
+
 			$actualTable = $actual->schema->getTable($name);
 			$beforeTable = $before->schema->hasTable($name) ? $before->schema->getTable($name) : null;
 			$editor      = $target->edit();
+
 			foreach ($actualTable->getColumns() as $column) {
 				$columnName = $column->getObjectName()->toString();
 
@@ -239,7 +257,9 @@ final readonly class SchemaPlanner
 					$preserved->timestamps[$key] = $actual->timestamps[$key];
 				}
 			}
+
 			$primary = $actualTable->getPrimaryKeyConstraint()?->getObjectName()?->toString() ?? 'primary';
+
 			foreach ($actualTable->getIndexes() as $index) {
 				$indexName = $index->getObjectName()->toString();
 
@@ -248,16 +268,19 @@ final readonly class SchemaPlanner
 				}
 				$editor->addIndex($index);
 			}
+
 			foreach ($actualTable->getForeignKeys() as $foreignKey) {
-				$key = $foreignKey->getObjectName()?->toString();
+				$key = $foreignKey->getObjectName()?->getIdentifier()->getValue();
 
 				if ($key !== null && ($target->hasForeignKey($key) || ($beforeTable?->hasForeignKey($key) ?? false))) {
 					continue;
 				}
 				$editor->addForeignKeyConstraint($foreignKey);
 			}
+
 			$tables[] = $editor->create();
 		}
+
 		$preserved->schema = new Schema($tables);
 
 		return $preserved;
@@ -279,6 +302,7 @@ final readonly class SchemaPlanner
 			if (! $actual->schema->hasTable($table->getObjectName()->toString())) {
 				continue; // CREATE TABLE already carries the full column definitions.
 			}
+
 			$actualTable = $actual->schema->getTable($table->getObjectName()->toString());
 
 			foreach ($table->getColumns() as $column) {
@@ -291,8 +315,12 @@ final readonly class SchemaPlanner
 				if (! $actualTable->hasColumn($column->getObjectName()->toString()) || ! isset($desired->timestamps[$key]) || $desired->timestamps[$key] === ($actual->timestamps[$key] ?? ['precision' => 0, 'on_update' => false])) {
 					continue;
 				}
+
 				$this->require(in_array($key, $declaredChanges, true), $id, $table->getObjectName()->toString(), 'column ' . $column->getObjectName()->toString() . ' timestamp precision or ON UPDATE differs from its declaration');
-				$sql[] = 'ALTER TABLE ' . $platform->quoteSingleIdentifier($table->getObjectName()->toString()) . ' MODIFY ' . $platform->getColumnDeclarationSQL($platform->quoteSingleIdentifier($column->getObjectName()->toString()), $column->toArray());
+				$quotedTable = $platform->quoteSingleIdentifier($table->getObjectName()->toString());
+				$declaration = $platform->getColumnDeclarationSQL($platform->quoteSingleIdentifier($column->getObjectName()->toString()), $column->toArray());
+				$sql[]       = "ALTER TABLE {$quotedTable}
+					MODIFY {$declaration}";
 			}
 		}
 
@@ -307,6 +335,7 @@ final readonly class SchemaPlanner
 	private function commentSql(SchemaState $actual, SchemaState $before, SchemaState $after, string $id): array {
 		$sql      = [];
 		$platform = $this->db->getDatabasePlatform();
+
 		foreach ($after->schema->getTables() as $table) {
 			$name = $table->getObjectName()->toString();
 
@@ -320,7 +349,10 @@ final readonly class SchemaPlanner
 			}
 			$previous = $before->schema->hasTable($name) ? ($before->schema->getTable($name)->getComment() ?? '') : $comment;
 			$this->require($previous !== $comment, $id, $name, 'table comment differs from its declaration');
-			$sql[] = 'ALTER TABLE ' . $platform->quoteSingleIdentifier($name) . ' COMMENT = ' . $platform->quoteStringLiteral($comment);
+			$quotedTable   = $platform->quoteSingleIdentifier($name);
+			$quotedComment = $platform->quoteStringLiteral($comment);
+			$sql[]         = "ALTER TABLE {$quotedTable}
+				COMMENT = {$quotedComment}";
 		}
 
 		return $sql;
@@ -333,6 +365,7 @@ final readonly class SchemaPlanner
 	 */
 	private function columnsRewrittenBy(SchemaDiff $diff): array {
 		$keys = [];
+
 		foreach ($diff->getAlteredTables() as $tableDiff) {
 			$table = $this->tableName($tableDiff);
 			foreach ($tableDiff->getAddedColumns() as $column) {
@@ -353,6 +386,7 @@ final readonly class SchemaPlanner
 	 */
 	private function timestampChanges(SchemaState $before, SchemaState $after): array {
 		$changes = [];
+
 		foreach ($after->timestamps as $key => $attributes) {
 			if (($before->timestamps[$key] ?? null) !== $attributes) {
 				$changes[] = $key;
@@ -360,13 +394,6 @@ final readonly class SchemaPlanner
 		}
 
 		return $changes;
-	}
-
-	/**
-	 * Compare two snapshots using the configured Doctrine platform.
-	 */
-	private function compare(SchemaState $from, SchemaState $to): SchemaDiff {
-		return $this->db->createSchemaManager()->createComparator((new ComparatorConfig())->withReportModifiedIndexes(false))->compareSchemas($from->schema, $to->schema);
 	}
 
 	/**
@@ -385,6 +412,7 @@ final readonly class SchemaPlanner
 	 */
 	private function tableNames(SchemaState ...$schemas): array {
 		$names = [];
+
 		foreach ($schemas as $schema) {
 			foreach ($schema->schema->getTables() as $table) {
 				$names[] = $table->getObjectName()->toString();
@@ -407,6 +435,7 @@ final readonly class SchemaPlanner
 		$expectedCreated = $this->names($expected->getCreatedTables());
 		$expectedDropped = $this->names($expected->getDroppedTables());
 		$expectedAltered = [];
+
 		foreach ($expected->getAlteredTables() as $diff) {
 			$expectedAltered[strtolower($this->tableName($diff))] = $diff;
 		}
@@ -430,9 +459,10 @@ final readonly class SchemaPlanner
 			}
 
 			if (in_array($key, $expectedCreated, true)) {
-				// The table already exists; only missing declared columns/indexes may be added.
-				$this->require($diff->getChangedColumns() === [] && $diff->getDroppedColumns() === []
-					&& $diff->getDroppedIndexes()            === [] && $diff->getRenamedIndexes() === [], $id, $name, 'existing table differs from the declared initial definition');
+				// The table already exists; only missing declared columns, indexes, and constraints may be added.
+				$this->require($diff->getChangedColumns()        === [] && $diff->getDroppedColumns() === []
+					&& $diff->getDroppedIndexes()                   === [] && $diff->getRenamedIndexes() === []
+					&& $diff->getDroppedForeignKeyConstraintNames() === [], $id, $name, 'existing table differs from the declared initial definition');
 
 				continue;
 			}
@@ -449,6 +479,8 @@ final readonly class SchemaPlanner
 			'added'   => $this->names($expected->getAddedIndexes()),
 			'dropped' => $this->names($expected->getDroppedIndexes()),
 		];
+		$addedForeignKeys   = array_map(static fn ($key): string => strtolower($key->getObjectName()?->getIdentifier()->getValue() ?? ''), $expected->getAddedForeignKeys());
+		$droppedForeignKeys = array_map(static fn ($name): string => strtolower($name->getIdentifier()->getValue()), $expected->getDroppedForeignKeyConstraintNames());
 
 		foreach ($remaining->getAddedColumns() as $column) {
 			$this->require(in_array(strtolower($column->getObjectName()->toString()), $added, true), $id, $table, 'column ' . $column->getObjectName()->toString() . ' would be added');
@@ -464,7 +496,16 @@ final readonly class SchemaPlanner
 		}
 
 		$this->require($remaining->getRenamedIndexes() === [], $id, $table, 'a rename would be required');
-		$this->requireNoForeignKeyChanges($remaining, $id, $table);
+
+		foreach ($remaining->getAddedForeignKeys() as $foreignKey) {
+			$name = $foreignKey->getObjectName()?->getIdentifier()->getValue() ?? '';
+			$this->require(in_array(strtolower($name), $addedForeignKeys, true), $id, $table, 'foreign key ' . $name . ' would be added');
+		}
+
+		foreach ($remaining->getDroppedForeignKeyConstraintNames() as $foreignKey) {
+			$name = $foreignKey->getIdentifier()->getValue();
+			$this->require(in_array(strtolower($name), $droppedForeignKeys, true), $id, $table, 'existing foreign key ' . $name . ' conflicts with its declaration');
+		}
 
 		// A replacement authorizes both a drop and an addition. An interrupted drop leaves only
 		// the authorized addition; a conflicting addition would require an unauthorized drop.
@@ -478,15 +519,9 @@ final readonly class SchemaPlanner
 		}
 	}
 
-	/**
-	 * The blueprint has no foreign-key vocabulary, so any remaining constraint change is undeclared.
-	 */
-	private function requireNoForeignKeyChanges(TableDiff $diff, string $id, string $table): void {
-		$this->require($diff->getAddedForeignKeys() === [] && $diff->getDroppedForeignKeyConstraintNames() === [], $id, $table, 'an undeclared foreign key would change');
-	}
-
 	private function describe(TableDiff $diff): string {
 		$parts = [];
+
 		foreach ($diff->getAddedColumns() as $column) {
 			$parts[] = 'column ' . $column->getObjectName()->toString() . ' would be added';
 		}

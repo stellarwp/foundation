@@ -70,7 +70,12 @@ final readonly class History
 		if (! $this->db->createSchemaManager()->tablesExist([$this->table()])) {
 			return [];
 		}
-		$rows = $this->db->fetchAllKeyValue('SELECT version, applied_at FROM ' . $this->quoted() . ' ORDER BY version');
+		$table = $this->quoted();
+		$rows  = $this->db->fetchAllKeyValue(
+			"SELECT version, applied_at
+			FROM {$table}
+			ORDER BY version",
+		);
 
 		return array_map('strval', $rows);
 	}

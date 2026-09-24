@@ -97,9 +97,12 @@ final readonly class DatabaseLock implements Lock
 			);
 
 			$row = $this->db->fetchAssociative(
-				"SELECT expires_at FROM {$table}
-					WHERE name = ? AND owner = ? AND expires_at > UTC_TIMESTAMP(6)
-					LIMIT 1",
+				"SELECT expires_at
+				FROM {$table}
+				WHERE name = ?
+					AND owner = ?
+					AND expires_at > UTC_TIMESTAMP(6)
+				LIMIT 1",
 				[$name, $owner]
 			);
 		} catch (Throwable $exception) {
@@ -124,8 +127,13 @@ final readonly class DatabaseLock implements Lock
 	 */
 	public function release(LockToken $token): bool {
 		try {
+			$table = $this->table->quotedName();
+
 			return $this->db->executeStatement(
-				'DELETE FROM ' . $this->table->quotedName() . ' WHERE name = ? AND owner = ? AND expires_at > UTC_TIMESTAMP(6)',
+				"DELETE FROM {$table}
+				WHERE name = ?
+					AND owner = ?
+					AND expires_at > UTC_TIMESTAMP(6)",
 				[$token->name, $token->owner]
 			) > 0;
 		} catch (Throwable $exception) {
@@ -146,13 +154,22 @@ final readonly class DatabaseLock implements Lock
 			$table = $this->table->quotedName();
 
 			$this->db->executeStatement(
-				"UPDATE {$table} SET expires_at = TIMESTAMPADD(SECOND, ?, UTC_TIMESTAMP(6)), updated_at = UTC_TIMESTAMP(6)
-					WHERE name = ? AND owner = ? AND expires_at > UTC_TIMESTAMP(6)",
+				"UPDATE {$table}
+				SET expires_at = TIMESTAMPADD(SECOND, ?, UTC_TIMESTAMP(6)),
+					updated_at = UTC_TIMESTAMP(6)
+				WHERE name = ?
+					AND owner = ?
+					AND expires_at > UTC_TIMESTAMP(6)",
 				[$ttl, $token->name, $token->owner]
 			);
 
 			$row = $this->db->fetchAssociative(
-				"SELECT expires_at FROM {$table} WHERE name = ? AND owner = ? AND expires_at > UTC_TIMESTAMP(6) LIMIT 1",
+				"SELECT expires_at
+				FROM {$table}
+				WHERE name = ?
+					AND owner = ?
+					AND expires_at > UTC_TIMESTAMP(6)
+				LIMIT 1",
 				[$token->name, $token->owner]
 			);
 		} catch (Throwable $exception) {
@@ -176,8 +193,14 @@ final readonly class DatabaseLock implements Lock
 		$this->assertValidName($name);
 
 		try {
+			$table = $this->table->quotedName();
+
 			return $this->db->fetchAssociative(
-				'SELECT name FROM ' . $this->table->quotedName() . ' WHERE name = ? AND expires_at > UTC_TIMESTAMP(6) LIMIT 1',
+				"SELECT name
+				FROM {$table}
+				WHERE name = ?
+					AND expires_at > UTC_TIMESTAMP(6)
+				LIMIT 1",
 				[$name]
 			) !== false;
 		} catch (Throwable $exception) {

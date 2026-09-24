@@ -8,6 +8,10 @@ use Doctrine\DBAL\Schema\PrimaryKeyConstraint;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Schema\TableEditor;
 use Doctrine\DBAL\Types\Types;
+use InvalidArgumentException;
+use StellarWP\Foundation\Database\Contracts\TableNameResolver;
+use StellarWP\Foundation\Migrations\Schema\Definitions\ColumnDefinition;
+use StellarWP\Foundation\Migrations\Schema\Definitions\ForeignKeyDefinition;
 
 /**
  * Fluent table declaration collected during up()/down() and applied to a Doctrine table afterwards.
@@ -37,7 +41,15 @@ final class TableBlueprint
 	 * @var list<non-empty-string>
 	 */
 	private array $droppedIndexes = [];
-	private ?string $comment      = null;
+	/**
+	 * @var list<ForeignKeyDefinition>
+	 */
+	private array $foreignKeys = [];
+	/**
+	 * @var list<non-empty-string>
+	 */
+	private array $droppedForeignKeys = [];
+	private ?string $comment          = null;
 
 	/**
 	 * Receive the resolved table name.
@@ -190,14 +202,18 @@ final class TableBlueprint
 	 * @param non-empty-string $name
 	 * @param non-empty-string $columns
 	 *
-	 * @throws \InvalidArgumentException When no columns are supplied.
+	 * @throws InvalidArgumentException When no columns are supplied.
 	 */
 	public function unique(string $name, string ...$columns): self {
 		if ($columns === []) {
-			throw new \InvalidArgumentException('An index must contain at least one column.');
+			throw new InvalidArgumentException('An index must contain at least one column.');
 		}
 
-		$this->indexes[] = ['name' => $name, 'columns' => array_values($columns), 'unique' => true];
+		$this->indexes[] = [
+			'name'    => $name,
+			'columns' => array_values($columns),
+			'unique'  => true,
+		];
 
 		return $this;
 	}
@@ -208,14 +224,46 @@ final class TableBlueprint
 	 * @param non-empty-string $name
 	 * @param non-empty-string $columns
 	 *
-	 * @throws \InvalidArgumentException When no columns are supplied.
+	 * @throws InvalidArgumentException When no columns are supplied.
 	 */
 	public function index(string $name, string ...$columns): self {
 		if ($columns === []) {
-			throw new \InvalidArgumentException('An index must contain at least one column.');
+			throw new InvalidArgumentException('An index must contain at least one column.');
 		}
 
 		$this->indexes[] = ['name' => $name, 'columns' => array_values($columns), 'unique' => false];
+
+		return $this;
+	}
+
+	/**
+	 * Declare a named relationship to another application table.
+	 *
+	 * @param non-empty-string $name    A stable logical name within this table.
+	 * @param non-empty-string $columns Local columns, in reference order.
+	 *
+	 * @throws InvalidArgumentException When no columns or no name are supplied.
+	 */
+	public function foreignKey(string $name, string ...$columns): ForeignKeyDefinition {
+		if ($columns === []) {
+			throw new InvalidArgumentException('A foreign key must contain at least one column.');
+		}
+
+		$definition          = new ForeignKeyDefinition($this->foreignKeyName($name), array_values($columns));
+		$this->foreignKeys[] = $definition;
+
+		return $definition;
+	}
+
+	/**
+	 * Remove a named relationship while retaining its columns and indexes.
+	 *
+	 * @param non-empty-string $name The logical name passed to foreignKey().
+	 *
+	 * @throws InvalidArgumentException When no name is supplied.
+	 */
+	public function dropForeignKey(string $name): self {
+		$this->droppedForeignKeys[] = $this->foreignKeyName($name);
 
 		return $this;
 	}
@@ -256,14 +304,20 @@ final class TableBlueprint
 	 *
 	 * @internal Called by Blueprint::apply().
 	 */
-	public function applyTo(TableEditor $editor, SchemaState $state): Table {
+	public function applyTo(TableEditor $editor, SchemaState $state, TableNameResolver $names): Table {
+		foreach ($this->droppedForeignKeys as $name) {
+			$editor->dropForeignKeyConstraintByUnquotedName($name);
+		}
+
 		foreach ($this->droppedIndexes as $index) {
 			$editor->dropIndexByUnquotedName($index);
 		}
+
 		foreach ($this->droppedColumns as $column) {
 			$editor->dropColumnByUnquotedName($column);
 			unset($state->timestamps[strtolower($this->name . '.' . $column)]);
 		}
+
 		foreach ($this->columns as $column) {
 			$column->applyTo($editor);
 			$key        = strtolower($this->name . '.' . $column->name());
@@ -278,10 +332,15 @@ final class TableBlueprint
 		if ($this->primary !== []) {
 			$editor->setPrimaryKeyConstraint(PrimaryKeyConstraint::editor()->setUnquotedColumnNames(...$this->primary)->create());
 		}
+
 		foreach ($this->indexes as $index) {
 			$editor->addIndex(Index::editor()->setUnquotedName($index['name'])
 				->setUnquotedColumnNames(...$index['columns'])
 				->setType($index['unique'] ? IndexType::UNIQUE : IndexType::REGULAR)->create());
+		}
+
+		foreach ($this->foreignKeys as $foreignKey) {
+			$foreignKey->applyTo($editor, $names);
 		}
 
 		if ($this->comment !== null) {
@@ -289,6 +348,19 @@ final class TableBlueprint
 		}
 
 		return $editor->create();
+	}
+
+	/**
+	 * Scope constraint identity to its physical table without exceeding MySQL's identifier limit.
+	 *
+	 * @return non-empty-string
+	 */
+	private function foreignKeyName(string $name): string {
+		if (trim($name) === '') {
+			throw new InvalidArgumentException('A foreign key must have a name.');
+		}
+
+		return 'fk_' . substr(hash('sha256', $this->name . "\0" . $name), 0, 40);
 	}
 
 	/**

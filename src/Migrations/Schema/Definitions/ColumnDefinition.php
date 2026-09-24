@@ -1,6 +1,6 @@
 <?php declare(strict_types=1);
 
-namespace StellarWP\Foundation\Migrations\Schema;
+namespace StellarWP\Foundation\Migrations\Schema\Definitions;
 
 use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\TableEditor;

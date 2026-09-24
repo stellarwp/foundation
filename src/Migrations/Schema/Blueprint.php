@@ -3,6 +3,8 @@
 namespace StellarWP\Foundation\Migrations\Schema;
 
 use Closure;
+use Doctrine\DBAL\Schema\Exception\TableAlreadyExists;
+use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\Table as DoctrineTable;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Contracts\TableNameResolver;
@@ -39,10 +41,10 @@ final class Blueprint
 			$name = $blueprint->name();
 
 			if ($this->state->schema->hasTable($name)) {
-				throw \Doctrine\DBAL\Schema\Exception\TableAlreadyExists::new($name);
+				throw TableAlreadyExists::new($name);
 			}
 			$table = DoctrineTable::editor()->setUnquotedName($name)->setOptions($this->tableOptions);
-			$this->replaceTable($blueprint->applyTo($table, $this->state));
+			$this->replaceTable($blueprint->applyTo($table, $this->state, $this->names));
 		};
 
 		return $blueprint;
@@ -54,7 +56,12 @@ final class Blueprint
 	public function table(Table|string $table): TableBlueprint {
 		$blueprint          = new TableBlueprint($this->resolve($table));
 		$this->operations[] = function () use ($blueprint): void {
-			$this->replaceTable($blueprint->applyTo($this->state->schema->getTable($blueprint->name())->edit(), $this->state));
+			$table = $this->state->schema->getTable($blueprint->name());
+			// Keep supporting indexes when a foreign key is removed. The editor already carries the primary key separately.
+			$secondaryIndexes = array_diff_key($table->getIndexes(), ['primary' => true]);
+			$editor           = $table->edit()->setIndexes(...array_values($secondaryIndexes));
+
+			$this->replaceTable($blueprint->applyTo($editor, $this->state, $this->names));
 		};
 
 		return $blueprint;
@@ -93,6 +100,7 @@ final class Blueprint
 		foreach ($this->operations as $operation) {
 			$operation();
 		}
+
 		$this->operations = [];
 	}
 
@@ -100,6 +108,6 @@ final class Blueprint
 		$name                = $table->getObjectName()->toString();
 		$tables              = array_filter($this->state->schema->getTables(), static fn (DoctrineTable $existing): bool => $existing->getObjectName()->toString() !== $name);
 		$tables[]            = $table;
-		$this->state->schema = new \Doctrine\DBAL\Schema\Schema(array_values($tables));
+		$this->state->schema = new Schema(array_values($tables));
 	}
 }

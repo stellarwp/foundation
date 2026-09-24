@@ -22,6 +22,7 @@ use StellarWP\Foundation\Migrations\MigrationCollection;
 use StellarWP\Foundation\Migrations\MigrationsProvider;
 use StellarWP\Foundation\Migrations\Migrator;
 use StellarWP\Foundation\Migrations\Schema\Blueprint;
+use StellarWP\Foundation\Migrations\Schema\Factories\MigrationComparatorFactory;
 use StellarWP\Foundation\Migrations\Schema\SchemaPlanner;
 use StellarWP\Foundation\Migrations\Tables\MigrationTable;
 use StellarWP\Foundation\Migrations\ValueObjects\MigrationRegistration;
@@ -73,10 +74,24 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 				($this->operation)($context->db);
 			}
 		};
-		$migrations = new MigrationCollection([new MigrationRegistration($migration->id(), $migration)]);
+		$migrations = new MigrationCollection([
+			new MigrationRegistration($migration->id(), $migration),
+		]);
 
-		return new Migrator($db, $container->get(AdvisorySession::class), $scope,
-			new History($db, $table), new SchemaPlanner($db, $names, $migrations), $migrations, $names);
+		return new Migrator(
+			$db,
+			$container->get(AdvisorySession::class),
+			$scope,
+			new History($db, $table),
+			new SchemaPlanner(
+				$db,
+				$names,
+				$migrations,
+				$container->get(MigrationComparatorFactory::class),
+			),
+			$migrations,
+			$names,
+		);
 	}
 
 	private function lockName(?string $resource = null): string {

@@ -8,7 +8,7 @@ use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use StellarWP\Foundation\Migrations\Schema\ColumnDefinition;
+use StellarWP\Foundation\Migrations\Schema\Definitions\ColumnDefinition;
 
 /**
  * Decimal defaults must be normalized to the column scale without passing through floating point.
