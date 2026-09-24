@@ -1,7 +1,7 @@
 <?php declare(strict_types=1);
 
-use StellarWP\Foundation\Database\Migration\Migration;
-use StellarWP\Foundation\Database\Migration\Schema\Blueprint;
+use StellarWP\Foundation\Migrations\Migration;
+use StellarWP\Foundation\Migrations\Schema\Blueprint;
 
 return new class extends Migration {
 	public function up(Blueprint $schema): void {

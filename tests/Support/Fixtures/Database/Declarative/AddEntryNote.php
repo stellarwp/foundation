@@ -2,9 +2,9 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database\Declarative;
 
-use StellarWP\Foundation\Database\Migration\Contracts\DescribesMigration;
-use StellarWP\Foundation\Database\Migration\Contracts\Migration;
-use StellarWP\Foundation\Database\Migration\Schema\Blueprint;
+use StellarWP\Foundation\Migrations\Contracts\DescribesMigration;
+use StellarWP\Foundation\Migrations\Contracts\Migration;
+use StellarWP\Foundation\Migrations\Schema\Blueprint;
 
 /**
  * Alteration exactly as a generated alter migration would declare it: no guards.

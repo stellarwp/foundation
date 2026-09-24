@@ -27,7 +27,7 @@ final class MigrationGenerationTest extends TestCase
 	private function configure(array $configuration = [], string $namespace = 'Example\\', string $path = 'src/'): void {
 		file_put_contents($this->root . '/composer.json', json_encode([
 			'autoload' => ['psr-4' => [$namespace => $path]],
-			'require'  => ['stellarwp/foundation-database' => '^2.0'],
+			'require'  => ['stellarwp/foundation-migrations' => '^2.0'],
 		], JSON_THROW_ON_ERROR));
 		$this->services = (new ContainerFactory())->create(new ArrayConfiguration($configuration));
 		$this->services->register(CliProvider::class);
@@ -50,6 +50,7 @@ final class MigrationGenerationTest extends TestCase
 	public function test_combined_creation_then_alteration_has_ordered_file_identities_without_provider_edits(): void {
 		$table = $this->table();
 		self::assertSame(0, $table->execute(['name' => 'reports', '--migration' => true]), $table->getDisplay());
+		self::assertStringNotContainsString('Runtime dependency missing', $table->getDisplay());
 		$createFile = $this->files()[0];
 		$create     = (string) file_get_contents($createFile);
 		self::assertMatchesRegularExpression('/[0-9]{14}_create_reports_table.php$/', $createFile);
@@ -64,6 +65,7 @@ final class MigrationGenerationTest extends TestCase
 
 		$command = $this->migration();
 		self::assertSame(0, $command->execute(['name' => 'Add_Published_At', '--table' => 'reports']), $command->getDisplay());
+		self::assertStringNotContainsString('Runtime dependency missing', $command->getDisplay());
 		$files = $this->files();
 		self::assertCount(2, $files);
 		self::assertSame($createFile, $files[0]);
@@ -74,8 +76,19 @@ final class MigrationGenerationTest extends TestCase
 		self::assertSame($create, file_get_contents($createFile));
 	}
 
+	public function test_combined_generation_warns_when_migrations_are_only_installed_for_development(): void {
+		$manifest                = json_decode((string) file_get_contents($this->root . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
+		$manifest['require']     = ['stellarwp/foundation-database' => '^2.0'];
+		$manifest['require-dev'] = ['stellarwp/foundation-migrations' => '^2.0'];
+		file_put_contents($this->root . '/composer.json', json_encode($manifest, JSON_THROW_ON_ERROR));
+		$command = $this->table();
+
+		self::assertSame(0, $command->execute(['name' => 'reports', '--migration' => true]));
+		self::assertStringContainsString('Move stellarwp/foundation-migrations or stellarwp/foundation to require', $command->getDisplay());
+	}
+
 	public function test_generation_creates_custom_directories_without_composer_namespace_mappings(): void {
-		$this->configure(['database' => ['migrations' => ['path' => 'migrations']]]);
+		$this->configure(['migrations' => ['path' => 'migrations']]);
 		$command = $this->migration();
 		self::assertSame(0, $command->execute(['name' => 'Reports/Add_Status']), $command->getDisplay());
 		$file = $this->files('migrations/reports')[0];
@@ -84,7 +97,7 @@ final class MigrationGenerationTest extends TestCase
 	}
 
 	public function test_absolute_location_and_foundation_root_use_the_same_configuration(): void {
-		$this->configure(['foundation' => ['root' => $this->root], 'database' => ['migrations' => ['path' => $this->root . '/src/History']]]);
+		$this->configure(['foundation' => ['root' => $this->root], 'migrations' => ['path' => $this->root . '/src/History']]);
 		$command = $this->migration();
 		self::assertSame(0, $command->execute(['name' => 'Rebuild']), $command->getDisplay());
 		self::assertCount(1, $this->files('src/History'));
@@ -111,7 +124,7 @@ final class MigrationGenerationTest extends TestCase
 	}
 
 	public function test_standalone_create_and_alter_use_table_names_without_application_classes(): void {
-		file_put_contents($this->root . '/composer.json', '{"require":{"stellarwp/foundation-database":"^2.0"}}');
+		file_put_contents($this->root . '/composer.json', '{"require":{"stellarwp/foundation-migrations":"^2.0"}}');
 		$command = $this->migration();
 		self::assertSame(0, $command->execute(['name' => 'create_reports', '--create' => 'your_plugin_reports']), $command->getDisplay());
 		self::assertSame(0, $command->execute(['name' => 'add_status', '--table' => 'your_plugin_reports']), $command->getDisplay());
@@ -153,7 +166,7 @@ final class MigrationGenerationTest extends TestCase
 			self::assertSame([], $this->files());
 		}
 
-		$this->configure(['database' => ['migrations' => ['path' => '']]]);
+		$this->configure(['migrations' => ['path' => '']]);
 		$command = $this->migration();
 		self::assertSame(1, $command->execute(['name' => 'Change']));
 		self::assertStringContainsString('cannot be blank', $command->getDisplay());
@@ -161,7 +174,7 @@ final class MigrationGenerationTest extends TestCase
 	}
 
 	public function test_combined_generation_writes_neither_file_if_migration_location_is_invalid(): void {
-		$this->configure(['database' => ['migrations' => ['path' => '']]]);
+		$this->configure(['migrations' => ['path' => '']]);
 		self::assertSame(1, $this->table()->execute(['name' => 'reports', '--migration' => true]));
 		self::assertFileDoesNotExist($this->root . '/src/Database/Tables/Reports_Table.php');
 	}
@@ -176,8 +189,8 @@ final class MigrationGenerationTest extends TestCase
 
 		foreach ($this->files() as $file) {
 			$contents = (string) file_get_contents($file);
-			self::assertStringContainsString('use Scoped\\StellarWP\\Foundation\\Database\\Migration\\Migration;', $contents);
-			self::assertStringContainsString('use Scoped\\StellarWP\\Foundation\\Database\\Migration\\Schema\\Blueprint;', $contents);
+			self::assertStringContainsString('use Scoped\\StellarWP\\Foundation\\Migrations\\Migration;', $contents);
+			self::assertStringContainsString('use Scoped\\StellarWP\\Foundation\\Migrations\\Schema\\Blueprint;', $contents);
 		}
 	}
 

@@ -2,8 +2,8 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database\Declarative;
 
-use StellarWP\Foundation\Database\Migration\Contracts\Migration;
-use StellarWP\Foundation\Database\Migration\Schema\Blueprint;
+use StellarWP\Foundation\Migrations\Contracts\Migration;
+use StellarWP\Foundation\Migrations\Schema\Blueprint;
 
 /**
  * Initial table definition exactly as a generated create migration would declare it: no guards.

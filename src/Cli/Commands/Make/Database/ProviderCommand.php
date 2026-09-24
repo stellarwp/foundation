@@ -126,6 +126,8 @@ final class ProviderCommand extends Command
 	 */
 	private function hasFoundationRuntimeDependency(array $dependencies): bool {
 		return array_key_exists('stellarwp/foundation-database', $dependencies)
+			|| array_key_exists('stellarwp/foundation-migrations', $dependencies)
+			|| array_key_exists('stellarwp/foundation-lock-database', $dependencies)
 			|| array_key_exists('stellarwp/foundation', $dependencies);
 	}
 }

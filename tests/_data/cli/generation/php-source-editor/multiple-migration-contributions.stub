@@ -3,14 +3,14 @@
 namespace Acme\Plugin\Database;
 
 use Acme\Plugin\Database\Migrations\Create_Reports_Table;
-use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\Migrations\MigrationsProvider;
 
 final class Provider
 {
 	public function register(): void {
-		$this->container->mergeArrayVar(DatabaseProvider::MIGRATIONS, static fn ($c): array => [$c->get(Existing::class)]);
+		$this->container->mergeArrayVar(MigrationsProvider::MIGRATIONS, static fn ($c): array => [$c->get(Existing::class)]);
 
-		$this->container->mergeArrayVar(DatabaseProvider::MIGRATIONS, static fn ($c): array => [
+		$this->container->mergeArrayVar(MigrationsProvider::MIGRATIONS, static fn ($c): array => [
 			$c->get(Create_Reports_Table::class),
 		]);
 	}

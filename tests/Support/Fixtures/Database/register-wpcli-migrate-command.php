@@ -2,12 +2,13 @@
 
 use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
 use StellarWP\Foundation\Container\ContainerFactory;
-use StellarWP\Foundation\Database\Cli\Migrate;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\DatabaseProvider;
-use StellarWP\Foundation\Database\Migration\Contracts\Migration;
-use StellarWP\Foundation\Database\Migration\Schema\Blueprint;
-use StellarWP\Foundation\Database\Migration\ValueObjects\MigrationRegistration;
+use StellarWP\Foundation\Migrations\Cli\Migrate;
+use StellarWP\Foundation\Migrations\Contracts\Migration;
+use StellarWP\Foundation\Migrations\MigrationsProvider;
+use StellarWP\Foundation\Migrations\Schema\Blueprint;
+use StellarWP\Foundation\Migrations\ValueObjects\MigrationRegistration;
 use StellarWP\Foundation\WPCli\CommandContext;
 use StellarWP\Foundation\WPCli\ValueObjects\CommandPrefix;
 
@@ -18,9 +19,10 @@ require_once dirname(__DIR__, 4) . '/vendor/autoload.php';
 
 WP_CLI::add_hook('after_wp_load', static function (): void {
 	$container = (new ContainerFactory())->create(new ArrayConfiguration([
-		'database' => ['migrations_table' => 'foundation_cli_migrations'],
+		'migrations' => ['table' => 'foundation_cli_migrations'],
 	]));
 	$container->register(DatabaseProvider::class);
+	$container->register(MigrationsProvider::class);
 	$table = new class implements Table {
 		public function unprefixedName(): string {
 			return 'foundation_cli_example';
@@ -44,6 +46,6 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 			$schema->drop($this->table);
 		}
 	};
-	$container->mergeArrayVar(DatabaseProvider::MIGRATIONS, [new MigrationRegistration($migration->id(), $migration)]);
+	$container->mergeArrayVar(MigrationsProvider::MIGRATIONS, [new MigrationRegistration($migration->id(), $migration)]);
 	$container->get(Migrate::class)->register(new CommandContext(new CommandPrefix('foundation')));
 });

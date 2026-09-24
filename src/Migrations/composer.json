@@ -1,0 +1,26 @@
+{
+    "name": "stellarwp/foundation-migrations",
+    "type": "library",
+    "description": "Declarative WordPress migrations with schema recovery and database session locking.",
+    "license": "GPL-2.0-or-later",
+    "config": {
+        "vendor-dir": "vendor",
+        "preferred-install": "dist"
+    },
+    "require": {
+        "php": ">=8.3",
+        "stellarwp/foundation-container": "^2.0",
+        "stellarwp/foundation-database": "^2.0",
+        "stellarwp/foundation-wpcli": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "StellarWP\\Foundation\\Migrations\\": ""
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "2.0.x-dev"
+        }
+    }
+}

@@ -5,12 +5,12 @@ namespace StellarWP\Foundation\Database\Connection;
 use Doctrine\DBAL\Driver\Mysqli\Connection;
 use mysqli;
 use StellarWP\Foundation\Database\Contracts\DatabaseScope;
-use StellarWP\Foundation\Database\Migration\Exceptions\MigrationAlreadyRunning;
-use StellarWP\Foundation\Database\Migration\Exceptions\MigrationInterrupted;
+use StellarWP\Foundation\Database\Exceptions\AdvisoryLockContended;
+use StellarWP\Foundation\Database\Exceptions\AdvisoryLockInterrupted;
 use Throwable;
 
 /**
- * Hold one MySQL advisory lock across migration transactions and implicit DDL commits.
+ * Hold one MySQL advisory lock across transactions and implicit DDL commits.
  *
  * @internal Owned by one WordPressSession invocation; never reconnects.
  */
@@ -41,14 +41,14 @@ final class AdvisoryLock
 	}
 
 	/**
-	 * Acquire without waiting, before even initializing migration history.
+	 * Acquire without waiting, before invoking protected work.
 	 *
-	 * @throws MigrationAlreadyRunning When another session owns this resource.
-	 * @throws Throwable               When ambient transaction state or the database prevents acquisition.
+	 * @throws AdvisoryLockContended When another session owns this resource.
+	 * @throws Throwable             When ambient transaction state or the database prevents acquisition.
 	 */
 	public function acquire(): void {
 		if ((int) $this->driver->query('SELECT @@session.autocommit')->fetchOne() !== 1) {
-			throw new MigrationInterrupted('Migrations require autocommit to be enabled.');
+			throw new AdvisoryLockInterrupted('Locked database operations require autocommit to be enabled.');
 		}
 		// Reject an ambient transaction without implicitly committing it.
 		$this->driver->exec('SET TRANSACTION READ WRITE');
@@ -67,38 +67,38 @@ final class AdvisoryLock
 		}
 
 		if ($result === null || $result === false) {
-			throw new MigrationInterrupted('The database could not acquire the migration lock.');
+			throw new AdvisoryLockInterrupted('The database could not acquire the advisory lock.');
 		}
 
 		if ((int) $result !== 1) {
-			throw new MigrationAlreadyRunning('Another session is running these migrations; retry after it completes.');
+			throw new AdvisoryLockContended('Another session owns this advisory lock; retry after it completes.');
 		}
 	}
 
 	/**
-	 * Verify ownership before SQL, including after a migration catches an earlier exception.
+	 * Verify ownership before SQL, including after a callback catches an earlier exception.
 	 *
-	 * @throws MigrationInterrupted When work failed or the original scope or lock was lost.
+	 * @throws AdvisoryLockInterrupted When work failed or the original scope or lock was lost.
 	 */
 	public function check(mixed $current): void {
 		if ($this->failure !== null) {
-			throw new MigrationInterrupted('The migration session failed; start a fresh migration run.', 0, $this->failure);
+			throw new AdvisoryLockInterrupted('The locked database session failed; start a fresh operation.', 0, $this->failure);
 		}
 
 		try {
 			$this->scope->assertCurrent($this->site);
 
 			if ($current !== $this->native || $this->native->thread_id !== $this->connectionId || $this->scope->resolveTableName('') !== $this->prefix) {
-				throw new MigrationInterrupted('The migration connection or table prefix changed.');
+				throw new AdvisoryLockInterrupted('The locked connection or table prefix changed.');
 			}
 
 			if ((int) $this->driver->query("SELECT IS_USED_LOCK('{$this->name}')")->fetchOne() !== $this->connectionId) {
-				throw new MigrationInterrupted('The migration session no longer owns its advisory lock.');
+				throw new AdvisoryLockInterrupted('The session no longer owns its advisory lock.');
 			}
 		} catch (Throwable $failure) {
 			$this->fail($failure);
 
-			throw new MigrationInterrupted('Migration ownership could not be confirmed.', 0, $failure);
+			throw new AdvisoryLockInterrupted('Advisory lock ownership could not be confirmed.', 0, $failure);
 		}
 	}
 
@@ -117,11 +117,11 @@ final class AdvisoryLock
 	public function release(): void {
 		try {
 			if ($this->native->thread_id !== $this->connectionId) {
-				throw new MigrationInterrupted('The original migration connection was lost.');
+				throw new AdvisoryLockInterrupted('The original locked connection was lost.');
 			}
 
 			if ((int) $this->driver->query("SELECT RELEASE_LOCK('{$this->name}')")->fetchOne() !== 1) {
-				throw new MigrationInterrupted('The database did not confirm migration lock release.');
+				throw new AdvisoryLockInterrupted('The database did not confirm advisory lock release.');
 			}
 		} catch (Throwable $failure) {
 			try {

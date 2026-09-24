@@ -14,9 +14,9 @@ use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Container\Contracts\Configuration;
-use StellarWP\Foundation\Database\DatabaseStubPath;
-use StellarWP\Foundation\Database\Migration\ValueObjects\Id;
-use StellarWP\Foundation\Database\Migration\ValueObjects\MigrationDirectory;
+use StellarWP\Foundation\Migrations\MigrationStubPath;
+use StellarWP\Foundation\Migrations\ValueObjects\Id;
+use StellarWP\Foundation\Migrations\ValueObjects\MigrationDirectory;
 
 /**
  * Create anonymous migration files with permanent, timestamped filenames.
@@ -43,7 +43,7 @@ final readonly class MigrationFileFactory
 	 * @throws \InvalidArgumentException When the directory or identity is invalid.
 	 */
 	public function generic(string $name): GeneratedFile {
-		return $this->render($name, 'migration', DatabaseStubPath::migration());
+		return $this->render($name, 'migration', MigrationStubPath::migration());
 	}
 
 	/**
@@ -53,7 +53,7 @@ final readonly class MigrationFileFactory
 	 * @throws \InvalidArgumentException When the directory or identity is invalid.
 	 */
 	public function createTable(string $name, string $table): GeneratedFile {
-		return $this->render($name, 'create-table-migration', DatabaseStubPath::createTableMigration(), $table);
+		return $this->render($name, 'create-table-migration', MigrationStubPath::createTableMigration(), $table);
 	}
 
 	/**
@@ -63,7 +63,7 @@ final readonly class MigrationFileFactory
 	 * @throws \InvalidArgumentException When the directory or identity is invalid.
 	 */
 	public function alterTable(string $name, string $table): GeneratedFile {
-		return $this->render($name, 'alter-table-migration', DatabaseStubPath::alterTableMigration(), $table);
+		return $this->render($name, 'alter-table-migration', MigrationStubPath::alterTableMigration(), $table);
 	}
 
 	/**
@@ -76,7 +76,7 @@ final readonly class MigrationFileFactory
 
 		$directory = new MigrationDirectory(
 			$this->config->get('foundation.root', $this->projectDirectory->path),
-			$this->config->get('database.migrations.path', MigrationDirectory::DEFAULT_PATH),
+			$this->config->get('migrations.path', MigrationDirectory::DEFAULT_PATH),
 		);
 
 		$parts = explode('/', $name);
@@ -99,9 +99,9 @@ final readonly class MigrationFileFactory
 			relativePath: $this->projectDirectory->relativePath($path),
 			contents: $this->stubRenderer->render($stub, [
 				'table_php'                                  => $this->stubRenderer->phpStringLiteral($table ?? ''),
-				'foundation_database_migration'              => $prefix . 'StellarWP\\Foundation\\Database\\Migration\\Migration',
-				'foundation_database_schema'                 => $prefix . 'StellarWP\\Foundation\\Database\\Migration\\Schema\\Blueprint',
-				'foundation_database_irreversible_migration' => $prefix . 'StellarWP\\Foundation\\Database\\Migration\\Exceptions\\IrreversibleMigration',
+				'foundation_database_migration'              => $prefix . 'StellarWP\\Foundation\\Migrations\\Migration',
+				'foundation_database_schema'                 => $prefix . 'StellarWP\\Foundation\\Migrations\\Schema\\Blueprint',
+				'foundation_database_irreversible_migration' => $prefix . 'StellarWP\\Foundation\\Migrations\\Exceptions\\IrreversibleMigration',
 			]),
 		);
 	}

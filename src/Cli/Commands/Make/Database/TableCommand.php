@@ -110,7 +110,7 @@ final class TableCommand extends Command
 			$output->writeln(sprintf('<info>Updated:</info> %s', $this->projectDirectory->relativePath($providerPath)));
 		}
 
-		$runtimeDependencyWarning = $this->runtimeDependencyWarning();
+		$runtimeDependencyWarning = $this->runtimeDependencyWarning($migration !== null);
 
 		if ($runtimeDependencyWarning !== null) {
 			$output->writeln('');
@@ -305,7 +305,8 @@ final class TableCommand extends Command
 	/**
 	 * Explain when generated runtime code lacks a production Foundation dependency.
 	 */
-	private function runtimeDependencyWarning(): ?string {
+	private function runtimeDependencyWarning(bool $withMigration): ?string {
+		$package      = $withMigration ? 'stellarwp/foundation-migrations' : 'stellarwp/foundation-database';
 		$composerPath = $this->projectDirectory->absolutePath('composer.json');
 
 		if (! is_readable($composerPath)) {
@@ -321,15 +322,15 @@ final class TableCommand extends Command
 		$require    = is_array($composer['require'] ?? null) ? $composer['require'] : [];
 		$requireDev = is_array($composer['require-dev'] ?? null) ? $composer['require-dev'] : [];
 
-		if ($this->hasFoundationRuntimeDependency($require)) {
+		if ($this->hasFoundationRuntimeDependency($require, $package)) {
 			return null;
 		}
 
-		if ($this->hasFoundationRuntimeDependency($requireDev)) {
-			return 'this table uses Foundation Database classes, but the Foundation runtime package is only in require-dev. Move stellarwp/foundation-database or stellarwp/foundation to require before shipping this table.';
+		if ($this->hasFoundationRuntimeDependency($requireDev, $package)) {
+			return "the generated files require {$package}, but it is only in require-dev. Move {$package} or stellarwp/foundation to require before shipping them.";
 		}
 
-		return 'this table uses Foundation Database classes. Run composer require stellarwp/foundation-database, or require stellarwp/foundation, before shipping this table.';
+		return "the generated files require {$package}. Run composer require {$package}, or require stellarwp/foundation, before shipping them.";
 	}
 
 	/**
@@ -337,8 +338,16 @@ final class TableCommand extends Command
 	 *
 	 * @param array<string,mixed> $dependencies
 	 */
-	private function hasFoundationRuntimeDependency(array $dependencies): bool {
-		return array_key_exists('stellarwp/foundation-database', $dependencies)
-			|| array_key_exists('stellarwp/foundation', $dependencies);
+	private function hasFoundationRuntimeDependency(array $dependencies, string $package): bool {
+		if (array_key_exists($package, $dependencies) || array_key_exists('stellarwp/foundation', $dependencies)) {
+			return true;
+		}
+
+		if ($package !== 'stellarwp/foundation-database') {
+			return false;
+		}
+
+		return array_key_exists('stellarwp/foundation-migrations', $dependencies)
+			|| array_key_exists('stellarwp/foundation-lock-database', $dependencies);
 	}
 }

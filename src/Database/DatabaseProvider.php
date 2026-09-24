@@ -8,46 +8,25 @@ use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Schema\DefaultSchemaManagerFactory;
 use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
-use StellarWP\Foundation\Container\Traits\ResolvesFoundationPrefix;
-use StellarWP\Foundation\Database\Cli\Migrate;
 use StellarWP\Foundation\Database\Connection\WordPressConnection;
 use StellarWP\Foundation\Database\Connection\WordPressMiddleware;
 use StellarWP\Foundation\Database\Connection\WordPressSession;
+use StellarWP\Foundation\Database\Contracts\AdvisorySession;
 use StellarWP\Foundation\Database\Contracts\DatabaseScope;
 use StellarWP\Foundation\Database\Contracts\TableNameResolver;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
-use StellarWP\Foundation\Database\Migration\History;
-use StellarWP\Foundation\Database\Migration\MigrationCollection;
-use StellarWP\Foundation\Database\Migration\MigrationDiscovery;
-use StellarWP\Foundation\Database\Migration\Migrator;
-use StellarWP\Foundation\Database\Migration\Schema\SchemaPlanner;
 use StellarWP\Foundation\Database\Scope\SiteScope;
-use StellarWP\Foundation\Database\Table\Tables\MigrationTable;
-use StellarWP\Foundation\WPCli\WPCliProvider;
 use wpdb;
 
 /**
- * Wire a shared WordPress Doctrine connection, application tables, and migrations.
+ * Wire a shared WordPress Doctrine connection, application tables, and transactions.
  */
 final class DatabaseProvider extends Provider
 {
-	use ResolvesFoundationPrefix;
-
-	public const string MIGRATIONS = self::class . '.migrations';
-
 	/**
 	 * Register lazy database services without executing queries or creating storage.
-	 *
-	 * @throws \InvalidArgumentException When the configured resource prefix is invalid.
 	 */
 	public function register(): void {
-		$this->registerConnection();
-		$this->registerTables();
-		$this->registerMigrations();
-		$this->container->mergeArrayVar(WPCliProvider::COMMANDS, static fn (C $c): array => [$c->get(Migrate::class)]);
-	}
-
-	private function registerConnection(): void {
 		$this->container->singleton(wpdb::class, static function (): wpdb {
 			$source = $GLOBALS['wpdb'] ?? null;
 
@@ -60,6 +39,7 @@ final class DatabaseProvider extends Provider
 		$this->container->singleton(DatabaseScope::class, SiteScope::class);
 		$this->container->singleton(TableNameResolver::class, Table\TableNameResolver::class);
 		$this->container->singleton(WordPressSession::class);
+		$this->container->singleton(AdvisorySession::class, static fn (C $c): WordPressSession => $c->get(WordPressSession::class));
 		$this->container->singleton(Connection::class, static function (C $c): Connection {
 			$config = new Configuration();
 			$config->setSchemaManagerFactory(new DefaultSchemaManagerFactory());
@@ -70,46 +50,5 @@ final class DatabaseProvider extends Provider
 				'wrapperClass' => WordPressConnection::class,
 			], $config);
 		});
-	}
-
-	private function registerTables(): void {
-		$prefix = str_replace('-', '_', $this->foundationPrefix());
-		$this->container->when(MigrationTable::class)
-			->needs('$unprefixedTableName')
-			->give($this->config->get('database.migrations_table', $prefix . '_foundation_migrations'));
-		$this->container->singleton(MigrationTable::class);
-	}
-
-	private function registerMigrations(): void {
-		$this->container->when(MigrationDiscovery::class)
-			->needs('$root')
-			->give(fn (): ?string => $this->config->get('foundation.root'));
-
-		$this->container->when(MigrationDiscovery::class)
-			->needs('$path')
-			->give(fn (): ?string => $this->config->get('database.migrations.path'));
-
-		$this->container->singleton(MigrationDiscovery::class);
-		$this->container->mergeArrayVar(
-			self::MIGRATIONS,
-			static fn (C $c): array => iterator_to_array($c->get(MigrationDiscovery::class)->migrations(), false)
-		);
-
-		$this->container->when(MigrationCollection::class)
-			->needs('$migrations')
-			->give(static fn (C $c): iterable => $c->get(self::MIGRATIONS));
-
-		$this->container->when(SchemaPlanner::class)
-			->needs('$tableOptions')
-			->give(static function (C $c): array {
-				$source = $c->get(wpdb::class);
-
-				return array_filter(['engine' => 'InnoDB', 'charset' => $source->charset, 'collation' => $source->collate]);
-			});
-
-		$this->container->singleton(MigrationCollection::class);
-		$this->container->singleton(History::class);
-		$this->container->singleton(SchemaPlanner::class);
-		$this->container->singleton(Migrator::class);
 	}
 }

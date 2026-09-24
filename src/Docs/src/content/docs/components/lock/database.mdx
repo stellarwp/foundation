@@ -40,6 +40,10 @@ return [
 ];
 ```
 
+:::caution[Standalone plugin resources]
+Replace `your-plugin` with your plugin's stable, unique prefix so unrelated plugins cannot share its lock storage. See [application scoping](/start/scope-foundation/).
+:::
+
 For this prefix, the lock table defaults to `your_plugin_foundation_locks` before WordPress adds its site prefix. Register the providers below before resolving lock services.
 
 ### Select the database implementation

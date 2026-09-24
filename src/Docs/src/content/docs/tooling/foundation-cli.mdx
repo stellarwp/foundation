@@ -26,7 +26,13 @@ vendor/bin/foundation list
 :::caution[Keep the CLI out of production plugin archives]
 `stellarwp/foundation-cli` includes Symfony Console, generators, and scaffolding assets. Install it with `--dev` and build standalone plugin archives with `composer install --no-dev`. Generated classes depend on their runtime Foundation package, not on the generator.
 
-The aggregate `stellarwp/foundation` package includes the CLI in its normal installation. Require individual split packages when a production archive must remain lean.
+Projects should generally require individual split runtime packages. The aggregate `stellarwp/foundation` package physically includes CLI, so `--no-dev` cannot remove it from an aggregate installation.
+:::
+
+:::caution[Require generated code's runtime packages explicitly]
+CLI installs Database, Migrations, and WP-CLI integration as its own dependencies. A generated class may therefore work locally even when its runtime package is missing from your project's production requirements. After `composer install --no-dev`, that package can disappear and the class fails to load.
+
+Add the runtime package to `require`, even if it is already installed. For example, run `composer require stellarwp/foundation-migrations` before shipping migrations. See [runtime dependencies and production packaging](/start/install-foundation/#install-developer-tooling-separately).
 :::
 
 Do not register `StellarWP\Foundation\Cli\CliProvider` in the WordPress application's provider list. It boots the Symfony Console application for the `foundation` executable and is unrelated to WordPress request bootstrap.
@@ -74,13 +80,13 @@ composer require stellarwp/foundation-wpcli
 Install the runtime package, then generate a table with its initial migration:
 
 ```shell
-composer require stellarwp/foundation-database
+composer require stellarwp/foundation-migrations
 vendor/bin/foundation make:database:table Reports --table-name=your_plugin_reports --migration
 ```
 
-The command creates `Reports_Table.php` and a timestamped `db/migrations/<timestamp>_create_reports_table.php`. Add the columns to the migration, preview its SQL, and apply it through WP-CLI. Follow the [complete create-and-alter workflow](/components/database/migrations/) to configure discovery and run the generated code.
+The command creates `Reports_Table.php` and a timestamped `db/migrations/<timestamp>_create_reports_table.php`. Add the columns to the migration, preview its SQL, and apply it through WP-CLI. Follow the [complete create-and-alter workflow](/components/migrations/) to configure discovery and run the generated code.
 
-`--table-name` supplies the stable name before WordPress adds its site prefix. `--migration` creates an initial migration whose rollback drops the complete table. Table `--namespace` and `--path` options affect only the table class. Migrations use `database.migrations.path` from root `config.php`, defaulting to `db/migrations`.
+`--table-name` supplies the stable name before WordPress adds its site prefix. `--migration` creates an initial migration whose rollback drops the complete table. Table `--namespace` and `--path` options affect only the table class. Migrations use `migrations.path` from root `config.php`, defaulting to `db/migrations`.
 
 If you want a provider for application table bindings, generate one with `make:database:provider` before generating tables. Table generation can update it; migration discovery does not require per-migration provider entries.
 
@@ -99,7 +105,7 @@ The `--create` and `--table` options are mutually exclusive. Each accepts a stab
 <LinkCard
   title="Create Database Migrations"
   description="Generate a table, declare later changes, and preview or apply migrations."
-  href="/components/database/migrations/"
+  href="/components/migrations/"
 />
 
 ### Inspect command options
@@ -153,7 +159,7 @@ An explicit `--namespace` takes precedence over the configured namespace. Withou
 
 The table generator looks for `Provider.php` in the configured database-provider namespace. Generate that provider first to enable table registration. Use table `--provider` to select another provider file. Migration `--create` and `--table` options take stable, unprefixed database names.
 
-Migration placement is shared with runtime discovery through `database.migrations.path`. Configure the [migration directory](/components/database/migrations/#use-another-directory) once. Migration commands have no separate `--path`, `--namespace`, or `--provider` option. Use a name such as `reports/add_status` to generate inside a feature subfolder.
+Migration placement is shared with runtime discovery through `migrations.path`. Configure the [migration directory](/components/migrations/#use-another-directory) once. Migration commands have no separate `--path`, `--namespace`, or `--provider` option. Use a name such as `reports/add_status` to generate inside a feature subfolder.
 
 Invalid settings for the selected generator or missing Composer mappings stop generation before files are written. Correct the setting or mapping before retrying. If the provider namespace has no mapping, correct `generators.database-provider.namespace` or its Composer mapping, or select an existing provider file with `--provider`.
 

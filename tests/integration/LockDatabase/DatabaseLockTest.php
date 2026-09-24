@@ -3,7 +3,6 @@
 namespace StellarWP\Foundation\Tests\Integration\LockDatabase;
 
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
-use StellarWP\Foundation\Database\Migration\Migrator;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\Exceptions\LockUnavailableException;
 use StellarWP\Foundation\Lock\LockLease;
@@ -12,14 +11,16 @@ use StellarWP\Foundation\Lock\LockToken;
 use StellarWP\Foundation\LockDatabase\DatabaseLock;
 use StellarWP\Foundation\LockDatabase\LockDatabaseProvider;
 use StellarWP\Foundation\LockDatabase\Tables\LockTable;
+use StellarWP\Foundation\Migrations\MigrationsProvider;
+use StellarWP\Foundation\Migrations\Migrator;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\DatabaseTestCase;
 
 final class DatabaseLockTest extends DatabaseTestCase
 {
 	protected function configuration(): array {
 		return [
-			'database' => ['migrations_table' => $this->suffix . '_history'],
-			'lock'     => ['database' => ['table' => $this->suffix . '_locks']],
+			'migrations' => ['table' => $this->suffix . '_history'],
+			'lock'       => ['database' => ['table' => $this->suffix . '_locks']],
 		];
 	}
 
@@ -31,6 +32,7 @@ final class DatabaseLockTest extends DatabaseTestCase
 	}
 
 	public function test_migrations_do_not_create_application_lock_storage(): void {
+		$this->container->register(MigrationsProvider::class);
 		$this->container->get(Migrator::class)->migrate();
 		self::assertFalse($this->observer->createSchemaManager()->tablesExist([$this->container->get(LockTable::class)->name()]));
 		$this->expectException(LockUnavailableException::class);

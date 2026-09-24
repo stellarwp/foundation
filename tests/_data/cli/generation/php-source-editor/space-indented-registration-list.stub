@@ -2,12 +2,12 @@
 
 namespace Acme;
 
-use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\Migrations\MigrationsProvider;
 
 final class Provider
 {
     public function register(): void {
-        $this->container->mergeArrayVar( DatabaseProvider::MIGRATIONS, [
+        $this->container->mergeArrayVar( MigrationsProvider::MIGRATIONS, [
             $this->container->get(Existing::class),
         ] );
     }

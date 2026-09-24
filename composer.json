@@ -51,7 +51,8 @@
         "stellarwp/foundation-pipeline": "self.version",
         "stellarwp/foundation-shutdown": "self.version",
         "stellarwp/foundation-view": "self.version",
-        "stellarwp/foundation-wpcli": "self.version"
+        "stellarwp/foundation-wpcli": "self.version",
+        "stellarwp/foundation-migrations": "self.version"
     },
     "minimum-stability": "dev",
     "prefer-stable": true,
@@ -65,6 +66,7 @@
             "StellarWP\\Foundation\\LockRedis\\": "src/LockRedis/",
             "StellarWP\\Foundation\\Lock\\": "src/Lock/",
             "StellarWP\\Foundation\\Log\\": "src/Log/",
+            "StellarWP\\Foundation\\Migrations\\": "src/Migrations/",
             "StellarWP\\Foundation\\Pipeline\\": "src/Pipeline/",
             "StellarWP\\Foundation\\Shutdown\\": "src/Shutdown/",
             "StellarWP\\Foundation\\View\\": "src/View/",

@@ -2,9 +2,9 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database\Declarative;
 
-use StellarWP\Foundation\Database\Migration\Contracts\Migration;
-use StellarWP\Foundation\Database\Migration\Exceptions\IrreversibleMigration;
-use StellarWP\Foundation\Database\Migration\Schema\Blueprint;
+use StellarWP\Foundation\Migrations\Contracts\Migration;
+use StellarWP\Foundation\Migrations\Exceptions\IrreversibleMigration;
+use StellarWP\Foundation\Migrations\Schema\Blueprint;
 
 /**
  * A change whose author refuses automatic reversal to protect data.

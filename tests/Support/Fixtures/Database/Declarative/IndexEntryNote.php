@@ -2,8 +2,8 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database\Declarative;
 
-use StellarWP\Foundation\Database\Migration\Contracts\Migration;
-use StellarWP\Foundation\Database\Migration\Schema\Blueprint;
+use StellarWP\Foundation\Migrations\Contracts\Migration;
+use StellarWP\Foundation\Migrations\Schema\Blueprint;
 
 /**
  * Add a plain index; an existing index with the same name must be treated as a conflict.

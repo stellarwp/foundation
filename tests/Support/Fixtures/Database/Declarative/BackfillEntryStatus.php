@@ -2,11 +2,10 @@
 
 namespace StellarWP\Foundation\Tests\Support\Fixtures\Database\Declarative;
 
-use Doctrine\DBAL\Connection;
-use StellarWP\Foundation\Database\Contracts\TableNameResolver;
-use StellarWP\Foundation\Database\Migration\Contracts\MigratesData;
-use StellarWP\Foundation\Database\Migration\Contracts\Migration;
-use StellarWP\Foundation\Database\Migration\Schema\Blueprint;
+use StellarWP\Foundation\Migrations\Contracts\MigratesData;
+use StellarWP\Foundation\Migrations\Contracts\Migration;
+use StellarWP\Foundation\Migrations\DataMigrationContext;
+use StellarWP\Foundation\Migrations\Schema\Blueprint;
 
 /**
  * Data-only migration; the schema declarations are intentionally empty and the data step is repeat-safe.
@@ -26,7 +25,7 @@ final readonly class BackfillEntryStatus implements MigratesData, Migration
 	public function down(Blueprint $schema): void {
 	}
 
-	public function migrate(Connection $db, TableNameResolver $names): void {
-		$db->executeStatement("UPDATE `{$this->physicalName}` SET status = 'active' WHERE status = ''");
+	public function migrate(DataMigrationContext $context): void {
+		$context->db->executeStatement("UPDATE `{$this->physicalName}` SET status = 'active' WHERE status = ''");
 	}
 }

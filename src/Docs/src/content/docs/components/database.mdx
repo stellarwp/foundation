@@ -1,13 +1,13 @@
 ---
 title: Database
-description: A shared Doctrine connection, application tables, managed transactions, and WordPress migrations.
+description: A shared Doctrine connection, application tables, and managed WordPress transactions.
 sidebar:
   order: 2
 ---
 
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-Foundation Database provides a configured Doctrine DBAL connection, convenient application tables, and reliable WordPress migration and transaction behavior. Use Doctrine directly for expressions, joins, parameter binding, results, and advanced operations.
+Foundation Database provides a configured Doctrine DBAL connection, convenient application tables, and reliable WordPress transactions. Use Doctrine directly for expressions, joins, parameter binding, results, and advanced operations.
 
 ## Get started
 
@@ -17,7 +17,7 @@ Install the runtime package:
 composer require stellarwp/foundation-database
 ```
 
-Foundation requires PHP 8.3, mysqli, and Doctrine DBAL 4.4. The package includes `stellarwp/foundation-wpcli` as a runtime dependency for its migration command. Register `WPCliProvider` to enable that command; applications using only programmatic migrations may omit that provider. Command loading is deferred until WP-CLI initializes.
+Foundation requires PHP 8.3, mysqli, and Doctrine DBAL 4.4.
 
 Database services borrow the active WordPress connection. Use the primary MySQL or MariaDB database and InnoDB tables for transactional application data.
 
@@ -34,17 +34,19 @@ return [
 ];
 ```
 
+:::caution[Standalone plugin resources]
+Use a stable, unique `foundation.prefix` for Foundation-managed resources such as migration history and database lock storage. Choose plugin-specific application table names separately, such as `your_plugin_reports`. See [application scoping](/start/scope-foundation/).
+:::
+
 Create your container using [ContainerFactory](/start/configure-the-container/), then register providers once, in dependency order:
 
 ```php
 use StellarWP\Foundation\Database\DatabaseProvider;
-use StellarWP\Foundation\WPCli\WPCliProvider;
 
-$container->register( WPCliProvider::class );
 $container->register( DatabaseProvider::class );
 ```
 
-`DatabaseProvider` supplies one shared `Doctrine\DBAL\Connection`. Tables and repositories resolved from the container participate in that connection's transactions. Registration is lazy: it creates no database tables. Register an application provider afterward when you need custom service bindings. `foundation.root` supplies the project directory for automatic migration discovery.
+`DatabaseProvider` supplies one shared `Doctrine\DBAL\Connection`. Tables and repositories resolved from the container participate in that connection's transactions. Registration is lazy: it creates no database tables. Register an application provider afterward when you need custom service bindings.
 
 ### Query an application table
 
@@ -79,39 +81,28 @@ $report = $this->reports->query()
 	->fetchAssociative();
 ```
 
-[Create the table through a migration](/components/database/migrations/), then use the [query and transaction guide](/components/database/query-builder/) for results, writes, and failure handling.
-
-## Configure resource names
-
-`foundation.prefix = your-plugin` gives the migration ledger the unprefixed name `your_plugin_foundation_migrations`. WordPress adds its current site prefix. The migration advisory lock is derived from the database and ledger names, so applications with different ledgers migrate independently.
-
-Override table names when necessary:
-
-```php title="config.php"
-return [
-	'foundation' => [
-		'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? 'your-plugin',
-	],
-	'database' => [
-		'migrations_table' => $_ENV['FOUNDATION_DATABASE_MIGRATIONS_TABLE'] ?? 'your_plugin_migrations',
-	],
-];
-```
-
-These are names without a WordPress prefix. Physical names must contain only ASCII letters, numbers, and underscores, and fit within 64 bytes including the WordPress prefix. Application tables choose their own unique names, such as `your_plugin_reports`.
-
-Keep the Foundation prefix and configured storage names stable across releases. Changing a ledger name makes recorded migrations appear pending. PHP namespace changes and Strauss scoping do not change migration IDs or these resource names.
+[Create the table through a migration](/components/migrations/), then use the [query and transaction guide](/components/database/query-builder/) for results, writes, and failure handling.
 
 ## Multisite and customization
+
+`Table` is a supported base class. Inherit its constructor and implement `unprefixedName()`; application query methods may live on the subclass or in a composed repository. During 2.x, Foundation keeps its final method set (`name`, `quotedName`, `query`, `insert`, `insertGetId`, `update`, and `delete`) unchanged. New conveniences must avoid colliding with application subclass methods; they can be offered through separate collaborators.
 
 A shared container may be reused after `switch_to_blog()` between complete operations. Tables resolve the active prefix when called; a query already built retains its original table name. Build a fresh query after switching sites. Run migrations separately for each site, for example `wp --url=https://site.example your-plugin migrate --run`.
 
 Transactions and migrations capture their starting scope and reject detected site or connection changes. Never switch sites, even temporarily, during those operations.
 
-Applications can replace `DatabaseScope` and `TableNameResolver` when they own a different naming policy. Register replacements after `DatabaseProvider`, before resolving database services. Replacing the Doctrine connection also requires preserving Foundation's documented transaction and migration guarantees, including terminal failure tracking, acknowledged commits, and the shared WordPress session. A plain DBAL connection alone does not provide those guarantees.
+Applications can replace `DatabaseScope` and `TableNameResolver` when they own a different naming policy. Register replacements after `DatabaseProvider`, before resolving database services. Replacing the Doctrine connection also requires preserving Foundation's documented transaction and migration guarantees, including terminal failure tracking and acknowledged commits. When using Foundation Migrations, a replacement must also supply a coherent `Database\Contracts\AdvisorySession` using the same connection: every execution must check ownership and retain terminal failures. Registering an unrelated lock implementation cannot supply those guarantees. A plain DBAL connection alone does not provide those guarantees.
 
 <CardGrid>
-  <LinkCard title="Migrations" description="Generate historical changes, preview SQL, and recover interrupted deployments." href="/components/database/migrations/" />
+  <LinkCard title="Migrations" description="Generate historical changes, preview SQL, and recover interrupted deployments." href="/components/migrations/" />
   <LinkCard title="Queries and transactions" description="Use application tables and native Doctrine operations." href="/components/database/query-builder/" />
   <LinkCard title="Database Lock" description="Choose database-backed coordination for application work." href="/components/lock/database/" />
 </CardGrid>
+
+### Database and migration integration
+
+`Database\Contracts\AdvisorySession` is the supported integration for running work under a database-session advisory lock. `DatabaseProvider` binds it to the same session used by the managed DBAL connection. Foundation Migrations uses it automatically; ordinary table and transaction consumers continue using their existing APIs.
+
+Implementations acquire once without waiting, retain the original site and connection across DDL and nested transactions, check ownership before execution and completion, and preserve a caught database failure until the locked operation ends. An escaping callback exception takes precedence over release failure. Connection changes must never reconnect or replay protected work. Contention raises `AdvisoryLockContended`; failed or uncertain ownership raises `AdvisoryLockInterrupted`.
+
+Database owns the supported DBAL constraint. When upgrading it, verify the migration schema APIs and recovery tests as well as queries and transactions. Foundation Migrations requires a compatible Database release; applications should update their Composer lock file and run their migration tests before deployment.

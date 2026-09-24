@@ -5,7 +5,7 @@ namespace Acme\Plugin\Database;
 use Acme\Plugin\Database\Migrations\Create_Reports_Table;
 use Acme\Plugin\Database\Tables\Reports_Table;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
-use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\Migrations\MigrationsProvider;
 
 final class Provider
 {
@@ -23,7 +23,7 @@ final class Provider
 
 	private function registerMigrations(): void
 	{
-		$this->container->mergeArrayVar( DatabaseProvider::MIGRATIONS, static fn ( C $c ): array => [
+		$this->container->mergeArrayVar( MigrationsProvider::MIGRATIONS, static fn ( C $c ): array => [
 			$c->get( Create_Reports_Table::class ),
 		] );
 	}

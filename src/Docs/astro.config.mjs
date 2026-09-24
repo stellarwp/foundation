@@ -37,7 +37,6 @@ export default defineConfig({
               collapsed: false,
               items: [
                 { slug: 'components/database', label: 'Overview' },
-                { slug: 'components/database/migrations' },
                 { slug: 'components/database/query-builder' },
               ],
             },
@@ -48,6 +47,7 @@ export default defineConfig({
                 { slug: 'components/lock/database' },
               ],
             },
+            { slug: 'components/migrations' },
             { slug: 'components/log' },
             { slug: 'components/identifier' },
             { slug: 'components/pipeline' },

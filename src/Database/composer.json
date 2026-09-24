@@ -1,7 +1,7 @@
 {
     "name": "stellarwp/foundation-database",
     "type": "library",
-    "description": "Doctrine DBAL tables, managed transactions, and declarative migrations for WordPress.",
+    "description": "Doctrine DBAL tables and managed transactions for WordPress.",
     "license": "GPL-2.0-or-later",
     "config": {
         "vendor-dir": "vendor",
@@ -10,7 +10,6 @@
     "require": {
         "php": ">=8.3",
         "stellarwp/foundation-container": "^2.0",
-        "stellarwp/foundation-wpcli": "^2.0",
         "doctrine/dbal": "^4.4",
         "ext-mysqli": "*"
     },

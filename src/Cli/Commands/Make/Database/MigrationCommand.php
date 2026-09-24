@@ -15,7 +15,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
- * Generate an anonymous migration file for Foundation Database.
+ * Generate an anonymous migration file for Foundation Migrations.
  *
  * Use this from a consuming WordPress project when a feature needs a versioned
  * database change discovered from the configured migration directory.
@@ -140,19 +140,19 @@ final class MigrationCommand extends Command
 		}
 
 		if ($this->hasFoundationRuntimeDependency($requireDev)) {
-			return 'this migration uses Foundation Database classes, but the Foundation runtime package is only in require-dev. Move stellarwp/foundation-database or stellarwp/foundation to require before shipping this migration.';
+			return 'this migration uses Foundation Migrations classes, but the Foundation runtime package is only in require-dev. Move stellarwp/foundation-migrations or stellarwp/foundation to require before shipping this migration.';
 		}
 
-		return 'this migration uses Foundation Database classes. Run composer require stellarwp/foundation-database, or require stellarwp/foundation, before shipping this migration.';
+		return 'this migration uses Foundation Migrations classes. Run composer require stellarwp/foundation-migrations, or require stellarwp/foundation, before shipping this migration.';
 	}
 
 	/**
-	 * Determine whether production dependencies include the Foundation database runtime.
+	 * Determine whether production dependencies include the Foundation migrations runtime.
 	 *
 	 * @param array<string,mixed> $dependencies
 	 */
 	private function hasFoundationRuntimeDependency(array $dependencies): bool {
-		return array_key_exists('stellarwp/foundation-database', $dependencies)
+		return array_key_exists('stellarwp/foundation-migrations', $dependencies)
 			|| array_key_exists('stellarwp/foundation', $dependencies);
 	}
 }

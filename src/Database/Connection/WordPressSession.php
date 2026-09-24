@@ -5,6 +5,7 @@ namespace StellarWP\Foundation\Database\Connection;
 use Closure;
 use Doctrine\DBAL\Driver\Mysqli\Connection;
 use mysqli;
+use StellarWP\Foundation\Database\Contracts\AdvisorySession;
 use StellarWP\Foundation\Database\Contracts\DatabaseScope;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\TransactionFailed;
@@ -16,7 +17,7 @@ use wpdb;
  *
  * @internal
  */
-final class WordPressSession
+final class WordPressSession implements AdvisorySession
 {
 	private ?mysqli $owned              = null;
 	private ?Throwable $failure         = null;
@@ -58,7 +59,7 @@ final class WordPressSession
 	}
 
 	/**
-	 * Own one advisory lock across the complete migration operation, including planning.
+	 * Own one advisory lock across the complete locked operation, including planning.
 	 *
 	 * @template T
 	 *
@@ -70,7 +71,7 @@ final class WordPressSession
 	 */
 	public function withAdvisoryLock(string $resource, Closure $operation): mixed {
 		if ($this->advisoryLock !== null || $this->isActive()) {
-			throw new DatabaseException('Start migrations outside an existing transaction or migration run.');
+			throw new DatabaseException('Start advisory-locked work outside an existing transaction or locked operation.');
 		}
 		$lock = new AdvisoryLock($this->native(), $this->scope, $resource);
 		$lock->acquire();
@@ -83,7 +84,7 @@ final class WordPressSession
 			try {
 				$lock->release();
 			} catch (Throwable) {
-				// Preserve the migration failure when its cleanup also fails.
+				// Preserve the operation failure when its cleanup also fails.
 			}
 
 			throw $failure;
