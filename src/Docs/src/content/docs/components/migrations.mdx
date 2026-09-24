@@ -35,16 +35,20 @@ return [
 Replace `your-plugin` with your plugin's stable, unique prefix. Sharing the default with another Foundation consumer can mix migration history and lock ownership. See [application scoping](/start/scope-foundation/).
 :::
 
-After [creating the application container](/start/configure-the-container/) with that configuration, register providers in dependency order:
+After [creating the application container](/start/configure-the-container/) with that configuration, register providers in dependency order in `src/App.php`:
 
-```php
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Database\DatabaseProvider;
 use StellarWP\Foundation\Migrations\MigrationsProvider;
 use StellarWP\Foundation\WPCli\WPCliProvider;
 
-$container->register( WPCliProvider::class );
-$container->register( DatabaseProvider::class );
-$container->register( MigrationsProvider::class );
+/** @var list<class-string<Provider>> */
+private const array PROVIDERS = [
+	WPCliProvider::class,
+	DatabaseProvider::class,
+	MigrationsProvider::class,
+];
 ```
 
 `DatabaseProvider` supplies the shared connection. `MigrationsProvider` configures discovery, history, and migration execution; `WPCliProvider` enables `wp <prefix> migrate`. Applications that invoke `Migrator` programmatically can omit `WPCliProvider`. Register application providers afterward, before resolving migration services.

@@ -278,7 +278,7 @@ Documentation examples for consuming WordPress projects should use Snake_Case cl
 
 WP-CLI command class examples should include one or more `@example` annotations showing the complete `wp <prefix> <subcommand>` invocation, including a representative invocation with options or flags when applicable.
 
-When examples include WordPress application bootstrap, use the canonical architecture: `App` owns the request singleton, providers register in explicit dependency order, and feature providers group definitions and hooks by capability. Use `$this->container->callback(ClassName::class, 'method')` for lazy WordPress callbacks.
+When examples include WordPress application bootstrap, use the canonical architecture: `App` owns the request singleton, providers register in explicit dependency order, and feature providers group definitions and hooks by capability. Show provider setup with imports and the ordered `App::PROVIDERS` list in `src/App.php`. Use `$this->container->callback(ClassName::class, 'method')` for lazy WordPress callbacks.
 
 Keep full source paths in the prose immediately before code examples and use only the filename in a code-block `title`. Nova's Shiki metadata parser interprets path segments such as `/Lock/` as word-highlighting instructions and otherwise adds unintended borders around matching code tokens.
 

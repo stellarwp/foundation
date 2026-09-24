@@ -38,12 +38,16 @@ return [
 Use a stable, unique `foundation.prefix` for Foundation-managed resources such as migration history and database lock storage. Choose plugin-specific application table names separately, such as `your_plugin_reports`. See [application scoping](/start/scope-foundation/).
 :::
 
-Create your container using [ContainerFactory](/start/configure-the-container/), then register providers once, in dependency order:
+After [creating the application container](/start/configure-the-container/), register the database provider before application providers in `src/App.php`:
 
-```php
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Database\DatabaseProvider;
 
-$container->register( DatabaseProvider::class );
+/** @var list<class-string<Provider>> */
+private const array PROVIDERS = [
+	DatabaseProvider::class,
+];
 ```
 
 `DatabaseProvider` supplies one shared `Doctrine\DBAL\Connection`. Tables and repositories resolved from the container participate in that connection's transactions. Registration is lazy: it creates no database tables. Register an application provider afterward when you need custom service bindings.
