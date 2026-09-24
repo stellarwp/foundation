@@ -63,6 +63,48 @@ final class ForeignKeyDefinitionTest extends TestCase
 	}
 
 	/**
+	 * Labels follow declarations through renames without leaking into reused tables or prior snapshots.
+	 */
+	public function test_logical_labels_follow_the_relationship_lifecycle(): void {
+		$names = $this->createStub(TableNameResolver::class);
+		$names->method('tableName')->willReturnCallback(static fn (string $name): string => 'wp_' . $name);
+		$state     = new SchemaState(new Schema());
+		$blueprint = new Blueprint($state, $names);
+		$table     = $blueprint->create('items');
+		$table->unsignedBigInteger('order_id');
+		$table->foreignKey('order', 'order_id')->references('orders', 'id');
+		$blueprint->apply();
+		$constraint = array_key_first($state->schema->getTable('wp_items')->getForeignKeys());
+		$this->assertNotNull($constraint);
+		$label = '"order" (database constraint "' . $constraint . '")';
+		$this->assertSame($label, $state->foreignKeyLabel('wp_items', $constraint));
+		$this->assertSame($constraint, $state->foreignKeyLabel('wp_other_items', $constraint));
+		$this->assertSame('external_constraint', $state->foreignKeyLabel('wp_items', 'external_constraint'));
+		$before = clone $state;
+
+		$blueprint->table('items')->renameColumn('order_id', 'purchase_id');
+		$blueprint->rename('items', 'archive');
+		$blueprint->apply();
+		$this->assertSame($label, $state->foreignKeyLabel('wp_archive', $constraint));
+		$this->assertSame($constraint, $state->foreignKeyLabel('wp_items', $constraint));
+		$this->assertSame($label, $before->foreignKeyLabel('wp_items', $constraint));
+
+		$blueprint->create('items')->integer('id');
+		$blueprint->apply();
+		$this->assertSame($constraint, $state->foreignKeyLabel('wp_items', $constraint));
+		$blueprint->table('archive')->dropForeignKey('order');
+		$blueprint->apply();
+		$this->assertSame($constraint, $state->foreignKeyLabel('wp_archive', $constraint));
+
+		$blueprint->table('archive')->foreignKey('order', 'purchase_id')->references('orders', 'id');
+		$blueprint->apply();
+		$this->assertSame($label, $state->foreignKeyLabel('wp_archive', $constraint));
+		$blueprint->drop('archive');
+		$blueprint->apply();
+		$this->assertSame($constraint, $state->foreignKeyLabel('wp_archive', $constraint));
+	}
+
+	/**
 	 * Removing a relationship preserves both its backing index and the separate primary key.
 	 */
 	public function test_dropping_a_relationship_preserves_its_implicit_index_and_primary_key(): void {

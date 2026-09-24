@@ -27,8 +27,8 @@ final class ColumnDefinition
 	/**
 	 * Collect a complete column declaration.
 	 *
-	 * @param non-empty-string                                  $name    Column identifier.
-	 * @param array{length?: int, precision?: int, scale?: int} $options Type-specific Doctrine options such as length, precision, scale.
+	 * @param non-empty-string                                                $name    Column identifier.
+	 * @param array{length?: int, fixed?: bool, precision?: int, scale?: int} $options Type-specific Doctrine options such as length, precision, scale.
 	 *
 	 * @internal Constructed by Foundation; applications receive this object through provider wiring or migration callbacks.
 	 */
@@ -138,6 +138,7 @@ final class ColumnDefinition
 			->setTypeName($this->type)
 			->setNotNull(! $this->nullable)
 			->setUnsigned($this->unsigned)
+			->setFixed($this->options['fixed'] ?? false)
 			->setAutoincrement($this->autoIncrement)
 			->setComment($this->comment ?? '');
 

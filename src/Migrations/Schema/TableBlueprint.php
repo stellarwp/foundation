@@ -12,6 +12,7 @@ use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\TableNameResolver;
 use StellarWP\Foundation\Migrations\Schema\Definitions\ColumnDefinition;
 use StellarWP\Foundation\Migrations\Schema\Definitions\ForeignKeyDefinition;
+use StellarWP\Foundation\Migrations\Schema\ValueObjects\Rename;
 
 /**
  * Fluent table declaration collected during up()/down() and applied to a Doctrine table afterwards.
@@ -25,6 +26,10 @@ final class TableBlueprint
 	 * @var list<ColumnDefinition>
 	 */
 	private array $columns = [];
+	/**
+	 * @var list<Rename>
+	 */
+	private array $renamedColumns = [];
 	/**
 	 * @var list<array{name: non-empty-string, columns: non-empty-list<non-empty-string>, unique: bool}>
 	 */
@@ -84,6 +89,18 @@ final class TableBlueprint
 	}
 
 	/**
+	 * Declare a fixed-length character string.
+	 *
+	 * @param non-empty-string $name
+	 */
+	public function char(string $name, int $length): ColumnDefinition {
+		return $this->column($name, Types::STRING, [
+			'length' => $length,
+			'fixed'  => true,
+		]);
+	}
+
+	/**
 	 * Declare a variable-length string.
 	 *
 	 * @param non-empty-string $name
@@ -102,12 +119,32 @@ final class TableBlueprint
 	}
 
 	/**
+	 * Declare MEDIUMTEXT storage (up to 16 MiB minus one byte).
+	 *
+	 * @param non-empty-string $name
+	 */
+	public function mediumText(string $name): ColumnDefinition {
+		return $this->column($name, Types::TEXT, [
+			'length' => 16777215,
+		]);
+	}
+
+	/**
 	 * Declare a long text column.
 	 *
 	 * @param non-empty-string $name
 	 */
 	public function longText(string $name): ColumnDefinition {
 		return $this->column($name, Types::TEXT);
+	}
+
+	/**
+	 * Declare a small integer column.
+	 *
+	 * @param non-empty-string $name
+	 */
+	public function smallInteger(string $name): ColumnDefinition {
+		return $this->column($name, Types::SMALLINT);
 	}
 
 	/**
@@ -162,6 +199,33 @@ final class TableBlueprint
 	 */
 	public function decimal(string $name, int $precision = 10, int $scale = 2): ColumnDefinition {
 		return $this->column($name, Types::DECIMAL, ['precision' => $precision, 'scale' => $scale]);
+	}
+
+	/**
+	 * Declare a JSON document column.
+	 *
+	 * @param non-empty-string $name
+	 */
+	public function json(string $name): ColumnDefinition {
+		return $this->column($name, Types::JSON);
+	}
+
+	/**
+	 * Declare a calendar date without a time component.
+	 *
+	 * @param non-empty-string $name
+	 */
+	public function date(string $name): ColumnDefinition {
+		return $this->column($name, Types::DATE_MUTABLE);
+	}
+
+	/**
+	 * Declare a time column with whole-second precision.
+	 *
+	 * @param non-empty-string $name
+	 */
+	public function time(string $name): ColumnDefinition {
+		return $this->column($name, Types::TIME_MUTABLE);
 	}
 
 	/**
@@ -249,7 +313,7 @@ final class TableBlueprint
 			throw new InvalidArgumentException('A foreign key must contain at least one column.');
 		}
 
-		$definition          = new ForeignKeyDefinition($this->foreignKeyName($name), array_values($columns));
+		$definition          = new ForeignKeyDefinition($name, array_values($columns));
 		$this->foreignKeys[] = $definition;
 
 		return $definition;
@@ -263,9 +327,38 @@ final class TableBlueprint
 	 * @throws InvalidArgumentException When no name is supplied.
 	 */
 	public function dropForeignKey(string $name): self {
-		$this->droppedForeignKeys[] = $this->foreignKeyName($name);
+		if (trim($name) === '') {
+			throw new InvalidArgumentException('A foreign key must have a name.');
+		}
+
+		$this->droppedForeignKeys[] = $name;
 
 		return $this;
+	}
+
+	/**
+	 * Rename an existing column while retaining its definition and values.
+	 *
+	 * @param non-empty-string $from
+	 * @param non-empty-string $to
+	 *
+	 * @throws InvalidArgumentException When the names are empty or equal ignoring case.
+	 */
+	public function renameColumn(string $from, string $to): self {
+		$this->renamedColumns[] = new Rename($from, $to, $this->name);
+
+		return $this;
+	}
+
+	/**
+	 * Return name changes to apply before this table's other alterations.
+	 *
+	 * @internal
+	 *
+	 * @return list<Rename>
+	 */
+	public function renames(): array {
+		return $this->renamedColumns;
 	}
 
 	/**
@@ -305,8 +398,12 @@ final class TableBlueprint
 	 * @internal Called by Blueprint::apply().
 	 */
 	public function applyTo(TableEditor $editor, SchemaState $state, TableNameResolver $names): Table {
+		$scope = $state->tableOrigins[strtolower($this->name)] ?? $this->name;
+
 		foreach ($this->droppedForeignKeys as $name) {
-			$editor->dropForeignKeyConstraintByUnquotedName($name);
+			$constraint = $this->foreignKeyName($scope, $name);
+			$editor->dropForeignKeyConstraintByUnquotedName($constraint);
+			unset($state->foreignKeyNames[strtolower($this->name)][$constraint]);
 		}
 
 		foreach ($this->droppedIndexes as $index) {
@@ -340,7 +437,9 @@ final class TableBlueprint
 		}
 
 		foreach ($this->foreignKeys as $foreignKey) {
-			$foreignKey->applyTo($editor, $names);
+			$constraint = $this->foreignKeyName($scope, $foreignKey->name());
+			$foreignKey->applyTo($editor, $names, $constraint);
+			$state->foreignKeyNames[strtolower($this->name)][$constraint] = $foreignKey->name();
 		}
 
 		if ($this->comment !== null) {
@@ -355,17 +454,13 @@ final class TableBlueprint
 	 *
 	 * @return non-empty-string
 	 */
-	private function foreignKeyName(string $name): string {
-		if (trim($name) === '') {
-			throw new InvalidArgumentException('A foreign key must have a name.');
-		}
-
-		return 'fk_' . substr(hash('sha256', $this->name . "\0" . $name), 0, 40);
+	private function foreignKeyName(string $scope, string $name): string {
+		return 'fk_' . substr(hash('sha256', $scope . "\0" . $name), 0, 40);
 	}
 
 	/**
-	 * @param non-empty-string                                  $name
-	 * @param array{length?: int, precision?: int, scale?: int} $options
+	 * @param non-empty-string                                                $name
+	 * @param array{length?: int, fixed?: bool, precision?: int, scale?: int} $options
 	 */
 	private function column(string $name, string $type, array $options = []): ColumnDefinition {
 		$definition      = new ColumnDefinition($name, $type, $options);

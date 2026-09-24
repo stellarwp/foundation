@@ -6,8 +6,10 @@ use Closure;
 use Doctrine\DBAL\Schema\Exception\TableAlreadyExists;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\Table as DoctrineTable;
+use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Contracts\TableNameResolver;
+use StellarWP\Foundation\Migrations\Schema\ValueObjects\Rename;
 
 /**
  * The schema handed to up() and down(): declare tables to create, alter, or drop.
@@ -38,11 +40,17 @@ final class Blueprint
 	public function create(Table|string $table): TableBlueprint {
 		$blueprint          = new TableBlueprint($this->resolve($table));
 		$this->operations[] = function () use ($blueprint): void {
+			if ($blueprint->renames() !== []) {
+				throw new InvalidArgumentException('Declare new columns with their final names; renameColumn() is for existing tables.');
+			}
+
 			$name = $blueprint->name();
 
 			if ($this->state->schema->hasTable($name)) {
 				throw TableAlreadyExists::new($name);
 			}
+
+			unset($this->state->tableOrigins[strtolower($name)], $this->state->foreignKeyNames[strtolower($name)]);
 			$table = DoctrineTable::editor()->setUnquotedName($name)->setOptions($this->tableOptions);
 			$this->replaceTable($blueprint->applyTo($table, $this->state, $this->names));
 		};
@@ -54,17 +62,40 @@ final class Blueprint
 	 * Declare additions, changes, and removals on an existing table.
 	 */
 	public function table(Table|string $table): TableBlueprint {
-		$blueprint          = new TableBlueprint($this->resolve($table));
+		$name               = $this->resolve($table);
+		$blueprint          = new TableBlueprint($name);
 		$this->operations[] = function () use ($blueprint): void {
+			foreach ($blueprint->renames() as $rename) {
+				$this->state->rename($rename);
+			}
+
 			$table = $this->state->schema->getTable($blueprint->name());
 			// Keep supporting indexes when a foreign key is removed. The editor already carries the primary key separately.
-			$secondaryIndexes = array_diff_key($table->getIndexes(), ['primary' => true]);
-			$editor           = $table->edit()->setIndexes(...array_values($secondaryIndexes));
+			$secondaryIndexes = array_diff_key($table->getIndexes(), [
+				'primary' => true,
+			]);
+			$editor = $table->edit()->setIndexes(...array_values($secondaryIndexes));
 
 			$this->replaceTable($blueprint->applyTo($editor, $this->state, $this->names));
 		};
 
 		return $blueprint;
+	}
+
+	/**
+	 * Rename an existing table, preserving its rows and relationships.
+	 *
+	 * @throws InvalidArgumentException When names conflict or the source is not declared.
+	 */
+	public function rename(string $from, string $to): void {
+		$rename             = new Rename($this->resolve($from), $this->resolve($to));
+		$this->operations[] = function () use ($rename): void {
+			if (! $this->state->schema->hasTable($rename->from) || $this->state->schema->hasTable($rename->to)) {
+				throw new InvalidArgumentException('A table rename requires a declared source and an unused destination.');
+			}
+
+			$this->state->rename($rename);
+		};
 	}
 
 	/**
@@ -74,6 +105,8 @@ final class Blueprint
 		$name               = $this->resolve($table);
 		$this->operations[] = function () use ($name): void {
 			$this->state->schema->dropTable($name);
+			unset($this->state->tableOrigins[strtolower($name)], $this->state->foreignKeyNames[strtolower($name)]);
+
 			foreach (array_keys($this->state->timestamps) as $key) {
 				if (str_starts_with($key, strtolower($name) . '.')) {
 					unset($this->state->timestamps[$key]);

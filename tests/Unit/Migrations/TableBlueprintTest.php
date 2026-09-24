@@ -8,7 +8,7 @@ use PHPUnit\Framework\TestCase;
 use StellarWP\Foundation\Migrations\Schema\TableBlueprint;
 
 /**
- * Index declarations must identify at least one column before schema translation.
+ * Table declarations validate their names and required columns before schema translation.
  */
 final class TableBlueprintTest extends TestCase
 {
@@ -35,5 +35,45 @@ final class TableBlueprintTest extends TestCase
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('An index must contain at least one column.');
 		$table->$method('lookup');
+	}
+	/**
+	 * Reject blank and case-only rename destinations before schema translation.
+	 *
+	 * @param non-empty-string $from
+	 * @param non-empty-string $to
+	 *
+	 * @dataProvider invalidRenameNames
+	 */
+	#[DataProvider('invalidRenameNames')]
+	public function test_column_rename_requires_distinct_names(string $from, string $to): void {
+		$this->expectException(InvalidArgumentException::class);
+		(new TableBlueprint('entries'))->renameColumn($from, $to);
+	}
+
+	/**
+	 * Supply invalid rename pairs, including MySQL's case-insensitive column identity.
+	 *
+	 * @return iterable<string, array{non-empty-string, non-empty-string}>
+	 */
+	public static function invalidRenameNames(): iterable {
+		yield 'blank source' => [
+			' ',
+			'headline',
+		];
+
+		yield 'blank destination' => [
+			'title',
+			' ',
+		];
+
+		yield 'same name' => [
+			'title',
+			'title',
+		];
+
+		yield 'case-only rename' => [
+			'title',
+			'Title',
+		];
 	}
 }

@@ -23,6 +23,8 @@ use StellarWP\Foundation\Migrations\MigrationsProvider;
 use StellarWP\Foundation\Migrations\Migrator;
 use StellarWP\Foundation\Migrations\Schema\Blueprint;
 use StellarWP\Foundation\Migrations\Schema\Factories\MigrationComparatorFactory;
+use StellarWP\Foundation\Migrations\Schema\RenamePlanner;
+use StellarWP\Foundation\Migrations\Schema\Renames\Contracts\ColumnRename;
 use StellarWP\Foundation\Migrations\Schema\SchemaPlanner;
 use StellarWP\Foundation\Migrations\Tables\MigrationTable;
 use StellarWP\Foundation\Migrations\ValueObjects\MigrationRegistration;
@@ -88,6 +90,8 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 				$names,
 				$migrations,
 				$container->get(MigrationComparatorFactory::class),
+				new RenamePlanner($db, $container->get(ColumnRename::class)),
+				$container->get(ColumnRename::class),
 			),
 			$migrations,
 			$names,
@@ -258,7 +262,8 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 	public function test_manual_lock_release_is_detected_before_more_sql(): void {
 		try {
 			$this->runner($this->container, function (): void {
-				$this->native($this->source)->query('SELECT RELEASE_ALL_LOCKS()');
+				$name = $this->lockName();
+				$this->native($this->source)->query("SELECT RELEASE_LOCK('{$name}')");
 			})->migrate();
 			$this->fail('A normal return must not hide lost ownership.');
 		} catch (MigrationInterrupted) {

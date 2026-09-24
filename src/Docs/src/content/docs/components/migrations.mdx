@@ -13,6 +13,10 @@ Unlike WordPress’s [`dbDelta()`](https://developer.wordpress.org/reference/fun
 
 ### Set up migrations
 
+:::caution[Database requirements]
+Use MySQL **5.7.9+** or MariaDB **10.4.3+**, matching [Doctrine DBAL 4.4’s supported platforms](https://www.doctrine-project.org/projects/doctrine-dbal/en/4.4/reference/platforms.html). Check the database version on every deployment target before adopting Foundation.
+:::
+
 Install the migrations runtime and development CLI. The runtime includes Foundation Database and the WP-CLI integration:
 
 ```shell
@@ -199,6 +203,43 @@ Once a migration has been applied anywhere, retain its filename and declarations
 
 `up()` and `down()` declare schema changes. Foundation may replay them during planning, including previews. Keep queries and application work in the separate [data callback](#transform-existing-data).
 
+### Choose column types
+
+Use the same column methods when creating a table or adding columns to an existing one:
+
+```php
+$table = $schema->table( 'your_plugin_reports' );
+
+$table->json( 'metadata' )->nullable();
+$table->date( 'starts_on' )->nullable();
+$table->time( 'opens_at' )->nullable();
+$table->smallInteger( 'attempts' )->unsigned()->default( 0 );
+$table->char( 'currency', 3 )->default( 'USD' );
+$table->mediumText( 'content' )->nullable();
+```
+
+| Method | Storage and typical use |
+| --- | --- |
+| `bigIncrements()` | Unsigned auto-incrementing BIGINT primary key, named `id` by default |
+| `string( 'name', 191 )` | Variable-length text, with a default limit of 191 characters |
+| `char( 'currency', 3 )` | Fixed-length character storage; specify the length explicitly |
+| `text( 'summary' )` | Text up to 65,535 bytes |
+| `mediumText( 'content' )` | Text up to 16,777,215 bytes |
+| `longText( 'document' )` | LONGTEXT storage for larger documents |
+| `smallInteger( 'attempts' )` | SMALLINT; use `unsigned()` for nonnegative values |
+| `integer( 'quantity' )`, `bigInteger( 'external_id' )` | INT and BIGINT; unsigned convenience methods are also available |
+| `boolean( 'enabled' )` | Boolean storage |
+| `decimal( 'amount', 12, 4 )` | Exact numeric storage with explicit precision and scale |
+| `json( 'metadata' )` | JSON document storage with database validation |
+| `date( 'starts_on' )` | Calendar date, such as `2026-09-24` |
+| `time( 'opens_at' )` | Time with whole-second precision, such as `09:30:00` |
+| `dateTime( 'created_at', 6 )` | DATETIME with optional fractional-second precision from 0 to 6 |
+| `binary( 'token', 16 )` | Variable-length binary storage with an explicit byte limit |
+
+Columns are non-nullable unless you call `nullable()`. Existing modifiers such as `default()`, `comment()`, and `change()` apply to the new types too. A `char()` length is a storage choice, not application validation that a supplied code has exactly that many characters. `useCurrent()` and `useCurrentOnUpdate()` are intended for `dateTime()` columns.
+
+[MySQL](https://dev.mysql.com/doc/refman/8.0/en/json.html) stores JSON natively; [MariaDB](https://mariadb.com/docs/server/reference/data-types/string-data-types/json) uses text with JSON validation. Foundation preserves that distinction through migration retries and renames. For compatibility with MySQL 5.7, supply a JSON value on insertion or make the column nullable instead of declaring a non-null JSON default. When writing PHP arrays through a table or Doctrine connection, bind the column as `Doctrine\DBAL\Types\Types::JSON` so Doctrine encodes it. Query results are not automatically decoded; see [queries and parameter types](/components/database/query-builder/).
+
 ### Change a column
 
 Declare the complete replacement definition and call `change()`:
@@ -210,6 +251,81 @@ $table->string( 'title', 255 )->change();
 ```
 
 Restate any default, nullability, unsigned flag, comment, or other attribute to retain. For this example, a safe inverse can restore the original length only after accounting for values longer than that length.
+
+### Rename a column
+
+Generate an alteration for the table whose column is changing:
+
+```shell
+vendor/bin/foundation make:database:migration rename_report_title --table=your_plugin_reports
+```
+
+Replace the generated methods with the rename and its inverse:
+
+```php
+/**
+ * Give report titles a clearer name.
+ */
+public function up( Blueprint $schema ): void {
+	$table = $schema->table( 'your_plugin_reports' );
+
+	$table->renameColumn( 'title', 'headline' );
+}
+
+/**
+ * Restore the original column name while retaining its values.
+ */
+public function down( Blueprint $schema ): void {
+	$table = $schema->table( 'your_plugin_reports' );
+
+	$table->renameColumn( 'headline', 'title' );
+}
+```
+
+Remove the generated `IrreversibleMigration` import and annotation when supplying this inverse. `renameColumn()` retains the column's values and complete definition, including its default, nullability, and comment. Indexes and foreign keys continue to refer to the renamed column. Use a distinct destination name that does not already exist. Column renames run before other alterations on that table; use the new name in a `change()` declaration. When creating a new table, declare columns with their final names.
+
+Keep renamed objects identifiable until the migration is recorded. Put reuse of an old name or removal of the renamed object in a later migration. Foundation rejects ambiguous sequences, such as swapping two column names, because a retry cannot distinguish their completed state.
+
+Column renames work across the supported database versions. Foundation uses native `RENAME COLUMN` when available and otherwise uses `CHANGE` with the existing column definition. Your migration declaration stays the same.
+
+Preview and apply the migration:
+
+```shell
+wp your-plugin migrate --run --dry-run
+wp your-plugin migrate --run
+```
+
+Update application queries to use `headline` when deploying this schema change. Leave the earlier migration that created `title` unchanged. Running `--rollback` reverses the rename through `down()`, preserving the values under `title` again.
+
+### Rename a table
+
+Generate a migration without `--create` or `--table`, then fill in its methods:
+
+```shell
+vendor/bin/foundation make:database:migration rename_reports_to_articles
+```
+
+```php
+/**
+ * Move report storage to its new name.
+ */
+public function up( Blueprint $schema ): void {
+	$schema->rename( 'your_plugin_reports', 'your_plugin_articles' );
+}
+
+/**
+ * Restore the original table name while retaining its rows.
+ */
+public function down( Blueprint $schema ): void {
+	$schema->rename( 'your_plugin_articles', 'your_plugin_reports' );
+}
+```
+
+Remove the generated irreversible exception import and annotation. Both arguments are unprefixed names; Foundation applies the current WordPress site prefix. The destination must be unused. The rename preserves existing rows, indexes, and foreign-key relationships.
+
+Preview and apply with `wp your-plugin migrate --run --dry-run` and `wp your-plugin migrate --run`. Update the application table class's `unprefixedName()` to return `'your_plugin_articles'`, and use that name in new migrations. Keep all earlier migration filenames and historical table names unchanged. Coordinate these application changes with migration execution; application queries must use the name currently present in the database.
+
+Existing foreign keys retain their physical constraint names after a table rename. Continue using their original logical names with `dropForeignKey()` on the renamed table. If a later migration creates a different table under the old table name, give its foreign keys different logical names from those still owned by the renamed table, so their physical names do not collide.
 
 ### Remove a column
 
@@ -269,6 +385,16 @@ public function up( Blueprint $schema ): void {
 Keep the generated `down()` that drops `your_plugin_order_items`. The later migration ID ensures rollback drops items before orders. When adding a relationship to existing tables, use `--table=your_plugin_order_items` and `$schema->table()` instead.
 
 `order` is the relationship's stable logical name within the items table. Foundation scopes the physical constraint name to that table, so another table can also use `order`. Pass the same logical name to `dropForeignKey()` later. `references()` takes the historical, unprefixed application table name; Foundation resolves both tables for the current WordPress site.
+
+Foreign-key drift errors include the logical name, such as `order`, alongside the database constraint name, such as `fk_…`. Use the logical name to locate your migration declaration and the database name to inspect the constraint. Constraints without a known declaration are identified by their database name alone.
+
+:::caution[Keep foreign keys between application-owned tables]
+Use this workflow for tables your application owns. For relationships to WordPress posts or users, store the ID in an indexed column and coordinate cleanup through WordPress's deletion hooks.
+
+`references()` applies the current site's prefix. On multisite, `references( 'users', 'ID' )` would target a site table such as `wp_2_users`, while WordPress uses a shared users table. Even for site-specific core tables such as `posts`, a restrictive foreign key can block WordPress deletion after related data has already been removed. A cascading foreign key deletes your application's rows directly, bypassing its PHP cleanup. See WordPress's [table naming](https://developer.wordpress.org/reference/classes/wpdb/tables/) and [post deletion workflow](https://developer.wordpress.org/reference/functions/wp_delete_post/).
+:::
+
+If you change WordPress's table prefix, rename the application's tables and migration ledger together before running migrations again. Keep historical migration declarations unchanged. Existing constraint names can retain the old prefix's identity; Foundation recognizes a uniquely matching historical relationship by its columns, referenced table, and update/delete actions. Later migrations can still change or remove it. If multiple constraints make that identity ambiguous, migration planning stops with `IncompatibleSchema` so you can inspect the named constraints before retrying.
 
 Declare columns and indexes explicitly. The local and referenced column types must match, including integer size and unsignedness. Reference a primary or unique key. Foundation-created tables use InnoDB, which enforces these constraints.
 
@@ -430,6 +556,8 @@ public function describe(): string {
 ### Interrupted schema changes
 
 MySQL DDL can commit before the history write. A retry compares the actual schema with the migration's declared change: compatible existing additions and already-absent removals count as completed work. An interrupted index replacement resumes its missing work. Undeclared columns, indexes, and constraints are retained during alterations.
+
+Retries also recognize completed table and column renames, then continue any remaining work without renaming them again. A conflicting destination or a missing source and destination stops execution with `IncompatibleSchema`; inspect the live names before retrying.
 
 An incompatible existing declaration stops the run with `IncompatibleSchema`; Foundation does not silently reconcile unrelated drift. Inspect and correct the mismatch before retrying. `LedgerFailure` means a history write failed after migration work; fix the storage failure and retry with the same declarations. Any data callback must tolerate repetition.
 

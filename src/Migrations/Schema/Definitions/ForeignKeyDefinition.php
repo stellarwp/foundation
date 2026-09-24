@@ -22,17 +22,33 @@ final class ForeignKeyDefinition
 	private ReferentialAction $onUpdate = ReferentialAction::RESTRICT;
 
 	/**
-	 * Receive the physical constraint identity and local columns.
+	 * Receive the logical constraint identity and local columns.
 	 *
 	 * @param non-empty-string                 $name
 	 * @param non-empty-list<non-empty-string> $localColumns
 	 *
 	 * @internal Constructed by TableBlueprint::foreignKey().
+	 *
+	 * @throws InvalidArgumentException When the logical name is empty.
 	 */
 	public function __construct(
 		private readonly string $name,
 		private readonly array $localColumns,
 	) {
+		if (trim($name) === '') {
+			throw new InvalidArgumentException('A foreign key must have a name.');
+		}
+	}
+
+	/**
+	 * Return the logical name used to resolve this constraint's historical identity.
+	 *
+	 * @internal
+	 *
+	 * @return non-empty-string
+	 */
+	public function name(): string {
+		return $this->name;
 	}
 
 	/**
@@ -113,15 +129,17 @@ final class ForeignKeyDefinition
 	 *
 	 * @internal Called by TableBlueprint::applyTo().
 	 *
+	 * @param non-empty-string $constraintName
+	 *
 	 * @throws InvalidArgumentException When references() has not completed the declaration.
 	 */
-	public function applyTo(TableEditor $editor, TableNameResolver $names): void {
+	public function applyTo(TableEditor $editor, TableNameResolver $names, string $constraintName): void {
 		if ($this->referencedTable === null || $this->referencedColumns === null) {
 			throw new InvalidArgumentException('Complete the foreign key declaration with references().');
 		}
 
 		$editor->addForeignKeyConstraint(ForeignKeyConstraint::editor()
-			->setUnquotedName($this->name)
+			->setUnquotedName($constraintName)
 			->setUnquotedReferencingColumnNames(...$this->localColumns)
 			->setUnquotedReferencedTableName($names->tableName($this->referencedTable))
 			->setUnquotedReferencedColumnNames(...$this->referencedColumns)

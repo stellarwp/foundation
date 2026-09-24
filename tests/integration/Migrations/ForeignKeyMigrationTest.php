@@ -5,6 +5,7 @@ namespace StellarWP\Foundation\Tests\Integration\Migrations;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
+use PHPUnit\Framework\Attributes\DataProvider;
 use StellarWP\Foundation\Migrations\Contracts\Migration;
 use StellarWP\Foundation\Migrations\Exceptions\IncompatibleSchema;
 use StellarWP\Foundation\Migrations\Exceptions\LedgerFailure;
@@ -13,6 +14,8 @@ use StellarWP\Foundation\Migrations\Migrator;
 use StellarWP\Foundation\Migrations\ValueObjects\MigrationRegistration;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\DatabaseTestCase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Migrations\ForeignKeys\AddCompositeReference;
+use StellarWP\Foundation\Tests\Support\Fixtures\Migrations\ForeignKeys\AddItemNote;
+use StellarWP\Foundation\Tests\Support\Fixtures\Migrations\ForeignKeys\AddOrderNote;
 use StellarWP\Foundation\Tests\Support\Fixtures\Migrations\ForeignKeys\AddOrderReference;
 use StellarWP\Foundation\Tests\Support\Fixtures\Migrations\ForeignKeys\CascadeOrderReference;
 use StellarWP\Foundation\Tests\Support\Fixtures\Migrations\ForeignKeys\CreateItems;
@@ -176,7 +179,66 @@ final class ForeignKeyMigrationTest extends DatabaseTestCase
 		$this->observer->executeStatement('ALTER TABLE ' . $this->items . ' ADD CONSTRAINT ' . $quoted . ' FOREIGN KEY (order_id) REFERENCES ' . $this->orders . ' (id) ON DELETE CASCADE');
 		$this->observer->delete($this->history, ['version' => '3']);
 		$this->expectException(IncompatibleSchema::class);
+		$this->expectExceptionMessage('foreign key "order" (database constraint "' . $name . '")');
 		$migrator->migrate();
+	}
+
+	/**
+	 * @return iterable<string, array{bool, bool}>
+	 */
+	public static function foreignKeyDrift(): iterable {
+		yield 'missing constraint on untouched table' => [
+			false,
+			false,
+		];
+
+		yield 'changed actions on untouched table' => [
+			true,
+			false,
+		];
+
+		yield 'missing constraint on altered table' => [
+			false,
+			true,
+		];
+
+		yield 'changed actions on altered table' => [
+			true,
+			true,
+		];
+	}
+
+	/**
+	 * Name the affected declaration and database constraint wherever drift is detected.
+	 *
+	 * @dataProvider foreignKeyDrift
+	 */
+	#[DataProvider('foreignKeyDrift')]
+	public function test_drift_names_the_logical_and_physical_foreign_key(bool $replace, bool $alterItems): void {
+		$pending  = $alterItems ? new AddItemNote($this->suffix) : new AddOrderNote($this->suffix);
+		$migrator = $this->migrations(new CreateOrders($this->suffix), new CreateItems($this->suffix), new AddOrderReference($this->suffix), $pending);
+		$migrator->migrate('3');
+		$name = $this->constraints()[0]->getObjectName()?->getIdentifier()->getValue();
+		$this->assertNotNull($name);
+		$quoted = $this->observer->quoteSingleIdentifier($name);
+		$this->observer->executeStatement('ALTER TABLE ' . $this->items . ' DROP FOREIGN KEY ' . $quoted);
+
+		if ($replace) {
+			$this->observer->executeStatement("ALTER TABLE {$this->items}
+				ADD CONSTRAINT $quoted FOREIGN KEY (order_id)
+				REFERENCES {$this->orders} (id) ON DELETE CASCADE");
+		}
+
+		try {
+			$migrator->migrate();
+			$this->fail('Undeclared relationship drift must stop the migration.');
+		} catch (IncompatibleSchema $failure) {
+			$this->assertStringContainsString('foreign key "order" (database constraint "' . $name . '")', $failure->getMessage());
+			$this->assertStringContainsString($this->suffix . '_items', $failure->getMessage());
+			$this->assertStringNotContainsString('table would be altered', $failure->getMessage());
+			$pendingTable = $this->source->prefix . $this->suffix . ($alterItems ? '_items' : '_orders');
+			$this->assertFalse($this->observer->createSchemaManager()->introspectTable($pendingTable)->hasColumn('note'));
+		}
 	}
 
 	public function test_an_equivalent_unrelated_foreign_key_is_preserved(): void {
@@ -202,6 +264,7 @@ final class ForeignKeyMigrationTest extends DatabaseTestCase
 		$this->observer->executeStatement('ALTER TABLE ' . $this->items . ' ADD CONSTRAINT ' . $quoted . ' FOREIGN KEY (order_id) REFERENCES ' . $this->orders . ' (id)');
 		$this->observer->delete($this->history, ['version' => '2']);
 		$this->expectException(IncompatibleSchema::class);
+		$this->expectExceptionMessage('foreign key "order" (database constraint "' . $name . '")');
 		$migrator->migrate();
 	}
 
@@ -217,6 +280,19 @@ final class ForeignKeyMigrationTest extends DatabaseTestCase
 		$this->assertStringNotContainsString('CREATE TABLE', implode('; ', $steps[0]->sql));
 		$this->assertCount(1, $this->constraints());
 		$this->assertSame(1, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $this->items));
+	}
+
+	/**
+	 * Resume rollback after the child table was dropped but its ledger entry remains.
+	 */
+	public function test_rollback_retry_accepts_an_already_dropped_table_with_foreign_keys(): void {
+		$migrator = $this->migrations(new CreateOrders($this->suffix), new CreateReferencedItems($this->suffix));
+		$migrator->migrate();
+		$this->observer->executeStatement('DROP TABLE ' . $this->items);
+
+		$steps = $migrator->rollback();
+		$this->assertSame([], $steps[0]->sql);
+		$this->assertSame(0, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->history} WHERE version = '2'"));
 	}
 
 	public function test_the_same_migrations_use_distinct_foreign_keys_on_another_site(): void {

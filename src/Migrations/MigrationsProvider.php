@@ -8,6 +8,9 @@ use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Container\Traits\ResolvesFoundationPrefix;
 use StellarWP\Foundation\Migrations\Cli\Migrate;
 use StellarWP\Foundation\Migrations\Schema\Factories\MigrationComparatorFactory;
+use StellarWP\Foundation\Migrations\Schema\RenamePlanner;
+use StellarWP\Foundation\Migrations\Schema\Renames\Contracts\ColumnRename;
+use StellarWP\Foundation\Migrations\Schema\Renames\PlatformColumnRename;
 use StellarWP\Foundation\Migrations\Schema\SchemaPlanner;
 use StellarWP\Foundation\Migrations\Tables\MigrationTable;
 use StellarWP\Foundation\WPCli\WPCliProvider;
@@ -69,7 +72,8 @@ final class MigrationsProvider extends Provider
 		$this->container->singleton(
 			self::MIGRATION_COMPARATOR_CONFIG,
 			static fn (): ComparatorConfig => (new ComparatorConfig())
-				->withReportModifiedIndexes(false),
+				->withReportModifiedIndexes(false)
+				->withDetectRenamedColumns(false),
 		);
 
 		$this->container->when(MigrationComparatorFactory::class)
@@ -91,6 +95,8 @@ final class MigrationsProvider extends Provider
 		$this->container->singleton(MigrationCollection::class);
 		$this->container->singleton(History::class);
 		$this->container->singleton(MigrationComparatorFactory::class);
+		$this->container->singleton(ColumnRename::class, PlatformColumnRename::class);
+		$this->container->singleton(RenamePlanner::class);
 		$this->container->singleton(SchemaPlanner::class);
 		$this->container->singleton(Migrator::class);
 	}

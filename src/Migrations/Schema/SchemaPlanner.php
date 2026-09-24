@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\Migrations\Schema;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Schema\Column;
+use Doctrine\DBAL\Schema\ColumnEditor;
 use Doctrine\DBAL\Schema\Index;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\SchemaDiff;
@@ -16,6 +17,7 @@ use StellarWP\Foundation\Migrations\Exceptions\IrreversibleMigration;
 use StellarWP\Foundation\Migrations\Exceptions\MigrationInterrupted;
 use StellarWP\Foundation\Migrations\MigrationCollection;
 use StellarWP\Foundation\Migrations\Schema\Factories\MigrationComparatorFactory;
+use StellarWP\Foundation\Migrations\Schema\Renames\Contracts\ColumnRename;
 use StellarWP\Foundation\Migrations\Schema\ValueObjects\SchemaPlan;
 
 /**
@@ -35,6 +37,8 @@ final readonly class SchemaPlanner
 		private TableNameResolver $names,
 		private MigrationCollection $migrations,
 		private MigrationComparatorFactory $comparators,
+		private RenamePlanner $renames,
+		private ColumnRename $columnRenames,
 		private array $tableOptions = [],
 	) {
 	}
@@ -53,15 +57,27 @@ final readonly class SchemaPlanner
 		$after  = $reverse ? $this->reverse($before, $id) : $this->replay([
 			...$applied,
 			$id,
-		]);
+		], $id);
 		$comparator = $this->comparators->create();
-		$expected   = $comparator->compareSchemas($before->schema, $after->schema);
 		$names      = $this->tableNames($before, $after);
-		$actual     = $this->introspect($names, $simulated, $simulatedNames);
-		$desired    = $this->preserveUndeclared($actual, $before, $after);
-		$remaining  = $comparator->compareSchemas($actual->schema, $desired->schema);
-		$this->assertContained($remaining, $expected, $id);
+
+		foreach ($after->renames as $rename) {
+			if ($rename->table === null) {
+				$names[] = $rename->from;
+				$names[] = $rename->to;
+			}
+		}
+
+		$names     = array_values(array_unique($names));
+		$actual    = $this->introspect($names, $simulated, $simulatedNames);
+		$renameSql = $this->renames->plan($before, $actual, $after, $id);
+		$comparator->alignForeignKeyNames($before, $actual, $after, $id);
+		$expected  = $comparator->compareSchemas($before->schema, $after->schema);
+		$desired   = $this->preserveUndeclared($actual, $before, $after);
+		$remaining = $comparator->compareSchemas($actual->schema, $desired->schema);
+		$this->assertContained($remaining, $expected, $before, $after, $id);
 		$sql = array_merge(
+			$renameSql,
 			$this->sql($remaining),
 			$this->timestampSql($actual, $desired, $remaining, $this->timestampChanges($before, $after), $id),
 			$this->commentSql($actual, $before, $after, $id),
@@ -75,15 +91,23 @@ final readonly class SchemaPlanner
 	 *
 	 * @param list<string> $ids
 	 */
-	private function replay(array $ids): SchemaState {
-		$schema = new SchemaState(new Schema());
+	private function replay(array $ids, ?string $renamedBy = null): SchemaState {
+		$schema  = new SchemaState(new Schema());
+		$renames = [];
 		sort($ids, SORT_STRING);
 
 		foreach ($ids as $id) {
-			$blueprint = new Blueprint($schema, $this->names, $this->tableOptions);
+			$schema->renames = [];
+			$blueprint       = new Blueprint($schema, $this->names, $this->tableOptions);
 			$this->migrations->get($id)->up($blueprint);
 			$this->apply($blueprint, $id);
+
+			if ($id === $renamedBy) {
+				$renames = $schema->renames;
+			}
 		}
+
+		$schema->renames = $renames;
 
 		return $schema;
 	}
@@ -140,7 +164,8 @@ final readonly class SchemaPlanner
 			} elseif (in_array(strtolower($name), $simulated, true)) {
 				continue; // Dropped by an earlier simulated step.
 			} elseif ($manager->tablesExist([$name])) {
-				$tables[] = $this->normalize($manager->introspectTable($name));
+				$table    = $this->normalize($manager->introspectTable($name));
+				$tables[] = $this->columnRenames->inspect($table);
 			}
 		}
 
@@ -179,7 +204,11 @@ final readonly class SchemaPlanner
 
 		$placeholders = implode(', ', array_fill(0, count($names), '?'));
 		$rows         = $this->db->fetchAllAssociative(
-			"SELECT TABLE_NAME, COLUMN_NAME, DATETIME_PRECISION, EXTRA
+			"SELECT
+				TABLE_NAME,
+				COLUMN_NAME,
+				DATETIME_PRECISION,
+				EXTRA
 			FROM information_schema.COLUMNS
 			WHERE TABLE_SCHEMA = DATABASE()
 				AND DATA_TYPE IN ('datetime', 'timestamp')
@@ -246,8 +275,22 @@ final readonly class SchemaPlanner
 
 			foreach ($actualTable->getColumns() as $column) {
 				$columnName = $column->getObjectName()->toString();
+				$definition = $column->getColumnDefinition();
 
-				if ($target->hasColumn($columnName) || ($beforeTable?->hasColumn($columnName) ?? false)) {
+				if ($target->hasColumn($columnName)) {
+					// Retain the live SQL definition in preview snapshots when this step leaves it unchanged.
+					if (($beforeTable?->hasColumn($columnName) ?? false)
+						&& $beforeTable->getColumn($columnName)->toArray() == $target->getColumn($columnName)->toArray()
+						&& $definition !== null && $definition !== '') {
+						$editor->modifyColumn($column->getObjectName(), static function (ColumnEditor $targetColumn) use ($definition): void {
+							$targetColumn->setColumnDefinition($definition);
+						});
+					}
+
+					continue;
+				}
+
+				if ($beforeTable?->hasColumn($columnName) ?? false) {
 					continue;
 				}
 				$editor->addColumn($column);
@@ -431,7 +474,7 @@ final readonly class SchemaPlanner
 	 *
 	 * @throws IncompatibleSchema
 	 */
-	private function assertContained(SchemaDiff $remaining, SchemaDiff $expected, string $id): void {
+	private function assertContained(SchemaDiff $remaining, SchemaDiff $expected, SchemaState $before, SchemaState $after, string $id): void {
 		$expectedCreated = $this->names($expected->getCreatedTables());
 		$expectedDropped = $this->names($expected->getDroppedTables());
 		$expectedAltered = [];
@@ -453,7 +496,7 @@ final readonly class SchemaPlanner
 			$key  = strtolower($name);
 
 			if (isset($expectedAltered[$key])) {
-				$this->assertAlterationContained($diff, $expectedAltered[$key], $id, $name);
+				$this->assertAlterationContained($diff, $expectedAltered[$key], $before, $after, $id);
 
 				continue;
 			}
@@ -462,16 +505,17 @@ final readonly class SchemaPlanner
 				// The table already exists; only missing declared columns, indexes, and constraints may be added.
 				$this->require($diff->getChangedColumns()        === [] && $diff->getDroppedColumns() === []
 					&& $diff->getDroppedIndexes()                   === [] && $diff->getRenamedIndexes() === []
-					&& $diff->getDroppedForeignKeyConstraintNames() === [], $id, $name, 'existing table differs from the declared initial definition');
+					&& $diff->getDroppedForeignKeyConstraintNames() === [], $id, $name, 'existing table differs from the declared initial definition: ' . $this->describe($diff, $before, $after));
 
 				continue;
 			}
 
-			$this->require(false, $id, $name, $this->describe($diff));
+			$this->require(false, $id, $name, $this->describe($diff, $before, $after));
 		}
 	}
 
-	private function assertAlterationContained(TableDiff $remaining, TableDiff $expected, string $id, string $table): void {
+	private function assertAlterationContained(TableDiff $remaining, TableDiff $expected, SchemaState $before, SchemaState $after, string $id): void {
+		$table    = $this->tableName($remaining);
 		$added    = $this->names($expected->getAddedColumns());
 		$modified = array_map(static fn ($diff): string => strtolower($diff->getOldColumn()->getObjectName()->toString()), $expected->getChangedColumns());
 		$dropped  = $this->names($expected->getDroppedColumns());
@@ -499,12 +543,12 @@ final readonly class SchemaPlanner
 
 		foreach ($remaining->getAddedForeignKeys() as $foreignKey) {
 			$name = $foreignKey->getObjectName()?->getIdentifier()->getValue() ?? '';
-			$this->require(in_array(strtolower($name), $addedForeignKeys, true), $id, $table, 'foreign key ' . $name . ' would be added');
+			$this->require(in_array(strtolower($name), $addedForeignKeys, true), $id, $table, 'foreign key ' . $after->foreignKeyLabel($table, $name) . ' would be added');
 		}
 
 		foreach ($remaining->getDroppedForeignKeyConstraintNames() as $foreignKey) {
 			$name = $foreignKey->getIdentifier()->getValue();
-			$this->require(in_array(strtolower($name), $droppedForeignKeys, true), $id, $table, 'existing foreign key ' . $name . ' conflicts with its declaration');
+			$this->require(in_array(strtolower($name), $droppedForeignKeys, true), $id, $table, 'existing foreign key ' . $before->foreignKeyLabel($table, $name, $after) . ' conflicts with its declaration');
 		}
 
 		// A replacement authorizes both a drop and an addition. An interrupted drop leaves only
@@ -519,17 +563,29 @@ final readonly class SchemaPlanner
 		}
 	}
 
-	private function describe(TableDiff $diff): string {
+	private function describe(TableDiff $diff, SchemaState $before, SchemaState $after): string {
+		$table = $this->tableName($diff);
 		$parts = [];
 
 		foreach ($diff->getAddedColumns() as $column) {
 			$parts[] = 'column ' . $column->getObjectName()->toString() . ' would be added';
 		}
+
 		foreach ($diff->getChangedColumns() as $columnDiff) {
 			$parts[] = 'column ' . $columnDiff->getOldColumn()->getObjectName()->toString() . ' differs from its declaration';
 		}
+
 		foreach ($diff->getDroppedColumns() as $column) {
 			$parts[] = 'column ' . $column->getObjectName()->toString() . ' would be dropped';
+		}
+
+		foreach ($diff->getAddedForeignKeys() as $foreignKey) {
+			$name    = $foreignKey->getObjectName()?->getIdentifier()->getValue() ?? '';
+			$parts[] = 'foreign key ' . $after->foreignKeyLabel($table, $name) . ' would be added';
+		}
+
+		foreach ($diff->getDroppedForeignKeyConstraintNames() as $foreignKey) {
+			$parts[] = 'existing foreign key ' . $before->foreignKeyLabel($table, $foreignKey->getIdentifier()->getValue(), $after) . ' conflicts with its declaration';
 		}
 
 		return $parts === [] ? 'table would be altered' : implode('; ', $parts);

@@ -19,6 +19,11 @@ composer require stellarwp/foundation-database
 
 Foundation requires PHP 8.3, mysqli, and Doctrine DBAL 4.4.
 
+:::caution[Database requirements]
+Use MySQL **5.7.9+** or MariaDB **10.4.3+**, matching [Doctrine DBAL 4.4’s supported platforms](https://www.doctrine-project.org/projects/doctrine-dbal/en/4.4/reference/platforms.html). Check the database version on every deployment target before adopting Foundation.
+:::
+
+
 Database services borrow the active WordPress connection. Use the primary MySQL or MariaDB database and InnoDB tables for transactional application data.
 
 Set a stable, unique application prefix in your root configuration:

@@ -164,6 +164,9 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 	}
 
 	public function test_public_migration_workflow_uses_no_deprecated_dbal_api(): void {
+		// Platform selection warns about older servers supported by DBAL 4 but removed in DBAL 5.
+		// This check concerns deprecated migration APIs, independently of the selected server.
+		$this->db->getDatabasePlatform();
 		\Doctrine\Deprecations\Deprecation::enableTrackingDeprecations();
 
 		try {
