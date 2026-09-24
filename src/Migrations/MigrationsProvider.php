@@ -11,6 +11,7 @@ use StellarWP\Foundation\Migrations\Schema\Factories\MigrationComparatorFactory;
 use StellarWP\Foundation\Migrations\Schema\RenamePlanner;
 use StellarWP\Foundation\Migrations\Schema\Renames\Contracts\ColumnRename;
 use StellarWP\Foundation\Migrations\Schema\Renames\PlatformColumnRename;
+use StellarWP\Foundation\Migrations\Schema\SchemaInspector;
 use StellarWP\Foundation\Migrations\Schema\SchemaPlanner;
 use StellarWP\Foundation\Migrations\Tables\MigrationTable;
 use StellarWP\Foundation\WPCli\WPCliProvider;
@@ -97,6 +98,7 @@ final class MigrationsProvider extends Provider
 		$this->container->singleton(MigrationComparatorFactory::class);
 		$this->container->singleton(ColumnRename::class, PlatformColumnRename::class);
 		$this->container->singleton(RenamePlanner::class);
+		$this->container->singleton(SchemaInspector::class);
 		$this->container->singleton(SchemaPlanner::class);
 		$this->container->singleton(Migrator::class);
 	}

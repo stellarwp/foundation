@@ -25,6 +25,7 @@ use StellarWP\Foundation\Migrations\Schema\Blueprint;
 use StellarWP\Foundation\Migrations\Schema\Factories\MigrationComparatorFactory;
 use StellarWP\Foundation\Migrations\Schema\RenamePlanner;
 use StellarWP\Foundation\Migrations\Schema\Renames\Contracts\ColumnRename;
+use StellarWP\Foundation\Migrations\Schema\SchemaInspector;
 use StellarWP\Foundation\Migrations\Schema\SchemaPlanner;
 use StellarWP\Foundation\Migrations\Tables\MigrationTable;
 use StellarWP\Foundation\Migrations\ValueObjects\MigrationRegistration;
@@ -91,7 +92,7 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 				$migrations,
 				$container->get(MigrationComparatorFactory::class),
 				new RenamePlanner($db, $container->get(ColumnRename::class)),
-				$container->get(ColumnRename::class),
+				$container->get(SchemaInspector::class),
 			),
 			$migrations,
 			$names,
