@@ -16,6 +16,8 @@ declare(strict_types=1);
  * @method void comment($description)
  * @method void pause($vars = [])
  *
+ * @mixin \lucatume\WPBrowser\Module\WPCLI
+ *
  * @SuppressWarnings(PHPMD)
 */
 class WPCLITester extends \Codeception\Actor

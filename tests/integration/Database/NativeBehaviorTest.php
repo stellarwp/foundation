@@ -21,7 +21,7 @@ final class NativeBehaviorTest extends DatabaseTestCase
 			} catch (UniqueConstraintViolationException) {
 			}
 		});
-		self::assertSame('Committed despite failure', $this->observer->fetchOne('SELECT name FROM ' . $this->table));
+		$this->assertSame('Committed despite failure', $this->observer->fetchOne('SELECT name FROM ' . $this->table));
 	}
 
 	public function test_native_dbal_rejects_unacknowledged_commit(): void {
@@ -34,7 +34,7 @@ final class NativeBehaviorTest extends DatabaseTestCase
 
 				return 'success';
 			});
-			self::fail('Expected DBAL to reject the unacknowledged commit.');
+			$this->fail('Expected DBAL to reject the unacknowledged commit.');
 		} catch (ConnectionLost) {
 			$this->assertOriginal();
 		}
@@ -51,8 +51,8 @@ final class NativeBehaviorTest extends DatabaseTestCase
 				throw $business;
 			});
 		} catch (Throwable $caught) {
-			self::assertNotSame($business, $caught);
-			self::assertStringContainsString('closed', $caught->getMessage());
+			$this->assertNotSame($business, $caught);
+			$this->assertStringContainsString('closed', $caught->getMessage());
 		}
 	}
 }

@@ -284,6 +284,8 @@ Keep full source paths in the prose immediately before code examples and use onl
 
 ## Verification
 
+Use `$this->` for inherited PHPUnit and WordPress test helpers wherever the test instance is available, including assertions, `fail()`, mock matchers such as `never()` and `exactly()`, and `factory()`. Reserve `self::` helper calls for static methods and callbacks. Preserve deliberate `parent::` calls to inherited implementations.
+
 Test observable behavior, operational guarantees, and supported substitutions. Keep representative consumer fixtures, including generated class shapes, stable after establishing the release baseline; changing them during an internal refactor requires a compatibility explanation. Avoid tests that merely mirror trivial construction or private wiring. Extend existing coverage rather than creating a test for every class mechanically.
 
 When `composer lint` reports style-only issues, run `composer format` to let the project formatter fix them before making manual formatting edits.

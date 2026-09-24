@@ -46,18 +46,18 @@ final class GeneratedMigrationTest extends TestCase
 		$tooling->register(CliProvider::class);
 		$tooling->singleton(ProjectDirectory::class, new ProjectDirectory($root));
 		$table = new CommandTester($tooling->get(TableCommand::class));
-		self::assertSame(0, $table->execute(['name' => 'Reports', '--migration' => true]), $table->getDisplay());
+		$this->assertSame(0, $table->execute(['name' => 'Reports', '--migration' => true]), $table->getDisplay());
 		$migration = new CommandTester($tooling->get(MigrationCommand::class));
-		self::assertSame(0, $migration->execute(['name' => 'Reports/Add_Published_At', '--table' => 'reports']), $migration->getDisplay());
+		$this->assertSame(0, $migration->execute(['name' => 'Reports/Add_Published_At', '--table' => 'reports']), $migration->getDisplay());
 		// The generated application table is deliberately not autoloadable at runtime.
 		$runtime = (new ContainerFactory())->create($config);
 		$runtime->register(DatabaseProvider::class);
 		$runtime->register(MigrationsProvider::class);
 		$collection = $runtime->get(MigrationCollection::class);
 		$ids        = $collection->ids();
-		self::assertCount(2, $ids);
-		self::assertStringEndsWith('_create_reports_table', $ids[0]);
-		self::assertStringEndsWith('_add_published_at', $ids[1]);
-		self::assertInstanceOf(\StellarWP\Foundation\Migrations\Migration::class, $collection->get($ids[1]));
+		$this->assertCount(2, $ids);
+		$this->assertStringEndsWith('_create_reports_table', $ids[0]);
+		$this->assertStringEndsWith('_add_published_at', $ids[1]);
+		$this->assertInstanceOf(\StellarWP\Foundation\Migrations\Migration::class, $collection->get($ids[1]));
 	}
 }

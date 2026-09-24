@@ -51,9 +51,9 @@ final class TableNameResolverTest extends TestCase
 
 	public function test_a_historical_name_is_resolved_again_for_each_site(): void {
 		$scope = $this->createMock(DatabaseScope::class);
-		$scope->expects(self::exactly(2))->method('resolveTableName')->with('reports')->willReturnOnConsecutiveCalls('wp_reports', 'wp_2_reports');
+		$scope->expects($this->exactly(2))->method('resolveTableName')->with('reports')->willReturnOnConsecutiveCalls('wp_reports', 'wp_2_reports');
 		$names = new TableNameResolver($scope);
-		self::assertSame('wp_reports', $names->tableName('reports'));
-		self::assertSame('wp_2_reports', $names->tableName('reports'));
+		$this->assertSame('wp_reports', $names->tableName('reports'));
+		$this->assertSame('wp_2_reports', $names->tableName('reports'));
 	}
 }

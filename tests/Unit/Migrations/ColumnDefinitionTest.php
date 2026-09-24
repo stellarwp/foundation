@@ -40,7 +40,7 @@ final class ColumnDefinitionTest extends TestCase
 		$table = Table::editor()->setUnquotedName('t');
 		(new ColumnDefinition('amount', Types::DECIMAL, ['precision' => 20, 'scale' => $scale]))->default($declared)->applyTo($table);
 
-		self::assertSame($expected, $table->create()->getColumn('amount')->getDefault());
+		$this->assertSame($expected, $table->create()->getColumn('amount')->getDefault());
 	}
 
 	public function test_change_replaces_type_default_and_comment(): void {
@@ -50,10 +50,10 @@ final class ColumnDefinitionTest extends TestCase
 		(new ColumnDefinition('value', Types::INTEGER))->change()->applyTo($table);
 
 		$column = $table->create()->getColumn('value');
-		self::assertSame(Types::INTEGER, Type::lookupName($column->getType()));
-		self::assertNull($column->getDefault());
-		self::assertSame('', $column->getComment());
-		self::assertTrue($column->getNotnull());
+		$this->assertSame(Types::INTEGER, Type::lookupName($column->getType()));
+		$this->assertNull($column->getDefault());
+		$this->assertSame('', $column->getComment());
+		$this->assertTrue($column->getNotnull());
 	}
 
 	public function test_change_on_a_missing_column_fails_instead_of_adding_one(): void {
@@ -70,7 +70,7 @@ final class ColumnDefinitionTest extends TestCase
 		$omitted = Table::editor()->setUnquotedName('t');
 		(new ColumnDefinition('created_at', Types::DATETIME_MUTABLE))->useCurrent()->applyTo($omitted);
 
-		self::assertSame('CURRENT_TIMESTAMP', $explicit->create()->getColumn('created_at')->getDefault());
-		self::assertSame($omitted->create()->getColumn('created_at')->toArray(), $explicit->create()->getColumn('created_at')->toArray());
+		$this->assertSame('CURRENT_TIMESTAMP', $explicit->create()->getColumn('created_at')->getDefault());
+		$this->assertSame($omitted->create()->getColumn('created_at')->toArray(), $explicit->create()->getColumn('created_at')->toArray());
 	}
 }

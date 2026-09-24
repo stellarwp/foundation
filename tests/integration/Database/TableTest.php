@@ -21,9 +21,9 @@ final class TableTest extends DatabaseTestCase
 
 	public function test_ordinary_table_calls_share_the_transaction_and_bind_values(): void {
 		$id = $this->entries->insertGetId(['name' => "O'Reilly", 'active' => true], ['active' => Types::BOOLEAN]);
-		self::assertSame("O'Reilly", $this->entries->query()->select('name')->where('id = :id')->setParameter('id', $id)->fetchOne());
-		self::assertSame(1, (int) $this->entries->update(['name' => 'Changed'], ['id' => $id]));
-		self::assertSame(1, (int) $this->entries->query()->select('active')->fetchOne());
+		$this->assertSame("O'Reilly", $this->entries->query()->select('name')->where('id = :id')->setParameter('id', $id)->fetchOne());
+		$this->assertSame(1, (int) $this->entries->update(['name' => 'Changed'], ['id' => $id]));
+		$this->assertSame(1, (int) $this->entries->query()->select('active')->fetchOne());
 
 		try {
 			$this->db->transactional(function (): void {
@@ -32,30 +32,30 @@ final class TableTest extends DatabaseTestCase
 				throw new \RuntimeException('Cancel');
 			});
 		} catch (\RuntimeException $failure) {
-			self::assertSame('Cancel', $failure->getMessage());
+			$this->assertSame('Cancel', $failure->getMessage());
 		}
-		self::assertSame(1, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $this->entries->quotedName()));
-		self::assertSame(1, (int) $this->entries->delete(['id' => $id]));
+		$this->assertSame(1, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $this->entries->quotedName()));
+		$this->assertSame(1, (int) $this->entries->delete(['id' => $id]));
 	}
 
 	public function test_queries_are_fresh_and_capture_the_site_when_built(): void {
 		$old   = $this->entries->query('entry')->select('entry.id');
 		$fresh = $this->entries->query();
-		self::assertNotSame($old, $fresh);
+		$this->assertNotSame($old, $fresh);
 		$oldName = $this->entries->name();
 		$this->source->set_prefix($this->source->prefix . 'other_');
-		self::assertStringContainsString($oldName, $old->getSQL());
-		self::assertNotSame($oldName, $this->entries->name());
-		self::assertStringContainsString($this->entries->name(), $this->entries->query()->select('id')->getSQL());
+		$this->assertStringContainsString($oldName, $old->getSQL());
+		$this->assertNotSame($oldName, $this->entries->name());
+		$this->assertStringContainsString($this->entries->name(), $this->entries->query()->select('id')->getSQL());
 	}
 
 	public function test_empty_mutation_criteria_are_rejected(): void {
 		foreach (['update', 'delete'] as $method) {
 			try {
 				$method === 'update' ? $this->entries->update(['name' => 'All'], []) : $this->entries->delete([]);
-				self::fail('Expected empty criteria rejection.');
+				$this->fail('Expected empty criteria rejection.');
 			} catch (InvalidArgumentException) {
-				self::assertSame(0, (int) $this->entries->query()->select('COUNT(*)')->fetchOne());
+				$this->assertSame(0, (int) $this->entries->query()->select('COUNT(*)')->fetchOne());
 			}
 		}
 	}
@@ -66,19 +66,19 @@ final class TableTest extends DatabaseTestCase
 		$this->source->__set('dbh', $this->native($this->observerSource));
 
 		try {
-			self::assertSame($this->native($this->observerSource)->thread_id, (int) $this->db->fetchOne('SELECT CONNECTION_ID()'));
-			self::assertSame('updated', $this->db->transactional(function (Connection $db): string {
+			$this->assertSame($this->native($this->observerSource)->thread_id, (int) $this->db->fetchOne('SELECT CONNECTION_ID()'));
+			$this->assertSame('updated', $this->db->transactional(function (Connection $db): string {
 				$this->entries->insert(['name' => 'Reconnected']);
 
 				return 'updated';
 			}));
-			self::assertSame('Reconnected', $this->entries->query()->select('name')->fetchOne());
+			$this->assertSame('Reconnected', $this->entries->query()->select('name')->fetchOne());
 
 			try {
 				$oldStatement->executeQuery();
-				self::fail('An old statement must not run on a replaced session.');
+				$this->fail('An old statement must not run on a replaced session.');
 			} catch (\RuntimeException $failure) {
-				self::assertStringContainsString('connection changed', $failure->getMessage());
+				$this->assertStringContainsString('connection changed', $failure->getMessage());
 			}
 		} finally {
 			$this->source->__set('dbh', $old);

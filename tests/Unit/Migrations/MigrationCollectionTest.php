@@ -25,11 +25,11 @@ final class MigrationCollectionTest extends TestCase
 		$ids           = ['a', '10', '2', '01', 'A', '20260922000100'];
 		$registrations = array_map($this->migration(...), $ids);
 		$collection    = new MigrationCollection($registrations);
-		self::assertSame(['01', '10', '2', '20260922000100', 'A', 'a'], $collection->ids());
+		$this->assertSame(['01', '10', '2', '20260922000100', 'A', 'a'], $collection->ids());
 		foreach ($registrations as $registration) {
-			self::assertSame($registration->migration, $collection->get($registration->id));
+			$this->assertSame($registration->migration, $collection->get($registration->id));
 		}
-		self::assertFalse($collection->has('missing'));
+		$this->assertFalse($collection->has('missing'));
 	}
 
 	public function test_duplicate_ids_fail_before_execution(): void {

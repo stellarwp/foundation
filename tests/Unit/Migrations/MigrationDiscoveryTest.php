@@ -21,10 +21,10 @@ final class MigrationDiscoveryTest extends TestCase
 	public function test_nested_files_are_loaded_and_ordered_without_composer_or_a_container(): void {
 		$discovery  = new MigrationDiscovery(null, $this->fixtures);
 		$collection = new MigrationCollection($discovery->migrations());
-		self::assertSame(['20260923000001_create_reports_table', '20260923000002_add_published_at'], $collection->ids());
+		$this->assertSame(['20260923000001_create_reports_table', '20260923000002_add_published_at'], $collection->ids());
 		$again = new MigrationCollection($discovery->migrations());
-		self::assertSame($collection->ids(), $again->ids());
-		self::assertNotSame($collection->get($collection->ids()[0]), $again->get($again->ids()[0]));
+		$this->assertSame($collection->ids(), $again->ids());
+		$this->assertNotSame($collection->get($collection->ids()[0]), $again->get($again->ids()[0]));
 	}
 
 	public function test_moving_a_file_preserves_identity_and_duplicate_filenames_are_rejected(): void {
@@ -33,17 +33,17 @@ final class MigrationDiscoveryTest extends TestCase
 		copy($this->fixtures . '/' . $file, $root . '/' . $file);
 		$original = iterator_to_array((new MigrationDiscovery(null, $this->fixtures))->migrations());
 		$moved    = iterator_to_array((new MigrationDiscovery(null, $root))->migrations());
-		self::assertSame(pathinfo($file, PATHINFO_FILENAME), $moved[0]->id);
+		$this->assertSame(pathinfo($file, PATHINFO_FILENAME), $moved[0]->id);
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage('Duplicate migration identity');
 		new MigrationCollection([...$original, ...$moved]);
 	}
 
 	public function test_no_configuration_or_missing_default_directory_is_empty(): void {
-		self::assertSame([], iterator_to_array((new MigrationDiscovery(null, null))->migrations()));
+		$this->assertSame([], iterator_to_array((new MigrationDiscovery(null, null))->migrations()));
 		$root = $this->prepare_temp_dir('missing-migrations');
-		self::assertSame([], iterator_to_array((new MigrationDiscovery($root, null))->migrations()));
-		self::assertDirectoryDoesNotExist($root . '/db/migrations');
+		$this->assertSame([], iterator_to_array((new MigrationDiscovery($root, null))->migrations()));
+		$this->assertDirectoryDoesNotExist($root . '/db/migrations');
 	}
 
 	public function test_an_explicit_missing_directory_is_an_error(): void {
@@ -72,13 +72,13 @@ final class MigrationDiscoveryTest extends TestCase
 			file_put_contents($root . '/' . $file, '<?php throw new \\RuntimeException("Do not execute helpers");');
 		}
 		mkdir($root . '/20260923000001_directory.php');
-		self::assertSame([], iterator_to_array((new MigrationDiscovery(null, $root))->migrations()));
+		$this->assertSame([], iterator_to_array((new MigrationDiscovery(null, $root))->migrations()));
 	}
 
 	public function test_default_and_custom_paths_are_normalized_without_namespace_mappings(): void {
-		self::assertSame('/project/db/migrations', (new MigrationDirectory('/project'))->path);
-		self::assertSame('/project/history', (new MigrationDirectory('/project', 'db/../history'))->path);
-		self::assertSame('/shared/history', (new MigrationDirectory(null, '/shared/history'))->path);
+		$this->assertSame('/project/db/migrations', (new MigrationDirectory('/project'))->path);
+		$this->assertSame('/project/history', (new MigrationDirectory('/project', 'db/../history'))->path);
+		$this->assertSame('/shared/history', (new MigrationDirectory(null, '/shared/history'))->path);
 	}
 
 	public function test_blank_migration_path_is_an_error_instead_of_scanning_the_project_root(): void {

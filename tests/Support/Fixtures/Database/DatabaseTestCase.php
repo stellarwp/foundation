@@ -93,7 +93,7 @@ abstract class DatabaseTestCase extends WPTestCase
 
 	protected function native(wpdb $source): mysqli {
 		$native = $source->__get('dbh');
-		self::assertInstanceOf(mysqli::class, $native);
+		$this->assertInstanceOf(mysqli::class, $native);
 
 		return $native;
 	}
@@ -103,6 +103,6 @@ abstract class DatabaseTestCase extends WPTestCase
 	}
 
 	protected function assertOriginal(): void {
-		self::assertSame(['Original'], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->table));
+		$this->assertSame(['Original'], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->table));
 	}
 }

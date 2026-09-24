@@ -27,7 +27,7 @@ final class TransactionTest extends DatabaseTestCase
 					$this->source->set_prefix($prefix);
 				}
 			});
-			self::fail('A caught scope failure must remain terminal.');
+			$this->fail('A caught scope failure must remain terminal.');
 		} catch (\StellarWP\Foundation\Database\Exceptions\TransactionFailed) {
 			$this->assertOriginal();
 		} finally {
@@ -36,8 +36,8 @@ final class TransactionTest extends DatabaseTestCase
 	}
 
 	public function test_provider_shares_one_connection_and_borrows_wordpress_session(): void {
-		self::assertSame($this->db, $this->container->get(Connection::class));
-		self::assertSame($this->native($this->source), $this->db->getNativeConnection());
+		$this->assertSame($this->db, $this->container->get(Connection::class));
+		$this->assertSame($this->native($this->source), $this->db->getNativeConnection());
 	}
 
 	public function test_commit_publishes_all_work_at_once_and_returns_the_callback_result(): void {
@@ -50,13 +50,13 @@ final class TransactionTest extends DatabaseTestCase
 
 			return 2;
 		});
-		self::assertSame(2, $result);
-		self::assertSame(['First', 'Second'], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->table . ' ORDER BY id'));
+		$this->assertSame(2, $result);
+		$this->assertSame(['First', 'Second'], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->table . ' ORDER BY id'));
 	}
 
 	public function test_manual_transactions_use_void_and_publish_only_at_outer_commit(): void {
 		foreach (['beginTransaction', 'commit', 'rollBack'] as $method) {
-			self::assertSame('void', (string) (new \ReflectionMethod($this->db, $method))->getReturnType());
+			$this->assertSame('void', (string) (new \ReflectionMethod($this->db, $method))->getReturnType());
 		}
 
 		$this->db->beginTransaction();
@@ -71,8 +71,8 @@ final class TransactionTest extends DatabaseTestCase
 		$this->db->beginTransaction();
 		$this->db->update($this->table, ['name' => 'Committed'], ['id' => 1]);
 		$this->db->commit();
-		self::assertSame('Committed', $this->observer->fetchOne('SELECT name FROM ' . $this->table));
-		self::assertFalse($this->db->isTransactionActive());
+		$this->assertSame('Committed', $this->observer->fetchOne('SELECT name FROM ' . $this->table));
+		$this->assertFalse($this->db->isTransactionActive());
 	}
 
 	public function test_false_and_null_callback_results_are_successful_committed_work(): void {
@@ -84,9 +84,9 @@ final class TransactionTest extends DatabaseTestCase
 				return $expected;
 			});
 
-			self::assertSame($expected, $result);
-			self::assertSame($name, $this->observer->fetchOne('SELECT name FROM ' . $this->table));
-			self::assertFalse($this->db->isTransactionActive());
+			$this->assertSame($expected, $result);
+			$this->assertSame($name, $this->observer->fetchOne('SELECT name FROM ' . $this->table));
+			$this->assertFalse($this->db->isTransactionActive());
 		}
 	}
 
@@ -101,10 +101,10 @@ final class TransactionTest extends DatabaseTestCase
 				throw $failure;
 			});
 		} catch (Throwable $caught) {
-			self::assertSame($failure, $caught);
+			$this->assertSame($failure, $caught);
 		}
 		$this->assertOriginal();
-		self::assertSame(42, $this->db->transactional(static fn (): int => 42));
+		$this->assertSame(42, $this->db->transactional(static fn (): int => 42));
 	}
 
 	public function test_caught_prepared_statement_failure_is_terminal(): void {
@@ -121,7 +121,7 @@ final class TransactionTest extends DatabaseTestCase
 				} catch (UniqueConstraintViolationException) {
 				}
 			});
-			self::fail('A caught database failure must prevent commit.');
+			$this->fail('A caught database failure must prevent commit.');
 		} catch (TransactionFailed) {
 			$this->assertOriginal();
 		}
@@ -137,12 +137,12 @@ final class TransactionTest extends DatabaseTestCase
 
 				try {
 					$this->db->insert($this->table, ['id' => 2, 'name' => 'Must not execute']);
-					self::fail('A failed transaction must reject further SQL.');
+					$this->fail('A failed transaction must reject further SQL.');
 				} catch (Throwable $failure) {
-					self::assertInstanceOf(TransactionFailed::class, $failure);
+					$this->assertInstanceOf(TransactionFailed::class, $failure);
 				}
 			});
-			self::fail('Expected terminal failure.');
+			$this->fail('Expected terminal failure.');
 		} catch (TransactionFailed) {
 			$this->assertOriginal();
 		}
@@ -164,7 +164,7 @@ final class TransactionTest extends DatabaseTestCase
 				$this->db->insert($this->table, ['id' => 4, 'name' => 'Nested success']);
 			});
 		});
-		self::assertSame([1, 2, 4], array_map('intval', $this->observer->fetchFirstColumn('SELECT id FROM ' . $this->table . ' ORDER BY id')));
+		$this->assertSame([1, 2, 4], array_map('intval', $this->observer->fetchFirstColumn('SELECT id FROM ' . $this->table . ' ORDER BY id')));
 	}
 
 	public function test_outer_rollback_includes_successful_nested_work(): void {
@@ -191,12 +191,12 @@ final class TransactionTest extends DatabaseTestCase
 				self::fail('Callback must not run.');
 			});
 		} catch (Throwable $failure) {
-			self::assertStringContainsString('Transaction characteristics', $failure->getMessage());
+			$this->assertStringContainsString('Transaction characteristics', $failure->getMessage());
 		}
 		$this->assertOriginal();
 		$result = $native->query('SELECT name FROM ' . $this->table);
-		self::assertInstanceOf(\mysqli_result::class, $result);
-		self::assertSame(['Ambient'], $result->fetch_row());
+		$this->assertInstanceOf(\mysqli_result::class, $result);
+		$this->assertSame(['Ambient'], $result->fetch_row());
 		$native->rollback();
 	}
 
@@ -209,7 +209,7 @@ final class TransactionTest extends DatabaseTestCase
 				self::fail('Callback must not run.');
 			});
 		} catch (RuntimeException $failure) {
-			self::assertStringContainsString('autocommit', $failure->getMessage());
+			$this->assertStringContainsString('autocommit', $failure->getMessage());
 		} finally {
 			$native->autocommit(true);
 		}
@@ -232,12 +232,12 @@ final class TransactionTest extends DatabaseTestCase
 				} catch (Throwable) {
 				}
 			});
-			self::fail('Expected terminal connection loss.');
+			$this->fail('Expected terminal connection loss.');
 		} catch (TransactionFailed) {
 			$this->assertOriginal();
 		}
-		self::assertSame(7, $this->db->transactional(static fn (): int => 7));
-		self::assertSame($this->native($this->source), $this->db->getNativeConnection());
+		$this->assertSame(7, $this->db->transactional(static fn (): int => 7));
+		$this->assertSame($this->native($this->source), $this->db->getNativeConnection());
 	}
 
 	public function test_lost_commit_acknowledgement_reports_uncertain_outcome(): void {
@@ -246,9 +246,9 @@ final class TransactionTest extends DatabaseTestCase
 				$this->db->update($this->table, ['name' => 'Lost'], ['id' => 1]);
 				$this->killConnection();
 			});
-			self::fail('Expected uncertain commit.');
+			$this->fail('Expected uncertain commit.');
 		} catch (DatabaseException $failure) {
-			self::assertInstanceOf(CommitOutcomeUnknown::class, $failure);
+			$this->assertInstanceOf(CommitOutcomeUnknown::class, $failure);
 			$this->assertOriginal();
 		}
 	}
@@ -263,13 +263,13 @@ final class TransactionTest extends DatabaseTestCase
 				throw $failure;
 			});
 		} catch (Throwable $caught) {
-			self::assertSame($failure, $caught);
+			$this->assertSame($failure, $caught);
 		}
 	}
 
 	public function test_site_change_prevents_commit_and_restoration_does_not_erase_failure(): void {
-		$otherSite = self::factory()->blog->create();
-		self::assertIsInt($otherSite);
+		$otherSite = $this->factory()->blog->create();
+		$this->assertIsInt($otherSite);
 
 		try {
 			$this->db->transactional(function () use ($otherSite): void {
@@ -283,7 +283,7 @@ final class TransactionTest extends DatabaseTestCase
 					restore_current_blog();
 				}
 			});
-			self::fail('Expected terminal scope failure.');
+			$this->fail('Expected terminal scope failure.');
 		} catch (TransactionFailed) {
 			$this->assertOriginal();
 		}
@@ -301,7 +301,7 @@ final class TransactionTest extends DatabaseTestCase
 				} catch (UniqueConstraintViolationException) {
 				}
 			});
-			self::fail('Caught nested database failure must abort the outer transaction.');
+			$this->fail('Caught nested database failure must abort the outer transaction.');
 		} catch (TransactionFailed) {
 			$this->assertOriginal();
 		}
@@ -320,7 +320,7 @@ final class TransactionTest extends DatabaseTestCase
 				throw $business;
 			});
 		} catch (Throwable $failure) {
-			self::assertSame($business, $failure);
+			$this->assertSame($business, $failure);
 		}
 		$this->assertOriginal();
 	}
@@ -331,12 +331,12 @@ final class TransactionTest extends DatabaseTestCase
 				$this->db->executeStatement('DELETE FROM ' . $this->table);
 				$this->source->db_connect(false);
 			});
-			self::fail('Expected connection replacement to abort the operation.');
+			$this->fail('Expected connection replacement to abort the operation.');
 		} catch (RuntimeException $failure) {
-			self::assertStringContainsString('connection changed', $failure->getMessage());
+			$this->assertStringContainsString('connection changed', $failure->getMessage());
 			$this->assertOriginal();
 		}
-		self::assertSame(9, $this->db->transactional(static fn (): int => 9));
+		$this->assertSame(9, $this->db->transactional(static fn (): int => 9));
 	}
 
 	public function test_native_logging_middleware_can_wrap_the_wordpress_driver(): void {
@@ -344,8 +344,8 @@ final class TransactionTest extends DatabaseTestCase
 		$handler = new \Monolog\Handler\TestHandler();
 		$logger->pushHandler($handler);
 		$db = $this->withLogging($logger);
-		self::assertSame(1, (int) $db->transactional(static fn (Connection $db): mixed => $db->fetchOne('SELECT 1')));
-		self::assertTrue($handler->hasDebugThatContains('Committing transaction'));
+		$this->assertSame(1, (int) $db->transactional(static fn (Connection $db): mixed => $db->fetchOne('SELECT 1')));
+		$this->assertTrue($handler->hasDebugThatContains('Committing transaction'));
 	}
 
 	public function test_connection_loss_before_begin_rejects_the_callback(): void {
@@ -365,11 +365,11 @@ final class TransactionTest extends DatabaseTestCase
 			@$db->transactional(static function () use (&$called): void {
 				$called = true;
 			});
-			self::fail('Expected begin failure.');
+			$this->fail('Expected begin failure.');
 		} catch (RuntimeException $failure) {
-			self::assertStringContainsString('Unable to start', $failure->getMessage());
+			$this->assertStringContainsString('Unable to start', $failure->getMessage());
 		}
-		self::assertFalse($called);
+		$this->assertFalse($called);
 		$this->assertOriginal();
 	}
 
@@ -394,7 +394,7 @@ final class TransactionTest extends DatabaseTestCase
 				} catch (Throwable) {
 				}
 			});
-			self::fail('Expected terminal savepoint failure.');
+			$this->fail('Expected terminal savepoint failure.');
 		} catch (TransactionFailed) {
 			$this->assertOriginal();
 		}
@@ -412,7 +412,7 @@ final class TransactionTest extends DatabaseTestCase
 				} catch (Throwable) {
 				}
 			});
-			self::fail('Expected stale statement failure.');
+			$this->fail('Expected stale statement failure.');
 		} catch (TransactionFailed) {
 			$this->assertOriginal();
 		}

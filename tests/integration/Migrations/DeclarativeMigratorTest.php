@@ -77,7 +77,7 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 
 	private function createTableSql(): string {
 		$row = $this->observer->fetchAssociative('SHOW CREATE TABLE ' . $this->quotedEntries);
-		self::assertIsArray($row);
+		$this->assertIsArray($row);
 
 		return strtolower((string) $row['Create Table']);
 	}
@@ -94,32 +94,32 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 		$this->observer->insert($this->quotedHistory, ['version' => '20270101000100']);
 		$statuses = $this->migrator()->status();
 		$last     = end($statuses);
-		self::assertInstanceOf(\StellarWP\Foundation\Migrations\ValueObjects\MigrationStatus::class, $last);
-		self::assertSame('missing', $last->state());
+		$this->assertInstanceOf(\StellarWP\Foundation\Migrations\ValueObjects\MigrationStatus::class, $last);
+		$this->assertSame('missing', $last->state());
 		$this->expectException(MigrationInterrupted::class);
 		$this->migrator()->migrate();
 	}
 
 	public function test_rollback_on_an_empty_history_has_no_work(): void {
-		self::assertSame([], $this->migrator()->rollback());
-		self::assertFalse($this->observer->createSchemaManager()->tablesExist([$this->historyName]));
+		$this->assertSame([], $this->migrator()->rollback());
+		$this->assertFalse($this->observer->createSchemaManager()->tablesExist([$this->historyName]));
 	}
 
 	public function test_nonpositive_rollback_steps_are_rejected_without_initializing_history(): void {
 		try {
 			$this->migrator()->rollback(0);
-			self::fail('Invalid rollback count must fail.');
+			$this->fail('Invalid rollback count must fail.');
 		} catch (\InvalidArgumentException) {
-			self::assertFalse($this->observer->createSchemaManager()->tablesExist([$this->historyName]));
+			$this->assertFalse($this->observer->createSchemaManager()->tablesExist([$this->historyName]));
 		}
 	}
 
 	public function test_unknown_target_is_rejected_before_creating_history(): void {
 		try {
 			$this->migrator()->migrate('unknown');
-			self::fail('Unknown target must fail.');
+			$this->fail('Unknown target must fail.');
 		} catch (\InvalidArgumentException) {
-			self::assertFalse($this->observer->createSchemaManager()->tablesExist([$this->historyName]));
+			$this->assertFalse($this->observer->createSchemaManager()->tablesExist([$this->historyName]));
 		}
 	}
 
@@ -127,19 +127,19 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 		$this->migrator()->migrate();
 		$this->observer->delete($this->quotedHistory, ['version' => self::ALTER]);
 		$steps = $this->migrator()->rollback();
-		self::assertSame([self::BACKFILL], self::ids($steps));
-		self::assertTrue($steps[0]->reverse);
-		self::assertSame([self::CREATE], $this->history());
+		$this->assertSame([self::BACKFILL], self::ids($steps));
+		$this->assertTrue($steps[0]->reverse);
+		$this->assertSame([self::CREATE], $this->history());
 	}
 
 	public function test_target_reconciles_reversals_and_older_pending_migrations(): void {
 		$this->migrator()->migrate();
 		$this->observer->delete($this->quotedHistory, ['version' => self::ALTER]);
 		$steps = $this->migrator()->migrate(self::ALTER);
-		self::assertSame([self::BACKFILL, self::ALTER], self::ids($steps));
-		self::assertTrue($steps[0]->reverse);
-		self::assertFalse($steps[1]->reverse);
-		self::assertSame([self::CREATE, self::ALTER], $this->history());
+		$this->assertSame([self::BACKFILL, self::ALTER], self::ids($steps));
+		$this->assertTrue($steps[0]->reverse);
+		$this->assertFalse($steps[1]->reverse);
+		$this->assertSame([self::CREATE, self::ALTER], $this->history());
 	}
 
 	public function test_target_rollback_leaves_older_pending_migrations_pending(): void {
@@ -148,18 +148,18 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 
 		$steps = $this->migrator()->rollbackTo(self::ALTER);
 
-		self::assertSame([self::BACKFILL], self::ids($steps));
-		self::assertTrue($steps[0]->reverse);
-		self::assertSame([self::CREATE], $this->history());
-		self::assertSame([], $this->migrator()->rollbackTo(self::ALTER));
+		$this->assertSame([self::BACKFILL], self::ids($steps));
+		$this->assertTrue($steps[0]->reverse);
+		$this->assertSame([self::CREATE], $this->history());
+		$this->assertSame([], $this->migrator()->rollbackTo(self::ALTER));
 	}
 
 	public function test_unknown_rollback_target_is_rejected_without_creating_history(): void {
 		try {
 			$this->migrator()->rollbackTo('unknown');
-			self::fail('Unknown rollback target must fail.');
+			$this->fail('Unknown rollback target must fail.');
 		} catch (\InvalidArgumentException) {
-			self::assertFalse($this->observer->createSchemaManager()->tablesExist([$this->historyName]));
+			$this->assertFalse($this->observer->createSchemaManager()->tablesExist([$this->historyName]));
 		}
 	}
 
@@ -173,7 +173,7 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 			$this->migrator()->preview(Migrator::NONE);
 			$this->migrator()->refresh();
 			$this->migrator()->rollback(3);
-			self::assertSame([], \Doctrine\Deprecations\Deprecation::getTriggeredDeprecations());
+			$this->assertSame([], \Doctrine\Deprecations\Deprecation::getTriggeredDeprecations());
 		} finally {
 			\Doctrine\Deprecations\Deprecation::disable();
 		}
@@ -182,30 +182,30 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 	public function test_guard_free_create_alter_and_data_step_apply_once(): void {
 		$steps = $this->migrator()->migrate();
 
-		self::assertSame([self::CREATE, self::ALTER, self::BACKFILL], self::ids($steps));
-		self::assertCount(1, $steps[0]->sql, 'One CREATE TABLE statement');
-		self::assertCount(1, $steps[1]->sql, 'One ALTER TABLE statement');
-		self::assertSame([], $steps[2]->sql);
-		self::assertTrue($steps[2]->hasDataStep);
-		self::assertSame([self::CREATE, self::ALTER, self::BACKFILL], $this->history());
+		$this->assertSame([self::CREATE, self::ALTER, self::BACKFILL], self::ids($steps));
+		$this->assertCount(1, $steps[0]->sql, 'One CREATE TABLE statement');
+		$this->assertCount(1, $steps[1]->sql, 'One ALTER TABLE statement');
+		$this->assertSame([], $steps[2]->sql);
+		$this->assertTrue($steps[2]->hasDataStep);
+		$this->assertSame([self::CREATE, self::ALTER, self::BACKFILL], $this->history());
 
 		$sql = $this->createTableSql();
-		self::assertStringContainsString('`id` bigint unsigned not null auto_increment', str_replace('bigint(20)', 'bigint', $sql));
-		self::assertStringContainsString('`amount` decimal(12,4) not null default', $sql);
-		self::assertStringContainsString('`token` varbinary(16) default null', $sql);
-		self::assertStringContainsString('`created_at` datetime(6) not null default current_timestamp(6)', $sql);
-		self::assertStringContainsString('`updated_at` datetime(6) not null default current_timestamp(6) on update current_timestamp(6)', $sql);
-		self::assertStringContainsString('`note` varchar(100)', $sql);
-		self::assertStringContainsString('key `status` (`status`)', $sql);
-		self::assertStringContainsString('charset=utf8mb4', $sql);
+		$this->assertStringContainsString('`id` bigint unsigned not null auto_increment', str_replace('bigint(20)', 'bigint', $sql));
+		$this->assertStringContainsString('`amount` decimal(12,4) not null default', $sql);
+		$this->assertStringContainsString('`token` varbinary(16) default null', $sql);
+		$this->assertStringContainsString('`created_at` datetime(6) not null default current_timestamp(6)', $sql);
+		$this->assertStringContainsString('`updated_at` datetime(6) not null default current_timestamp(6) on update current_timestamp(6)', $sql);
+		$this->assertStringContainsString('`note` varchar(100)', $sql);
+		$this->assertStringContainsString('key `status` (`status`)', $sql);
+		$this->assertStringContainsString('charset=utf8mb4', $sql);
 
-		self::assertSame([], $this->migrator()->migrate(), 'Nothing pending');
-		self::assertSame([], $this->migrator()->preview(), 'A second run declares no DDL for timestamps, decimals, or binary columns');
+		$this->assertSame([], $this->migrator()->migrate(), 'Nothing pending');
+		$this->assertSame([], $this->migrator()->preview(), 'A second run declares no DDL for timestamps, decimals, or binary columns');
 
 		$status = $this->migrator()->status();
-		self::assertSame(['applied', 'applied', 'applied'], array_map(static fn ($row): string => $row->state(), $status));
-		self::assertSame('Add an optional note to entries', $status[1]->description);
-		self::assertNotNull($status[0]->appliedAt);
+		$this->assertSame(['applied', 'applied', 'applied'], array_map(static fn ($row): string => $row->state(), $status));
+		$this->assertSame('Add an optional note to entries', $status[1]->description);
+		$this->assertNotNull($status[0]->appliedAt);
 	}
 
 	public function test_created_tables_use_the_wordpress_collation(): void {
@@ -214,11 +214,11 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 		$this->source->collate = 'utf8mb4_bin';
 		$this->migrator()->migrate(self::CREATE);
 
-		self::assertSame('utf8mb4_bin', $this->observer->fetchOne(
+		$this->assertSame('utf8mb4_bin', $this->observer->fetchOne(
 			'SELECT TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
 			[$this->entriesName],
 		));
-		self::assertSame([], $this->migrator()->preview(self::CREATE));
+		$this->assertSame([], $this->migrator()->preview(self::CREATE));
 	}
 
 	public function test_data_step_runs_after_ddl_and_is_repeat_safe(): void {
@@ -228,7 +228,7 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 
 		$this->migrator()->migrate();
 
-		self::assertSame(['active', 'archived'], $this->observer->fetchFirstColumn('SELECT status FROM ' . $this->quotedEntries . ' ORDER BY id'));
+		$this->assertSame(['active', 'archived'], $this->observer->fetchFirstColumn('SELECT status FROM ' . $this->quotedEntries . ' ORDER BY id'));
 	}
 
 	public function test_retry_after_ledger_failure_records_without_repeating_ddl(): void {
@@ -237,21 +237,21 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 
 		try {
 			$this->migrator()->migrate(self::ALTER);
-			self::fail('Expected the ledger insert to fail.');
+			$this->fail('Expected the ledger insert to fail.');
 		} catch (\StellarWP\Foundation\Migrations\Exceptions\LedgerFailure $failure) {
-			self::assertStringContainsString('History write failure', $failure->getPrevious()?->getMessage() ?? '');
+			$this->assertStringContainsString('History write failure', $failure->getPrevious()?->getMessage() ?? '');
 		} finally {
 			$this->observer->executeStatement('DROP TRIGGER ' . $trigger);
 		}
-		self::assertSame([self::CREATE], $this->history(), 'DDL committed but the ledger did not');
+		$this->assertSame([self::CREATE], $this->history(), 'DDL committed but the ledger did not');
 		$this->observer->insert($this->quotedEntries, ['name' => 'Survivor', 'status' => 'active', 'note' => 'Keep this']);
 
 		$steps = $this->migrator()->migrate(self::ALTER);
 
-		self::assertSame([self::ALTER], self::ids($steps));
-		self::assertSame([], $steps[0]->sql, 'The retry detects the completed column and issues no DDL');
-		self::assertSame([self::CREATE, self::ALTER], $this->history());
-		self::assertSame('Keep this', $this->observer->fetchOne('SELECT note FROM ' . $this->quotedEntries));
+		$this->assertSame([self::ALTER], self::ids($steps));
+		$this->assertSame([], $steps[0]->sql, 'The retry detects the completed column and issues no DDL');
+		$this->assertSame([self::CREATE, self::ALTER], $this->history());
+		$this->assertSame('Keep this', $this->observer->fetchOne('SELECT note FROM ' . $this->quotedEntries));
 	}
 
 	public function test_create_retry_after_ledger_failure_preserves_rows(): void {
@@ -260,23 +260,23 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 
 		try {
 			$this->migrator()->migrate(self::CREATE);
-			self::fail('Expected the ledger insert to fail.');
+			$this->fail('Expected the ledger insert to fail.');
 		} catch (\StellarWP\Foundation\Migrations\Exceptions\LedgerFailure) {
 			// The table exists; history is empty.
 		} finally {
 			$this->observer->executeStatement('DROP TRIGGER ' . $trigger);
 		}
-		self::assertSame([], $this->history());
+		$this->assertSame([], $this->history());
 		$this->observer->insert($this->quotedEntries, ['name' => 'Survivor', 'status' => 'active']);
 
 		$steps = $this->migrator()->migrate(self::CREATE);
 
-		self::assertSame([], $steps[0]->sql);
-		self::assertSame([self::CREATE], $this->history());
-		self::assertSame(['Survivor'], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->quotedEntries));
+		$this->assertSame([], $steps[0]->sql);
+		$this->assertSame([self::CREATE], $this->history());
+		$this->assertSame(['Survivor'], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->quotedEntries));
 		$table = $this->observer->createSchemaManager()->introspectTable($this->entriesName);
-		self::assertSame('Application entries', $table->getComment());
-		self::assertSame('Current processing state', $table->getColumn('status')->getComment());
+		$this->assertSame('Application entries', $table->getComment());
+		$this->assertSame('Current processing state', $table->getColumn('status')->getComment());
 	}
 
 	public function test_undeclared_column_change_stops_the_run_and_names_the_column(): void {
@@ -285,13 +285,13 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 
 		try {
 			$this->migrator()->migrate(self::ALTER);
-			self::fail('Expected drift to be rejected.');
+			$this->fail('Expected drift to be rejected.');
 		} catch (IncompatibleSchema $failure) {
-			self::assertStringContainsString(self::ALTER, $failure->getMessage());
-			self::assertStringContainsString('column note differs from its declaration', $failure->getMessage());
+			$this->assertStringContainsString(self::ALTER, $failure->getMessage());
+			$this->assertStringContainsString('column note differs from its declaration', $failure->getMessage());
 		}
-		self::assertSame([self::CREATE], $this->history());
-		self::assertStringContainsString('`note` int', $this->createTableSql(), 'The runner never repaired the column silently');
+		$this->assertSame([self::CREATE], $this->history());
+		$this->assertStringContainsString('`note` int', $this->createTableSql(), 'The runner never repaired the column silently');
 	}
 
 	public function test_incompatible_existing_table_stops_a_create_migration(): void {
@@ -299,11 +299,11 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 
 		try {
 			$this->migrator()->migrate(self::CREATE);
-			self::fail('Expected the existing table to be rejected.');
+			$this->fail('Expected the existing table to be rejected.');
 		} catch (IncompatibleSchema $failure) {
-			self::assertStringContainsString('differs from the declared initial definition', $failure->getMessage());
+			$this->assertStringContainsString('differs from the declared initial definition', $failure->getMessage());
 		}
-		self::assertSame([], $this->history());
+		$this->assertSame([], $this->history());
 	}
 
 	public function test_unrelated_columns_and_indexes_survive(): void {
@@ -313,22 +313,22 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 		$this->migrator()->migrate();
 
 		$sql = $this->createTableSql();
-		self::assertStringContainsString('`external_value` int', $sql);
-		self::assertStringContainsString('key `external_lookup`', $sql);
-		self::assertStringContainsString('`note` varchar(100)', $sql);
-		self::assertSame([], $this->migrator()->preview());
+		$this->assertStringContainsString('`external_value` int', $sql);
+		$this->assertStringContainsString('key `external_lookup`', $sql);
+		$this->assertStringContainsString('`note` varchar(100)', $sql);
+		$this->assertSame([], $this->migrator()->preview());
 	}
 
 	public function test_preview_reports_exactly_the_sql_that_migrate_executes(): void {
 		$preview  = $this->migrator()->preview();
 		$executed = $this->migrator()->migrate();
 
-		self::assertSame(self::ids($preview), self::ids($executed));
-		self::assertSame(
+		$this->assertSame(self::ids($preview), self::ids($executed));
+		$this->assertSame(
 			array_map(static fn (Step $step): array => $step->sql, $preview),
 			array_map(static fn (Step $step): array => $step->sql, $executed),
 		);
-		self::assertSame([], $this->migrator()->preview());
+		$this->assertSame([], $this->migrator()->preview());
 	}
 
 	public function test_rollback_by_step_and_by_target(): void {
@@ -336,19 +336,19 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 		$this->observer->insert($this->quotedEntries, ['name' => 'Original', 'status' => 'active', 'note' => 'n']);
 
 		$steps = $this->migrator()->rollback();
-		self::assertSame([self::BACKFILL], self::ids($steps));
-		self::assertTrue($steps[0]->reverse);
-		self::assertSame([self::CREATE, self::ALTER], $this->history());
+		$this->assertSame([self::BACKFILL], self::ids($steps));
+		$this->assertTrue($steps[0]->reverse);
+		$this->assertSame([self::CREATE, self::ALTER], $this->history());
 
 		$steps = $this->migrator()->rollbackTo(self::CREATE);
-		self::assertSame([self::ALTER], self::ids($steps));
-		self::assertStringNotContainsString('`note`', $this->createTableSql());
-		self::assertSame(['Original'], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->quotedEntries));
-		self::assertSame([self::CREATE], $this->history());
+		$this->assertSame([self::ALTER], self::ids($steps));
+		$this->assertStringNotContainsString('`note`', $this->createTableSql());
+		$this->assertSame(['Original'], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->quotedEntries));
+		$this->assertSame([self::CREATE], $this->history());
 
 		$this->migrator()->rollbackTo(Migrator::NONE);
-		self::assertSame([], $this->history());
-		self::assertFalse($this->observer->createSchemaManager()->tablesExist([$this->entriesName]));
+		$this->assertSame([], $this->history());
+		$this->assertFalse($this->observer->createSchemaManager()->tablesExist([$this->entriesName]));
 	}
 
 	public function test_history_missing_a_dependency_is_reported_not_repaired(): void {
@@ -357,24 +357,24 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 
 		try {
 			$this->migrator()->migrate(self::CREATE);
-			self::fail('Expected the inconsistent ledger to be reported.');
+			$this->fail('Expected the inconsistent ledger to be reported.');
 		} catch (MigrationInterrupted $failure) {
-			self::assertStringContainsString(self::ALTER, $failure->getMessage());
-			self::assertStringContainsString('repair the ledger', $failure->getMessage());
+			$this->assertStringContainsString(self::ALTER, $failure->getMessage());
+			$this->assertStringContainsString('repair the ledger', $failure->getMessage());
 		}
-		self::assertSame([self::ALTER, self::BACKFILL], $this->history(), 'Nothing was executed or recorded');
+		$this->assertSame([self::ALTER, self::BACKFILL], $this->history(), 'Nothing was executed or recorded');
 	}
 
 	public function test_another_session_holding_the_lock_blocks_the_run(): void {
 		$name = hash('sha256', constant('DB_NAME') . "\0" . $this->historyName);
-		self::assertSame(1, (int) $this->observer->fetchOne('SELECT GET_LOCK(?, 0)', [$name]));
+		$this->assertSame(1, (int) $this->observer->fetchOne('SELECT GET_LOCK(?, 0)', [$name]));
 
 		try {
 			$this->migrator()->migrate();
-			self::fail('Expected contention.');
+			$this->fail('Expected contention.');
 		} catch (DatabaseException $failure) {
-			self::assertInstanceOf(MigrationAlreadyRunning::class, $failure);
-			self::assertFalse($this->observer->createSchemaManager()->tablesExist([$this->historyName]));
+			$this->assertInstanceOf(MigrationAlreadyRunning::class, $failure);
+			$this->assertFalse($this->observer->createSchemaManager()->tablesExist([$this->historyName]));
 		} finally {
 			$this->observer->fetchOne('SELECT RELEASE_LOCK(?)', [$name]);
 		}

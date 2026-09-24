@@ -77,23 +77,23 @@ final class DeclarativeMigratorEdgeCaseTest extends DatabaseTestCase
 
 	private function createTableSql(): string {
 		$row = $this->observer->fetchAssociative('SHOW CREATE TABLE ' . $this->quotedEntries);
-		self::assertIsArray($row);
+		$this->assertIsArray($row);
 
 		return strtolower((string) $row['Create Table']);
 	}
 
 	public function test_rollback_honors_an_irreversible_down(): void {
 		$this->migrator()->migrate(AddEntryArchivedFlag::ID);
-		self::assertStringContainsString('`archived`', $this->createTableSql());
+		$this->assertStringContainsString('`archived`', $this->createTableSql());
 
 		try {
 			$this->migrator()->rollback();
-			self::fail('Expected the author\'s refusal to reverse.');
+			$this->fail('Expected the author\'s refusal to reverse.');
 		} catch (IrreversibleMigration $failure) {
-			self::assertStringContainsString(AddEntryArchivedFlag::ID, $failure->getMessage());
+			$this->assertStringContainsString(AddEntryArchivedFlag::ID, $failure->getMessage());
 		}
-		self::assertContains(AddEntryArchivedFlag::ID, $this->history(), 'The refused migration stays recorded');
-		self::assertStringContainsString('`archived`', $this->createTableSql(), 'No destructive DDL was reconstructed from up()');
+		$this->assertContains(AddEntryArchivedFlag::ID, $this->history(), 'The refused migration stays recorded');
+		$this->assertStringContainsString('`archived`', $this->createTableSql(), 'No destructive DDL was reconstructed from up()');
 	}
 
 	public function test_unrelated_foreign_key_survives_an_alteration(): void {
@@ -103,44 +103,44 @@ final class DeclarativeMigratorEdgeCaseTest extends DatabaseTestCase
 		$steps = $this->migrator()->migrate(AddEntryNote::ID);
 
 		foreach ($steps as $step) {
-			self::assertStringNotContainsStringIgnoringCase('foreign key', implode("\n", $step->sql));
+			$this->assertStringNotContainsStringIgnoringCase('foreign key', implode("\n", $step->sql));
 		}
-		self::assertStringContainsString('constraint `fk_parent` foreign key', $this->createTableSql());
-		self::assertStringContainsString('`note`', $this->createTableSql());
+		$this->assertStringContainsString('constraint `fk_parent` foreign key', $this->createTableSql());
+		$this->assertStringContainsString('`note`', $this->createTableSql());
 	}
 
 	public function test_change_replaces_the_complete_column_definition_and_down_restores_it(): void {
 		$this->migrator()->migrate(WidenEntryName::ID);
 		$column = $this->observer->createSchemaManager()->introspectTable(trim($this->quotedEntries, '`'))->getColumn('name');
-		self::assertSame(120, $column->getLength());
-		self::assertFalse($column->getNotnull());
-		self::assertStringContainsString("comment='imported entries'", $this->createTableSql());
+		$this->assertSame(120, $column->getLength());
+		$this->assertFalse($column->getNotnull());
+		$this->assertStringContainsString("comment='imported entries'", $this->createTableSql());
 
 		$steps = $this->migrator()->rollback();
 
-		self::assertSame([WidenEntryName::ID], array_map(static fn (Step $step): string => $step->id, $steps));
+		$this->assertSame([WidenEntryName::ID], array_map(static fn (Step $step): string => $step->id, $steps));
 		$column = $this->observer->createSchemaManager()->introspectTable(trim($this->quotedEntries, '`'))->getColumn('name');
-		self::assertSame(50, $column->getLength());
-		self::assertTrue($column->getNotnull());
-		self::assertStringNotContainsString('imported entries', $this->createTableSql());
+		$this->assertSame(50, $column->getLength());
+		$this->assertTrue($column->getNotnull());
+		$this->assertStringNotContainsString('imported entries', $this->createTableSql());
 	}
 
 	public function test_timestamp_attribute_changes_emit_sql_and_rerun_cleanly(): void {
 		$this->migrator()->migrate(WidenEntryName::ID);
-		self::assertStringNotContainsString('`created_at` datetime(6) not null default current_timestamp(6) on update', $this->createTableSql());
+		$this->assertStringNotContainsString('`created_at` datetime(6) not null default current_timestamp(6) on update', $this->createTableSql());
 
 		$steps = $this->migrator()->migrate(TrackEntryUpdates::ID);
 
 		$last = end($steps);
-		self::assertInstanceOf(Step::class, $last);
-		self::assertSame(TrackEntryUpdates::ID, $last->id);
-		self::assertCount(1, $last->sql);
-		self::assertStringContainsStringIgnoringCase('MODIFY', $last->sql[0]);
-		self::assertStringContainsString('`created_at` datetime(6) not null default current_timestamp(6) on update current_timestamp(6)', $this->createTableSql());
-		self::assertSame([], $this->migrator()->preview(TrackEntryUpdates::ID), 'Attributes DBAL cannot compare still produce no DDL on rerun');
+		$this->assertInstanceOf(Step::class, $last);
+		$this->assertSame(TrackEntryUpdates::ID, $last->id);
+		$this->assertCount(1, $last->sql);
+		$this->assertStringContainsStringIgnoringCase('MODIFY', $last->sql[0]);
+		$this->assertStringContainsString('`created_at` datetime(6) not null default current_timestamp(6) on update current_timestamp(6)', $this->createTableSql());
+		$this->assertSame([], $this->migrator()->preview(TrackEntryUpdates::ID), 'Attributes DBAL cannot compare still produce no DDL on rerun');
 
 		$this->migrator()->rollback();
-		self::assertStringContainsString('`created_at` datetime(6) not null default current_timestamp(6),', $this->createTableSql());
+		$this->assertStringContainsString('`created_at` datetime(6) not null default current_timestamp(6),', $this->createTableSql());
 	}
 
 	public function test_undeclared_timestamp_drift_is_rejected(): void {
@@ -149,12 +149,12 @@ final class DeclarativeMigratorEdgeCaseTest extends DatabaseTestCase
 
 		try {
 			$this->migrator()->migrate(WidenEntryName::ID);
-			self::fail('Expected the undeclared ON UPDATE to be rejected.');
+			$this->fail('Expected the undeclared ON UPDATE to be rejected.');
 		} catch (IncompatibleSchema $failure) {
-			self::assertStringContainsString('created_at', $failure->getMessage());
-			self::assertStringContainsString('ON UPDATE', $failure->getMessage());
+			$this->assertStringContainsString('created_at', $failure->getMessage());
+			$this->assertStringContainsString('ON UPDATE', $failure->getMessage());
 		}
-		self::assertNotContains(WidenEntryName::ID, $this->history());
+		$this->assertNotContains(WidenEntryName::ID, $this->history());
 	}
 
 	public function test_preview_sees_existing_tables_from_later_steps_and_creates_no_ledger(): void {
@@ -163,18 +163,18 @@ final class DeclarativeMigratorEdgeCaseTest extends DatabaseTestCase
 
 		$preview = $this->migrator()->preview();
 
-		self::assertSame(
+		$this->assertSame(
 			[CreateEntries::ID, CreateEntryTags::ID, DropEntryTags::ID, RecreateEntryTags::ID, AddEntryNote::ID, IndexEntryNote::ID, ReplaceNoteLookup::ID, AddEntryArchivedFlag::ID, WidenEntryName::ID, TrackEntryUpdates::ID, ReduceCreatedAtPrecision::ID],
 			array_map(static fn (Step $step): string => $step->id, $preview),
 		);
-		self::assertCount(1, $preview[0]->sql, 'Entries is created');
-		self::assertSame([], $preview[1]->sql, 'Tags already matches its declaration');
-		self::assertStringContainsStringIgnoringCase('DROP TABLE', $preview[2]->sql[0]);
-		self::assertStringContainsStringIgnoringCase('CREATE TABLE', $preview[3]->sql[0], 'Preview remembers the simulated drop and does not reload the old table');
-		self::assertFalse($this->observer->createSchemaManager()->tablesExist([$this->historyName]), 'Preview executes nothing, not even ledger creation');
+		$this->assertCount(1, $preview[0]->sql, 'Entries is created');
+		$this->assertSame([], $preview[1]->sql, 'Tags already matches its declaration');
+		$this->assertStringContainsStringIgnoringCase('DROP TABLE', $preview[2]->sql[0]);
+		$this->assertStringContainsStringIgnoringCase('CREATE TABLE', $preview[3]->sql[0], 'Preview remembers the simulated drop and does not reload the old table');
+		$this->assertFalse($this->observer->createSchemaManager()->tablesExist([$this->historyName]), 'Preview executes nothing, not even ledger creation');
 
 		$executed = $this->migrator()->migrate();
-		self::assertSame(
+		$this->assertSame(
 			array_map(static fn (Step $step): array => $step->sql, $preview),
 			array_map(static fn (Step $step): array => $step->sql, $executed),
 		);
@@ -188,10 +188,10 @@ final class DeclarativeMigratorEdgeCaseTest extends DatabaseTestCase
 		$steps = $this->migrator()->migrate(ReplaceNoteLookup::ID);
 
 		$last = end($steps);
-		self::assertInstanceOf(Step::class, $last);
-		self::assertCount(1, $last->sql, 'Only the creation half remains');
-		self::assertStringContainsString('unique key `note_lookup` (`note`)', $this->createTableSql());
-		self::assertContains(ReplaceNoteLookup::ID, $this->history());
+		$this->assertInstanceOf(Step::class, $last);
+		$this->assertCount(1, $last->sql, 'Only the creation half remains');
+		$this->assertStringContainsString('unique key `note_lookup` (`note`)', $this->createTableSql());
+		$this->assertContains(ReplaceNoteLookup::ID, $this->history());
 	}
 
 	public function test_conflicting_existing_index_stops_an_addition(): void {
@@ -200,12 +200,12 @@ final class DeclarativeMigratorEdgeCaseTest extends DatabaseTestCase
 
 		try {
 			$this->migrator()->migrate(IndexEntryNote::ID);
-			self::fail('Expected the conflicting index to be rejected.');
+			$this->fail('Expected the conflicting index to be rejected.');
 		} catch (IncompatibleSchema $failure) {
-			self::assertStringContainsString('existing index note_lookup conflicts', $failure->getMessage());
+			$this->assertStringContainsString('existing index note_lookup conflicts', $failure->getMessage());
 		}
-		self::assertStringContainsString('unique key `note_lookup` (`name`)', $this->createTableSql(), 'The uniqueness guarantee was not replaced');
-		self::assertNotContains(IndexEntryNote::ID, $this->history());
+		$this->assertStringContainsString('unique key `note_lookup` (`name`)', $this->createTableSql(), 'The uniqueness guarantee was not replaced');
+		$this->assertNotContains(IndexEntryNote::ID, $this->history());
 	}
 
 	public function test_precision_and_default_change_together_emit_one_statement(): void {
@@ -214,22 +214,22 @@ final class DeclarativeMigratorEdgeCaseTest extends DatabaseTestCase
 		$steps = $this->migrator()->migrate(ReduceCreatedAtPrecision::ID);
 
 		$last = end($steps);
-		self::assertInstanceOf(Step::class, $last);
-		self::assertCount(1, $last->sql, 'Doctrine\'s CHANGE already carries the complete definition; no supplemental MODIFY');
-		self::assertStringContainsString('`created_at` datetime(3) not null default current_timestamp(3) on update current_timestamp(3)', $this->createTableSql());
-		self::assertSame([], $this->migrator()->preview());
+		$this->assertInstanceOf(Step::class, $last);
+		$this->assertCount(1, $last->sql, 'Doctrine\'s CHANGE already carries the complete definition; no supplemental MODIFY');
+		$this->assertStringContainsString('`created_at` datetime(3) not null default current_timestamp(3) on update current_timestamp(3)', $this->createTableSql());
+		$this->assertSame([], $this->migrator()->preview());
 	}
 
 	public function test_rollback_selects_its_target_under_the_lock(): void {
 		$this->migrator()->migrate(AddEntryNote::ID);
 		$name = hash('sha256', constant('DB_NAME') . "\0" . $this->historyName);
-		self::assertSame(1, (int) $this->observer->fetchOne('SELECT GET_LOCK(?, 0)', [$name]));
+		$this->assertSame(1, (int) $this->observer->fetchOne('SELECT GET_LOCK(?, 0)', [$name]));
 
 		try {
 			$this->migrator()->rollback();
-			self::fail('Expected contention before any history read.');
+			$this->fail('Expected contention before any history read.');
 		} catch (MigrationAlreadyRunning) {
-			self::assertContains(AddEntryNote::ID, $this->history());
+			$this->assertContains(AddEntryNote::ID, $this->history());
 		} finally {
 			$this->observer->fetchOne('SELECT RELEASE_LOCK(?)', [$name]);
 		}

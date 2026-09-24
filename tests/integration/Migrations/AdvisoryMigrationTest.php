@@ -84,7 +84,7 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 	}
 
 	private function assertLockAvailable(?string $resource = null): void {
-		self::assertSame(1, (int) $this->observer->fetchOne('SELECT IS_FREE_LOCK(?)', [$this->lockName($resource)]));
+		$this->assertSame(1, (int) $this->observer->fetchOne('SELECT IS_FREE_LOCK(?)', [$this->lockName($resource)]));
 	}
 
 	public function test_an_unclosed_data_transaction_is_rolled_back_without_recording_success(): void {
@@ -93,12 +93,12 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 				$db->beginTransaction();
 				$db->executeStatement("UPDATE {$this->table} SET name = 'Uncommitted'");
 			})->migrate();
-			self::fail('A callback cannot return success with an open transaction.');
+			$this->fail('A callback cannot return success with an open transaction.');
 		} catch (MigrationInterrupted $failure) {
-			self::assertStringContainsString('left a transaction open', $failure->getMessage());
+			$this->assertStringContainsString('left a transaction open', $failure->getMessage());
 			$this->assertOriginal();
-			self::assertFalse($this->db->isTransactionActive());
-			self::assertSame(0, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $this->ledger));
+			$this->assertFalse($this->db->isTransactionActive());
+			$this->assertSame(0, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $this->ledger));
 			$this->assertLockAvailable();
 		}
 	}
@@ -113,28 +113,28 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 
 			try {
 				$second->migrate();
-				self::fail('The second session must not run before history is recorded.');
+				$this->fail('The second session must not run before history is recorded.');
 			} catch (MigrationAlreadyRunning) {
-				self::assertSame(0, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->ledger}"));
+				$this->assertSame(0, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->ledger}"));
 			}
 		});
 		$first->migrate();
-		self::assertSame([], $second->migrate());
-		self::assertSame('Original|once', $this->observer->fetchOne("SELECT name FROM {$this->table}"));
-		self::assertSame(1, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->ledger}"));
+		$this->assertSame([], $second->migrate());
+		$this->assertSame('Original|once', $this->observer->fetchOne("SELECT name FROM {$this->table}"));
+		$this->assertSame(1, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->ledger}"));
 		$this->assertLockAvailable();
 	}
 
 	public function test_contention_does_not_create_the_history_table(): void {
 		$name = $this->lockName();
-		self::assertSame(1, (int) $this->observer->fetchOne('SELECT GET_LOCK(?, 0)', [$name]));
+		$this->assertSame(1, (int) $this->observer->fetchOne('SELECT GET_LOCK(?, 0)', [$name]));
 
 		try {
 			$this->runner($this->container, static function (): void {
 			})->migrate();
-			self::fail('Expected contention.');
+			$this->fail('Expected contention.');
 		} catch (MigrationAlreadyRunning) {
-			self::assertFalse($this->observer->createSchemaManager()->tablesExist([$this->resource]));
+			$this->assertFalse($this->observer->createSchemaManager()->tablesExist([$this->resource]));
 		} finally {
 			$this->observer->fetchOne('SELECT RELEASE_LOCK(?)', [$name]);
 		}
@@ -170,14 +170,16 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 			$db->transactional(function (Connection $db): void {
 				$db->executeStatement("UPDATE {$this->table} SET name = 'Committed'");
 			});
-			self::assertSame(0, (int) $this->observer->fetchOne('SELECT IS_FREE_LOCK(?)', [$this->lockName()]));
+			$isFree = (int) $this->observer->fetchOne('SELECT IS_FREE_LOCK(?)', [$this->lockName()]);
+			$this->assertSame(0, $isFree);
 
 			try {
 				$db->transactional(static function (): void {
 					throw new RuntimeException('Discard this inner transaction');
 				});
 			} catch (RuntimeException) {
-				self::assertSame(0, (int) $this->observer->fetchOne('SELECT IS_FREE_LOCK(?)', [$this->lockName()]));
+				$isFree = (int) $this->observer->fetchOne('SELECT IS_FREE_LOCK(?)', [$this->lockName()]);
+				$this->assertSame(0, $isFree);
 			}
 		})->migrate();
 		$this->assertLockAvailable();
@@ -194,15 +196,15 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 					// Simulate migration code that catches and ignores a lost connection.
 				}
 			})->migrate();
-			self::fail('A caught connection loss must remain terminal.');
+			$this->fail('A caught connection loss must remain terminal.');
 		} catch (MigrationInterrupted) {
 			$this->assertOriginal();
-			self::assertSame(0, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->ledger}"));
+			$this->assertSame(0, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->ledger}"));
 			$this->assertLockAvailable();
 		}
 		$this->runner($this->contender, static function (): void {
 		})->migrate();
-		self::assertSame(1, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->ledger}"));
+		$this->assertSame(1, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->ledger}"));
 	}
 
 	public function test_business_exception_survives_lost_connection_during_cleanup(): void {
@@ -214,24 +216,24 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 
 				throw $expected;
 			})->migrate();
-			self::fail('Expected the original exception.');
+			$this->fail('Expected the original exception.');
 		} catch (Throwable $failure) {
-			self::assertSame($expected, $failure);
+			$this->assertSame($expected, $failure);
 			$this->assertLockAvailable();
 		}
 	}
 
 	public function test_site_change_blocks_the_ledger_and_releases_only_the_original_lock(): void {
-		$site = self::factory()->blog->create();
-		self::assertIsInt($site);
+		$site = $this->factory()->blog->create();
+		$this->assertIsInt($site);
 
 		try {
 			$this->runner($this->container, static function () use ($site): void {
 				switch_to_blog($site);
 			})->migrate();
-			self::fail('A migration cannot change WordPress sites.');
+			$this->fail('A migration cannot change WordPress sites.');
 		} catch (MigrationInterrupted) {
-			self::assertSame(0, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->ledger}"));
+			$this->assertSame(0, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->ledger}"));
 			$this->assertLockAvailable();
 		} finally {
 			restore_current_blog();
@@ -243,9 +245,9 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 			$this->runner($this->container, function (): void {
 				$this->native($this->source)->query('SELECT RELEASE_ALL_LOCKS()');
 			})->migrate();
-			self::fail('A normal return must not hide lost ownership.');
+			$this->fail('A normal return must not hide lost ownership.');
 		} catch (MigrationInterrupted) {
-			self::assertSame(0, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->ledger}"));
+			$this->assertSame(0, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->ledger}"));
 			$this->assertLockAvailable();
 		}
 	}
@@ -260,14 +262,14 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 				try {
 					$db->executeStatement("UPDATE {$this->table} SET name = 'Wrong'");
 				} catch (Throwable $failure) {
-					self::assertInstanceOf(\StellarWP\Foundation\Database\Exceptions\AdvisoryLockInterrupted::class, $failure);
+					$this->assertInstanceOf(\StellarWP\Foundation\Database\Exceptions\AdvisoryLockInterrupted::class, $failure);
 					$this->source->__set('dbh', $native);
 				}
 			})->migrate();
-			self::fail('Restoring the connection must not reset terminal failure.');
+			$this->fail('Restoring the connection must not reset terminal failure.');
 		} catch (MigrationInterrupted) {
 			$this->assertOriginal();
-			self::assertSame(0, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->ledger}"));
+			$this->assertSame(0, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->ledger}"));
 			$this->assertLockAvailable();
 		} finally {
 			$this->source->__set('dbh', $native);
@@ -285,9 +287,9 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 					// The transaction ends, but this migration must remain failed.
 				}
 			})->migrate();
-			self::fail('A caught SQL failure must prevent the history write.');
+			$this->fail('A caught SQL failure must prevent the history write.');
 		} catch (MigrationInterrupted) {
-			self::assertSame(0, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->ledger}"));
+			$this->assertSame(0, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->ledger}"));
 			$this->assertOriginal();
 			$this->assertLockAvailable();
 		}
@@ -298,12 +300,12 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 			$this->runner($this->container, static function (): void {
 				throw new RuntimeException('Migration failed');
 			})->migrate();
-			self::fail('Expected failure.');
+			$this->fail('Expected failure.');
 		} catch (RuntimeException $failure) {
-			self::assertSame('Migration failed', $failure->getMessage());
+			$this->assertSame('Migration failed', $failure->getMessage());
 			$this->assertLockAvailable();
 		}
-		self::assertCount(1, $this->runner($this->container, static function (): void {
+		$this->assertCount(1, $this->runner($this->container, static function (): void {
 		})->migrate());
 	}
 
@@ -315,10 +317,10 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 		try {
 			$this->runner($this->container, static function (): void {
 			})->migrate();
-			self::fail('Expected an ambient transaction rejection.');
+			$this->fail('Expected an ambient transaction rejection.');
 		} catch (Throwable) {
 			$this->assertOriginal();
-			self::assertFalse($this->observer->createSchemaManager()->tablesExist([$this->resource]));
+			$this->assertFalse($this->observer->createSchemaManager()->tablesExist([$this->resource]));
 			$this->assertLockAvailable();
 		} finally {
 			$native->rollback();
@@ -332,10 +334,10 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 		try {
 			$this->runner($this->container, static function (): void {
 			})->migrate();
-			self::fail('Expected disabled autocommit rejection.');
+			$this->fail('Expected disabled autocommit rejection.');
 		} catch (RuntimeException $failure) {
-			self::assertInstanceOf(MigrationInterrupted::class, $failure);
-			self::assertStringContainsString('autocommit', $failure->getPrevious()?->getMessage() ?? '');
+			$this->assertInstanceOf(MigrationInterrupted::class, $failure);
+			$this->assertStringContainsString('autocommit', $failure->getPrevious()?->getMessage() ?? '');
 			$this->assertLockAvailable();
 		} finally {
 			$native->autocommit(true);
@@ -347,9 +349,9 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 			try {
 				$this->runner($this->container, static function (): void {
 				})->migrate();
-				self::fail('Expected nested migration rejection.');
+				$this->fail('Expected nested migration rejection.');
 			} catch (RuntimeException $failure) {
-				self::assertSame('Start advisory-locked work outside an existing transaction or locked operation.', $failure->getMessage());
+				$this->assertSame('Start advisory-locked work outside an existing transaction or locked operation.', $failure->getMessage());
 			}
 		})->migrate();
 		$this->assertLockAvailable();
@@ -360,9 +362,9 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 		});
 		$this->source->set_prefix($this->source->prefix . 'changed_');
 		$ledger = $this->privateTable($this->suffix . '_ledger');
-		self::assertCount(1, $runner->migrate());
-		self::assertSame(1, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $ledger));
-		self::assertFalse($this->observer->createSchemaManager()->tablesExist([$this->resource]));
+		$this->assertCount(1, $runner->migrate());
+		$this->assertSame(1, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $ledger));
+		$this->assertFalse($this->observer->createSchemaManager()->tablesExist([$this->resource]));
 	}
 
 	public function test_missing_acquisition_acknowledgement_discards_the_session_and_its_lock(): void {
@@ -372,10 +374,10 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 		try {
 			$this->runner($this->container, static function (): void {
 			})->migrate();
-			self::fail('A lost acquisition reply cannot permit execution.');
+			$this->fail('A lost acquisition reply cannot permit execution.');
 		} catch (RuntimeException $failure) {
-			self::assertSame('Lost advisory lock acquisition reply', $failure->getMessage());
-			self::assertFalse($this->observer->createSchemaManager()->tablesExist([$this->resource]));
+			$this->assertSame('Lost advisory lock acquisition reply', $failure->getMessage());
+			$this->assertFalse($this->observer->createSchemaManager()->tablesExist([$this->resource]));
 			$this->assertLockAvailable();
 		}
 	}
@@ -389,9 +391,9 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 
 				throw $expected;
 			})->migrate();
-			self::fail('Expected the business exception.');
+			$this->fail('Expected the business exception.');
 		} catch (Throwable $failure) {
-			self::assertSame($expected, $failure);
+			$this->assertSame($expected, $failure);
 			$this->assertLockAvailable();
 		}
 	}

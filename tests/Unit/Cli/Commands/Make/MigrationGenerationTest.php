@@ -49,31 +49,31 @@ final class MigrationGenerationTest extends TestCase
 
 	public function test_combined_creation_then_alteration_has_ordered_file_identities_without_provider_edits(): void {
 		$table = $this->table();
-		self::assertSame(0, $table->execute(['name' => 'reports', '--migration' => true]), $table->getDisplay());
-		self::assertStringNotContainsString('Runtime dependency missing', $table->getDisplay());
+		$this->assertSame(0, $table->execute(['name' => 'reports', '--migration' => true]), $table->getDisplay());
+		$this->assertStringNotContainsString('Runtime dependency missing', $table->getDisplay());
 		$createFile = $this->files()[0];
 		$create     = (string) file_get_contents($createFile);
-		self::assertMatchesRegularExpression('/[0-9]{14}_create_reports_table.php$/', $createFile);
-		self::assertStringContainsString('extends Migration', $create);
-		self::assertStringContainsString('return new class extends Migration', $create);
-		self::assertStringNotContainsString('Reports_Table', $create);
-		self::assertStringContainsString("\$schema->create( 'reports' )", $create);
-		self::assertStringContainsString("\$schema->drop( 'reports' )", $create);
-		self::assertStringNotContainsString('const string ID', $create);
-		self::assertStringNotContainsString('function id()', $create);
-		self::assertFileDoesNotExist($this->root . '/src/Database/Provider.php');
+		$this->assertMatchesRegularExpression('/[0-9]{14}_create_reports_table.php$/', $createFile);
+		$this->assertStringContainsString('extends Migration', $create);
+		$this->assertStringContainsString('return new class extends Migration', $create);
+		$this->assertStringNotContainsString('Reports_Table', $create);
+		$this->assertStringContainsString("\$schema->create( 'reports' )", $create);
+		$this->assertStringContainsString("\$schema->drop( 'reports' )", $create);
+		$this->assertStringNotContainsString('const string ID', $create);
+		$this->assertStringNotContainsString('function id()', $create);
+		$this->assertFileDoesNotExist($this->root . '/src/Database/Provider.php');
 
 		$command = $this->migration();
-		self::assertSame(0, $command->execute(['name' => 'Add_Published_At', '--table' => 'reports']), $command->getDisplay());
-		self::assertStringNotContainsString('Runtime dependency missing', $command->getDisplay());
+		$this->assertSame(0, $command->execute(['name' => 'Add_Published_At', '--table' => 'reports']), $command->getDisplay());
+		$this->assertStringNotContainsString('Runtime dependency missing', $command->getDisplay());
 		$files = $this->files();
-		self::assertCount(2, $files);
-		self::assertSame($createFile, $files[0]);
+		$this->assertCount(2, $files);
+		$this->assertSame($createFile, $files[0]);
 		$alter = (string) file_get_contents($files[1]);
-		self::assertStringContainsString("\$schema->table( 'reports' )", $alter);
-		self::assertStringContainsString('throw new IrreversibleMigration', $alter);
-		self::assertStringNotContainsString('$schema->drop', $alter);
-		self::assertSame($create, file_get_contents($createFile));
+		$this->assertStringContainsString("\$schema->table( 'reports' )", $alter);
+		$this->assertStringContainsString('throw new IrreversibleMigration', $alter);
+		$this->assertStringNotContainsString('$schema->drop', $alter);
+		$this->assertSame($create, file_get_contents($createFile));
 	}
 
 	public function test_combined_generation_warns_when_migrations_are_only_installed_for_development(): void {
@@ -83,24 +83,24 @@ final class MigrationGenerationTest extends TestCase
 		file_put_contents($this->root . '/composer.json', json_encode($manifest, JSON_THROW_ON_ERROR));
 		$command = $this->table();
 
-		self::assertSame(0, $command->execute(['name' => 'reports', '--migration' => true]));
-		self::assertStringContainsString('Move stellarwp/foundation-migrations or stellarwp/foundation to require', $command->getDisplay());
+		$this->assertSame(0, $command->execute(['name' => 'reports', '--migration' => true]));
+		$this->assertStringContainsString('Move stellarwp/foundation-migrations or stellarwp/foundation to require', $command->getDisplay());
 	}
 
 	public function test_generation_creates_custom_directories_without_composer_namespace_mappings(): void {
 		$this->configure(['migrations' => ['path' => 'migrations']]);
 		$command = $this->migration();
-		self::assertSame(0, $command->execute(['name' => 'Reports/Add_Status']), $command->getDisplay());
+		$this->assertSame(0, $command->execute(['name' => 'Reports/Add_Status']), $command->getDisplay());
 		$file = $this->files('migrations/reports')[0];
-		self::assertStringNotContainsString('namespace ', (string) file_get_contents($file));
-		self::assertDirectoryDoesNotExist($this->root . '/src');
+		$this->assertStringNotContainsString('namespace ', (string) file_get_contents($file));
+		$this->assertDirectoryDoesNotExist($this->root . '/src');
 	}
 
 	public function test_absolute_location_and_foundation_root_use_the_same_configuration(): void {
 		$this->configure(['foundation' => ['root' => $this->root], 'migrations' => ['path' => $this->root . '/src/History']]);
 		$command = $this->migration();
-		self::assertSame(0, $command->execute(['name' => 'Rebuild']), $command->getDisplay());
-		self::assertCount(1, $this->files('src/History'));
+		$this->assertSame(0, $command->execute(['name' => 'Rebuild']), $command->getDisplay());
+		$this->assertCount(1, $this->files('src/History'));
 	}
 
 	public function test_new_timestamps_follow_migrations_in_other_feature_folders(): void {
@@ -108,45 +108,47 @@ final class MigrationGenerationTest extends TestCase
 		file_put_contents($this->root . '/db/migrations/Reports/20990101000000_create.php', '<?php');
 		file_put_contents($this->root . '/db/migrations/Reports/README.md', 'History');
 		$command = $this->migration();
-		self::assertSame(0, $command->execute(['name' => 'Add_Status']));
-		self::assertStringEndsWith('20990101000001_add_status.php', $this->files()[0]);
+		$this->assertSame(0, $command->execute(['name' => 'Add_Status']));
+		$this->assertStringEndsWith('20990101000001_add_status.php', $this->files()[0]);
 	}
 
 	public function test_repeated_descriptions_create_new_files_and_never_overwrite_history(): void {
-		$command = $this->migration();
-		self::assertSame(0, $command->execute(['name' => 'Change_Status']));
+		$command  = $this->migration();
+		$exitCode = $command->execute(['name' => 'Change_Status']);
+		$this->assertSame(0, $exitCode);
 		$file     = $this->files()[0];
 		$contents = file_get_contents($file);
-		self::assertSame(0, $command->execute(['name' => 'Change_Status']));
-		self::assertCount(2, $this->files());
-		self::assertSame($contents, file_get_contents($file));
-		self::assertFalse($this->services->get(MigrationCommand::class)->getDefinition()->hasOption('force'));
+		$exitCode = $command->execute(['name' => 'Change_Status']);
+		$this->assertSame(0, $exitCode);
+		$this->assertCount(2, $this->files());
+		$this->assertSame($contents, file_get_contents($file));
+		$this->assertFalse($this->services->get(MigrationCommand::class)->getDefinition()->hasOption('force'));
 	}
 
 	public function test_standalone_create_and_alter_use_table_names_without_application_classes(): void {
 		file_put_contents($this->root . '/composer.json', '{"require":{"stellarwp/foundation-migrations":"^2.0"}}');
 		$command = $this->migration();
-		self::assertSame(0, $command->execute(['name' => 'create_reports', '--create' => 'your_plugin_reports']), $command->getDisplay());
-		self::assertSame(0, $command->execute(['name' => 'add_status', '--table' => 'your_plugin_reports']), $command->getDisplay());
-		self::assertCount(2, $this->files());
-		self::assertDirectoryDoesNotExist($this->root . '/src');
+		$this->assertSame(0, $command->execute(['name' => 'create_reports', '--create' => 'your_plugin_reports']), $command->getDisplay());
+		$this->assertSame(0, $command->execute(['name' => 'add_status', '--table' => 'your_plugin_reports']), $command->getDisplay());
+		$this->assertCount(2, $this->files());
+		$this->assertDirectoryDoesNotExist($this->root . '/src');
 	}
 
 	public function test_combined_generation_preserves_an_explicit_physical_table_suffix(): void {
-		self::assertSame(0, $this->table()->execute(['name' => 'reports', '--table-name' => 'your_plugin_reports', '--migration' => true]));
+		$this->assertSame(0, $this->table()->execute(['name' => 'reports', '--table-name' => 'your_plugin_reports', '--migration' => true]));
 		$table     = (string) file_get_contents($this->root . '/src/Database/Tables/Reports_Table.php');
 		$migration = (string) file_get_contents($this->files()[0]);
-		self::assertStringContainsString("UNPREFIXED_TABLE_NAME = 'your_plugin_reports';", $table);
-		self::assertStringContainsString("\$schema->create( 'your_plugin_reports' )", $migration);
+		$this->assertStringContainsString("UNPREFIXED_TABLE_NAME = 'your_plugin_reports';", $table);
+		$this->assertStringContainsString("\$schema->create( 'your_plugin_reports' )", $migration);
 	}
 
 	public function test_generic_migration_does_not_infer_table_ownership_from_its_name(): void {
 		$command = $this->migration();
-		self::assertSame(0, $command->execute(['name' => 'Create_Reports_Table']));
+		$this->assertSame(0, $command->execute(['name' => 'Create_Reports_Table']));
 		$contents = (string) file_get_contents($this->files()[0]);
-		self::assertStringNotContainsString('$schema->create', $contents);
-		self::assertStringNotContainsString('$schema->drop', $contents);
-		self::assertStringContainsString('IrreversibleMigration', $contents);
+		$this->assertStringNotContainsString('$schema->create', $contents);
+		$this->assertStringNotContainsString('$schema->drop', $contents);
+		$this->assertStringContainsString('IrreversibleMigration', $contents);
 	}
 
 	public function test_invalid_options_and_locations_fail_without_writing(): void {
@@ -162,35 +164,35 @@ final class MigrationGenerationTest extends TestCase
 			['name' => '/Change'],
 			['name' => str_repeat('a', 180)],
 		] as $input) {
-			self::assertSame(1, $this->migration()->execute($input));
-			self::assertSame([], $this->files());
+			$this->assertSame(1, $this->migration()->execute($input));
+			$this->assertSame([], $this->files());
 		}
 
 		$this->configure(['migrations' => ['path' => '']]);
 		$command = $this->migration();
-		self::assertSame(1, $command->execute(['name' => 'Change']));
-		self::assertStringContainsString('cannot be blank', $command->getDisplay());
-		self::assertDirectoryDoesNotExist($this->root . '/unmapped');
+		$this->assertSame(1, $command->execute(['name' => 'Change']));
+		$this->assertStringContainsString('cannot be blank', $command->getDisplay());
+		$this->assertDirectoryDoesNotExist($this->root . '/unmapped');
 	}
 
 	public function test_combined_generation_writes_neither_file_if_migration_location_is_invalid(): void {
 		$this->configure(['migrations' => ['path' => '']]);
-		self::assertSame(1, $this->table()->execute(['name' => 'reports', '--migration' => true]));
-		self::assertFileDoesNotExist($this->root . '/src/Database/Tables/Reports_Table.php');
+		$this->assertSame(1, $this->table()->execute(['name' => 'reports', '--migration' => true]));
+		$this->assertFileDoesNotExist($this->root . '/src/Database/Tables/Reports_Table.php');
 	}
 	public function test_strauss_imports_apply_to_every_generated_migration_kind(): void {
 		$manifest                                         = json_decode((string) file_get_contents($this->root . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
 		$manifest['extra']['strauss']['namespace_prefix'] = 'Scoped\\';
 		file_put_contents($this->root . '/composer.json', json_encode($manifest, JSON_THROW_ON_ERROR));
-		self::assertSame(0, $this->table()->execute(['name' => 'reports', '--migration' => true]));
-		self::assertSame(0, $this->migration()->execute(['name' => 'Add_Status', '--table' => 'reports']));
-		self::assertSame(0, $this->migration()->execute(['name' => 'Backfill']));
-		self::assertCount(3, $this->files());
+		$this->assertSame(0, $this->table()->execute(['name' => 'reports', '--migration' => true]));
+		$this->assertSame(0, $this->migration()->execute(['name' => 'Add_Status', '--table' => 'reports']));
+		$this->assertSame(0, $this->migration()->execute(['name' => 'Backfill']));
+		$this->assertCount(3, $this->files());
 
 		foreach ($this->files() as $file) {
 			$contents = (string) file_get_contents($file);
-			self::assertStringContainsString('use Scoped\\StellarWP\\Foundation\\Migrations\\Migration;', $contents);
-			self::assertStringContainsString('use Scoped\\StellarWP\\Foundation\\Migrations\\Schema\\Blueprint;', $contents);
+			$this->assertStringContainsString('use Scoped\\StellarWP\\Foundation\\Migrations\\Migration;', $contents);
+			$this->assertStringContainsString('use Scoped\\StellarWP\\Foundation\\Migrations\\Schema\\Blueprint;', $contents);
 		}
 	}
 
@@ -201,14 +203,14 @@ final class MigrationGenerationTest extends TestCase
 			file_put_contents($this->root . '/foundation/stubs/database/' . $stub . '.stub', '<?php // custom ' . $stub . "\n" . 'return new class extends \\{{ foundation_database_migration }} { public function up( \\{{ foundation_database_schema }} $schema ): void {} };');
 		}
 
-		self::assertSame(0, $this->table()->execute(['name' => 'reports', '--migration' => true]));
-		self::assertSame(0, $this->migration()->execute(['name' => 'Add_Status', '--table' => 'reports']));
-		self::assertSame(0, $this->migration()->execute(['name' => 'Backfill']));
+		$this->assertSame(0, $this->table()->execute(['name' => 'reports', '--migration' => true]));
+		$this->assertSame(0, $this->migration()->execute(['name' => 'Add_Status', '--table' => 'reports']));
+		$this->assertSame(0, $this->migration()->execute(['name' => 'Backfill']));
 		$files = $this->files();
-		self::assertCount(3, $files);
+		$this->assertCount(3, $files);
 
 		foreach (['create-table-migration', 'alter-table-migration', 'migration'] as $i => $stub) {
-			self::assertStringContainsString('// custom ' . $stub, (string) file_get_contents($files[$i]));
+			$this->assertStringContainsString('// custom ' . $stub, (string) file_get_contents($files[$i]));
 		}
 	}
 }

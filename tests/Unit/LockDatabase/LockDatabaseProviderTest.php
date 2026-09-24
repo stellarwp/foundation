@@ -41,7 +41,7 @@ final class LockDatabaseProviderTest extends TestCase
 	#[DataProvider('tableNames')]
 	public function test_it_uses_the_shared_database_services_and_configured_storage(array $configuration, string $name): void {
 		$db = $this->createMock(Connection::class);
-		$db->expects(self::never())->method('executeStatement');
+		$db->expects($this->never())->method('executeStatement');
 		$scope = $this->createMock(DatabaseScope::class);
 		$scope->method('resolveTableName')->willReturnCallback(static fn (string $suffix): string => 'wp_' . $suffix);
 		$this->container->singleton(Configuration::class, new ArrayConfiguration($configuration));
@@ -49,11 +49,11 @@ final class LockDatabaseProviderTest extends TestCase
 		$this->container->singleton(TableNameResolver::class, new DatabaseTableNameResolver($scope));
 		$this->container->register(LockDatabaseProvider::class);
 
-		self::assertSame($name, $this->container->get(LockTable::class)->name());
+		$this->assertSame($name, $this->container->get(LockTable::class)->name());
 		$lock = $this->container->get(DatabaseLock::class);
-		self::assertSame($lock, $this->container->get(DatabaseLock::class));
-		self::assertSame($db, $this->container->get(Connection::class));
-		self::assertFalse($this->container->has(Lock::class));
+		$this->assertSame($lock, $this->container->get(DatabaseLock::class));
+		$this->assertSame($db, $this->container->get(Connection::class));
+		$this->assertFalse($this->container->has(Lock::class));
 	}
 
 	public function test_registration_preserves_an_existing_application_lock_without_resolving_database_services(): void {
@@ -61,7 +61,7 @@ final class LockDatabaseProviderTest extends TestCase
 		$this->container->singleton(Lock::class, $existing);
 		$this->container->register(LockDatabaseProvider::class);
 
-		self::assertSame($existing, $this->container->get(Lock::class));
-		self::assertNotNull($existing->acquire('resource', 60));
+		$this->assertSame($existing, $this->container->get(Lock::class));
+		$this->assertNotNull($existing->acquire('resource', 60));
 	}
 }

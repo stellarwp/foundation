@@ -12,9 +12,9 @@ final class ImporterTest extends DatabaseTestCase
 	public function test_application_service_replaces_multiple_batches_and_repository_uses_native_query_builder(): void {
 		$this->container->when(EntryRepository::class)->needs('$tableName')->give($this->suffix);
 		$records = array_map(static fn (int $id): array => ['id' => $id, 'name' => 'Imported'], range(1, 501));
-		self::assertSame(501, $this->container->get(DatasetImporter::class)->replace($records));
-		self::assertSame(501, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $this->table));
-		self::assertCount(50, $this->container->get(EntryRepository::class)->findByName('Imported'));
+		$this->assertSame(501, $this->container->get(DatasetImporter::class)->replace($records));
+		$this->assertSame(501, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $this->table));
+		$this->assertCount(50, $this->container->get(EntryRepository::class)->findByName('Imported'));
 	}
 
 	public function test_a_failure_in_the_second_batch_restores_the_original_dataset(): void {
@@ -24,7 +24,7 @@ final class ImporterTest extends DatabaseTestCase
 
 		try {
 			$this->container->get(DatasetImporter::class)->replace($records);
-			self::fail('Expected a second-batch constraint violation.');
+			$this->fail('Expected a second-batch constraint violation.');
 		} catch (UniqueConstraintViolationException) {
 			$this->assertOriginal();
 		}

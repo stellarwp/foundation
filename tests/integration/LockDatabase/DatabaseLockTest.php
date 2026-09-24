@@ -34,7 +34,7 @@ final class DatabaseLockTest extends DatabaseTestCase
 	public function test_migrations_do_not_create_application_lock_storage(): void {
 		$this->container->register(MigrationsProvider::class);
 		$this->container->get(Migrator::class)->migrate();
-		self::assertFalse($this->observer->createSchemaManager()->tablesExist([$this->container->get(LockTable::class)->name()]));
+		$this->assertFalse($this->observer->createSchemaManager()->tablesExist([$this->container->get(LockTable::class)->name()]));
 		$this->expectException(LockUnavailableException::class);
 		$this->container->get(DatabaseLock::class)->acquire('test', 60);
 	}
@@ -52,8 +52,8 @@ final class DatabaseLockTest extends DatabaseTestCase
 			return 'imported';
 		});
 
-		self::assertSame('imported', $result);
-		self::assertFalse($lock->isAcquired('import'));
+		$this->assertSame('imported', $result);
+		$this->assertFalse($lock->isAcquired('import'));
 	}
 
 	public function test_a_missing_wordpress_connection_is_reported_through_the_lock_contract(): void {
@@ -75,30 +75,30 @@ final class DatabaseLockTest extends DatabaseTestCase
 		$lock->initialize();
 		$lock->initialize();
 		$token = $lock->acquire("A ' quoted resource", 60);
-		self::assertInstanceOf(LockToken::class, $token);
-		self::assertTrue($lock->isAcquired($token->name));
-		self::assertNull($lock->acquire($token->name, 60));
+		$this->assertInstanceOf(LockToken::class, $token);
+		$this->assertTrue($lock->isAcquired($token->name));
+		$this->assertNull($lock->acquire($token->name, 60));
 		$otherOwner = new LockToken($token->name, 'another-owner', $token->expiresAt);
-		self::assertFalse($lock->release($otherOwner));
-		self::assertNull($lock->refresh($otherOwner, 60));
+		$this->assertFalse($lock->release($otherOwner));
+		$this->assertNull($lock->refresh($otherOwner, 60));
 		$renewed = $lock->refresh($token, 120);
-		self::assertInstanceOf(LockToken::class, $renewed);
-		self::assertGreaterThan($token->expiresAt, $renewed->expiresAt);
-		self::assertTrue($lock->release($renewed));
-		self::assertFalse($lock->isAcquired($token->name));
+		$this->assertInstanceOf(LockToken::class, $renewed);
+		$this->assertGreaterThan($token->expiresAt, $renewed->expiresAt);
+		$this->assertTrue($lock->release($renewed));
+		$this->assertFalse($lock->isAcquired($token->name));
 	}
 
 	public function test_expired_owner_cannot_release_a_replacement_and_names_are_case_sensitive(): void {
 		$lock = $this->container->get(DatabaseLock::class);
 		$lock->initialize();
 		$token = $lock->acquire('resource', 60);
-		self::assertInstanceOf(LockToken::class, $token);
+		$this->assertInstanceOf(LockToken::class, $token);
 		$this->db->executeStatement('UPDATE ' . $this->container->get(LockTable::class)->quotedName() . ' SET expires_at = UTC_TIMESTAMP(6) - INTERVAL 1 SECOND');
 		$replacement = $lock->acquire('resource', 60);
-		self::assertInstanceOf(LockToken::class, $replacement);
-		self::assertNotSame($token->owner, $replacement->owner);
-		self::assertFalse($lock->release($token));
-		self::assertInstanceOf(LockToken::class, $lock->acquire('Resource', 60));
-		self::assertTrue($lock->release($replacement));
+		$this->assertInstanceOf(LockToken::class, $replacement);
+		$this->assertNotSame($token->owner, $replacement->owner);
+		$this->assertFalse($lock->release($token));
+		$this->assertInstanceOf(LockToken::class, $lock->acquire('Resource', 60));
+		$this->assertTrue($lock->release($replacement));
 	}
 }
