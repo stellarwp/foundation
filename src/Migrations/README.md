@@ -16,9 +16,10 @@ composer require stellarwp/foundation-migrations
 ```
 
 Register `DatabaseProvider` followed by `MigrationsProvider`. Register `WPCliProvider`
-first to enable the migration command, or inject `Migrator` for programmatic upgrades.
+first to enable the `migrate:*` WP-CLI commands, or inject `Migrator` for programmatic upgrades.
 
 ## Documentation
 
 See the [Migrations guide](https://foundation.nexcess.dev/components/migrations/)
-for setup, generating tables and migrations, deployment, rollback, and handling interrupted upgrades.
+for setup, generating tables and migrations, deployment, adopting existing installations,
+rollback, and repairing history after interrupted upgrades.

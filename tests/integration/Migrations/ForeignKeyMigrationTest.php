@@ -292,7 +292,7 @@ final class ForeignKeyMigrationTest extends DatabaseTestCase
 		$before    = array_keys($this->observer->createSchemaManager()->introspectTable($tableName)->getIndexes());
 		$migrator->migrate();
 		$after = array_keys($this->observer->createSchemaManager()->introspectTable($tableName)->getIndexes());
-		$this->assertSame($before, $after);
+		$this->assertEqualsCanonicalizing($before, $after);
 		$this->assertCount(2, $after);
 		$this->assertSame([], $this->constraints());
 		$this->assertSame(1, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $this->items));

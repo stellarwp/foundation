@@ -6,7 +6,13 @@ use Doctrine\DBAL\Schema\ComparatorConfig;
 use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Container\Traits\ResolvesFoundationPrefix;
-use StellarWP\Foundation\Migrations\Cli\Migrate;
+use StellarWP\Foundation\Migrations\Cli\MarkAppliedCommand;
+use StellarWP\Foundation\Migrations\Cli\MarkPendingCommand;
+use StellarWP\Foundation\Migrations\Cli\MigrationOutput;
+use StellarWP\Foundation\Migrations\Cli\RefreshCommand;
+use StellarWP\Foundation\Migrations\Cli\RollbackCommand;
+use StellarWP\Foundation\Migrations\Cli\RunCommand;
+use StellarWP\Foundation\Migrations\Cli\StatusCommand;
 use StellarWP\Foundation\Migrations\Schema\Factories\MigrationComparatorFactory;
 use StellarWP\Foundation\Migrations\Schema\RenamePlanner;
 use StellarWP\Foundation\Migrations\Schema\Renames\Contracts\ColumnRename;
@@ -18,7 +24,7 @@ use StellarWP\Foundation\WPCli\WPCliProvider;
 use wpdb;
 
 /**
- * Wire migration discovery, schema planning, history, and the WordPress migration command.
+ * Wire migration discovery, schema planning, history, and WordPress migration commands.
  */
 final class MigrationsProvider extends Provider
 {
@@ -36,8 +42,14 @@ final class MigrationsProvider extends Provider
 		$this->registerTables();
 		$this->registerMigrations();
 
+		$this->container->singleton(MigrationOutput::class);
 		$this->container->mergeArrayVar(WPCliProvider::COMMANDS, static fn (C $c): array => [
-			$c->get(Migrate::class),
+			$c->get(StatusCommand::class),
+			$c->get(RunCommand::class),
+			$c->get(RollbackCommand::class),
+			$c->get(RefreshCommand::class),
+			$c->get(MarkAppliedCommand::class),
+			$c->get(MarkPendingCommand::class),
 		]);
 	}
 

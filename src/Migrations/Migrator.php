@@ -15,6 +15,7 @@ use StellarWP\Foundation\Migrations\Contracts\Migration;
 use StellarWP\Foundation\Migrations\Exceptions\MigrationAlreadyRunning;
 use StellarWP\Foundation\Migrations\Exceptions\MigrationInterrupted;
 use StellarWP\Foundation\Migrations\Schema\SchemaPlanner;
+use StellarWP\Foundation\Migrations\ValueObjects\Id;
 use StellarWP\Foundation\Migrations\ValueObjects\MigrationStatus;
 use StellarWP\Foundation\Migrations\ValueObjects\Step;
 use Throwable;
@@ -105,6 +106,77 @@ final class Migrator
 	 */
 	public function refresh(): array {
 		return $this->locked(fn (): array => array_merge($this->run(self::NONE, true), $this->run(self::LATEST, true)));
+	}
+
+	/**
+	 * Record a registered migration whose complete schema and data work already exists.
+	 *
+	 * Does not execute or verify the migration. An existing record retains its timestamp.
+	 * The migration remains eligible for ordinary rollback through its down() declaration.
+	 *
+	 * @throws InvalidArgumentException When the migration is not registered.
+	 * @throws Throwable                When history storage or lock ownership fails.
+	 */
+	public function markApplied(string $id): void {
+		$this->migrations->get($id);
+		$this->locked(fn () => $this->recordApplied([
+			$id,
+		]));
+	}
+
+	/**
+	 * Record every currently pending migration without executing or verifying its work.
+	 *
+	 * Select pending IDs under the migration lock and record them in one transaction.
+	 * Existing history is preserved. Only use this when all pending schema and data work
+	 * has already been completed; future rollbacks still execute the normal inverses.
+	 *
+	 * @throws Throwable When history storage, transaction completion, or lock ownership fails.
+	 */
+	public function markAllApplied(): void {
+		$this->locked(fn () => $this->recordApplied($this->migrations->ids()));
+	}
+
+	/**
+	 * Remove an applied record after its work has been deliberately undone outside the runner.
+	 *
+	 * Does not execute down(). An absent record is a no-op. IDs without a declaration can
+	 * be removed, but only registered migrations become available for forward execution.
+	 *
+	 * @throws Exceptions\InvalidMigrationId When the ID is invalid or reserved.
+	 * @throws Throwable                     When history storage or lock ownership fails.
+	 */
+	public function markPending(string $id): void {
+		$id = (new Id($id))->value;
+		$this->locked(function () use ($id): void {
+			if (array_key_exists($id, $this->history->applied())) {
+				$this->history->remove($id);
+			}
+		});
+	}
+
+	/**
+	 * Record the selected pending identities while the caller holds the migration lock.
+	 *
+	 * @param list<string> $ids
+	 */
+	private function recordApplied(array $ids): void {
+		$applied = $this->history->applied();
+		$pending = array_filter($ids, static fn (string $id): bool => ! array_key_exists($id, $applied));
+
+		if ($pending === []) {
+			return;
+		}
+
+		// Initialize before the transaction because creating the ledger commits MySQL DDL.
+		$this->history->initialize();
+		$this->db->transactional(function () use ($pending): void {
+			foreach ($pending as $id) {
+				$this->history->record($id);
+			}
+
+			$this->session->check();
+		});
 	}
 
 	/**

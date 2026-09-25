@@ -57,7 +57,7 @@ private const array PROVIDERS = [
 ];
 ```
 
-`DatabaseProvider` supplies the shared connection. `MigrationsProvider` configures discovery, history, and migration execution; `WPCliProvider` enables `wp <prefix> migrate`. Applications that invoke `Migrator` programmatically can omit `WPCliProvider`. Register application providers afterward, before resolving migration services.
+`DatabaseProvider` supplies the shared connection. `MigrationsProvider` configures discovery, history, and migration execution; `WPCliProvider` enables the `wp <prefix> migrate:*` commands. Applications that invoke `Migrator` programmatically can omit `WPCliProvider`. Register application providers afterward, before resolving migration services.
 
 The default migration directory is `db/migrations`. Each PHP file returns an anonymous migration object. Migration files need no namespace or Composer autoload mapping; these examples use `Plugin\\` mapped to `src/` for the application table class. Keep migrations in the production archive even though the generator is a development dependency.
 
@@ -120,12 +120,12 @@ The filename supplies the persistent ID `20260923000001_create_reports_table`. T
 ### Preview and apply
 
 ```shell
-wp your-plugin migrate --run --dry-run
-wp your-plugin migrate --run
-wp your-plugin migrate
+wp your-plugin migrate:run --dry-run
+wp your-plugin migrate:run
+wp your-plugin migrate:status
 ```
 
-Review the previewed SQL before applying it. `--run` applies all pending migrations; the last command shows their status. The first run creates the migration ledger automatically. `your-plugin` is the configured WP-CLI command prefix.
+Review the previewed SQL before applying it. `migrate:run` applies all pending migrations; the last command shows their status. The first run creates the migration ledger automatically. `your-plugin` is the configured WP-CLI command prefix.
 
 Foundation loads new migration files automatically from the configured directory. You do not add each migration to a provider list.
 
@@ -174,15 +174,15 @@ The generated `down()` initially throws `IrreversibleMigration`. Replace it with
 Leave the original migration and `Reports_Table` unchanged. Preview and apply the new migration with the same commands:
 
 ```shell
-wp your-plugin migrate --run --dry-run
-wp your-plugin migrate --run
-wp your-plugin migrate
+wp your-plugin migrate:run --dry-run
+wp your-plugin migrate:run
+wp your-plugin migrate:status
 ```
 
 Existing reports have `NULL` in `published_at` until your application writes a value.
 
 :::note[Generate migrations before applying them]
-`--create=your_plugin_reports` declares ownership of a new table. `--table=your_plugin_reports` scaffolds a later alteration. Both take unprefixed database names, independently of PHP table classes. Generation does not inspect the live database. When applying an alteration, an earlier migration must already declare the table in the schema history.
+`--create=your_plugin_reports` declares ownership of a new table. `--table=your_plugin_reports` scaffolds a later alteration. Both take unprefixed database names, independently of PHP table classes. Generation does not inspect the live database. The table must exist when applying an alteration. For fresh installations, create it in an earlier migration; for an existing installation, follow the [adoption workflow](#adopt-an-existing-installation).
 :::
 
 ### Roll back a change
@@ -190,10 +190,10 @@ Existing reports have `NULL` in `published_at` until your application writes a v
 To reverse the highest applied migration, inspect its `down()` and run:
 
 ```shell
-wp your-plugin migrate --rollback
+wp your-plugin migrate:rollback
 ```
 
-In this example that removes `published_at` while retaining the reports table. Running `--run` afterward reapplies the column; values deleted by rollback do not return. Reversing the initial migration drops the complete reports table. [Deployment commands](#deploy-and-recover) cover targets, multiple reversals, and interrupted operations.
+In this example that removes `published_at` while retaining the reports table. Running `migrate:run` afterward reapplies the column; values deleted by rollback do not return. Reversing the initial migration drops the complete reports table. [Deployment commands](#deploy-and-recover) cover targets, multiple reversals, and interrupted operations.
 
 :::caution[Keep applied history immutable]
 Once a migration has been applied anywhere, retain its filename and declarations. Create another migration for a later change. Renaming its filename changes its recorded identity. Moving a file between configured directories preserves identity when its basename stays unchanged. Keep historical table names literal; referencing a constant on a current application class would couple history to later refactors.
@@ -291,11 +291,11 @@ Column renames work across the supported database versions. Foundation uses nati
 Preview and apply the migration:
 
 ```shell
-wp your-plugin migrate --run --dry-run
-wp your-plugin migrate --run
+wp your-plugin migrate:run --dry-run
+wp your-plugin migrate:run
 ```
 
-Update application queries to use `headline` when deploying this schema change. Leave the earlier migration that created `title` unchanged. Running `--rollback` reverses the rename through `down()`, preserving the values under `title` again.
+Update application queries to use `headline` when deploying this schema change. Leave the earlier migration that created `title` unchanged. Running `migrate:rollback` reverses the rename through `down()`, preserving the values under `title` again.
 
 ### Rename a table
 
@@ -323,7 +323,7 @@ public function down( Blueprint $schema ): void {
 
 Remove the generated irreversible exception import and annotation. Both arguments are unprefixed names; Foundation applies the current WordPress site prefix. The destination must be unused. The rename preserves existing rows, indexes, and foreign-key relationships.
 
-Preview and apply with `wp your-plugin migrate --run --dry-run` and `wp your-plugin migrate --run`. Update the application table class's `unprefixedName()` to return `'your_plugin_articles'`, and use that name in new migrations. Keep all earlier migration filenames and historical table names unchanged. Coordinate these application changes with migration execution; application queries must use the name currently present in the database.
+Preview and apply with `wp your-plugin migrate:run --dry-run` and `wp your-plugin migrate:run`. Update the application table class's `unprefixedName()` to return `'your_plugin_articles'`, and use that name in new migrations. Keep all earlier migration filenames and historical table names unchanged. Coordinate these application changes with migration execution; application queries must use the name currently present in the database.
 
 If you recreate the old table while the renamed table still exists, choose different logical foreign-key names for the new table. For example, use `current_order` on the new table when the archived table retains `order`. Constraint names must be unique across the database on supported MySQL and MariaDB versions.
 
@@ -403,8 +403,8 @@ Declare columns and indexes explicitly. The local and referenced column types mu
 Preview and apply as usual:
 
 ```shell
-wp your-plugin migrate --run --dry-run
-wp your-plugin migrate --run
+wp your-plugin migrate:run --dry-run
+wp your-plugin migrate:run
 ```
 
 The database now rejects an item whose `order_id` has no matching order. Deleting an order also deletes its items because this example chooses `cascadeOnDelete()`.
@@ -528,17 +528,20 @@ Programmatic installation or upgrade code injects `Migrator` and calls `$migrato
 
 | Operation | Command |
 | --- | --- |
-| Inspect pending, applied, and missing migrations | `wp your-plugin migrate` |
-| Preview pending SQL | `wp your-plugin migrate --run --dry-run` |
-| Apply pending migrations | `wp your-plugin migrate --run` |
-| Reconcile to a registered ID | `wp your-plugin migrate --run --to=<id>` |
-| Reverse the highest applied ID | `wp your-plugin migrate --rollback` |
-| Reverse several applied IDs | `wp your-plugin migrate --rollback --step=2` |
-| Reverse applied IDs above a target | `wp your-plugin migrate --rollback --to=<id>` |
-| Reverse all applied migrations | `wp your-plugin migrate --rollback --to=0 --yes` |
-| Reverse and rerun everything | `wp your-plugin migrate --refresh` |
+| Inspect pending, applied, and missing migrations | `wp your-plugin migrate:status` |
+| Preview pending SQL | `wp your-plugin migrate:run --dry-run` |
+| Apply pending migrations | `wp your-plugin migrate:run` |
+| Reconcile to a registered ID | `wp your-plugin migrate:run --to=<id>` |
+| Reverse the highest applied ID | `wp your-plugin migrate:rollback` |
+| Reverse several applied IDs | `wp your-plugin migrate:rollback --step=2` |
+| Reverse applied IDs above a target | `wp your-plugin migrate:rollback --to=<id>` |
+| Reverse all applied migrations | `wp your-plugin migrate:rollback --to=0 --yes` |
+| Reverse and rerun everything | `wp your-plugin migrate:refresh` |
+| Record an already completed migration | `wp your-plugin migrate:mark-applied <id>` |
+| Record all pending migrations as completed | `wp your-plugin migrate:mark-applied --all` |
+| Remove a migration's history entry | `wp your-plugin migrate:mark-pending <id>` |
 
-Programmatic equivalents are `Migrator::status()`, `preview($target)`, `migrate($target)`, `rollback($steps)`, `rollbackTo($target)`, and `refresh()`. Migration operations return step objects containing the stable ID, direction, SQL, and whether a forward data callback was involved. To add a readable status description, implement `DescribesMigration` alongside `Migration`:
+Programmatic equivalents are `Migrator::status()`, `preview($target)`, `migrate($target)`, `rollback($steps)`, `rollbackTo($target)`, and `refresh()`. Preview and execution operations return step objects containing the stable ID, direction, SQL, and whether a forward data callback was involved. To add a readable status description, implement `DescribesMigration` alongside `Migration`:
 
 ```php
 use StellarWP\Foundation\Migrations\Contracts\DescribesMigration;
@@ -549,11 +552,25 @@ public function describe(): string {
 }
 ```
 
-`migrate($target)` and `--run --to=<id>` reverse applied IDs above the target in descending order, then apply pending IDs through it in ascending order. `latest` applies all pending migrations. `rollbackTo($target)` and `--rollback --to=<id>` only reverse applied IDs above the target; any pending IDs, including the target itself, remain pending. Rollback counts IDs, not deployment batches. Developers own dependencies and choosing a safe target, especially when a newly enabled package adds an older ID. Missing applied files appear in status but do not block new forward migrations. Before rollback, Foundation checks that every migration selected for reversal is available; unrelated missing files do not block it. Refresh requires every applied declaration because it reverses all migrations. Retain migration files for fresh installations and rollbacks; deleting history is not a supported schema-squashing workflow.
+`migrate($target)` and `migrate:run --to=<id>` reverse applied IDs above the target in descending order, then apply pending IDs through it in ascending order. `latest` applies all pending migrations. `rollbackTo($target)` and `migrate:rollback --to=<id>` only reverse applied IDs above the target; any pending IDs, including the target itself, remain pending. Rollback counts IDs, not deployment batches. Developers own dependencies and choosing a safe target, especially when a newly enabled package adds an older ID. Missing applied files appear in status but do not block new forward migrations. Before rollback, Foundation checks that every migration selected for reversal is available; unrelated missing files do not block it. Refresh requires every applied declaration because it reverses all migrations. Retain migration files for fresh installations and rollbacks; deleting history is not a supported schema-squashing workflow.
 
 :::danger[Rollback can delete data]
-`down()` is application code. Reversing an initial migration drops its complete table, including rows and additions made later. Review the inverse and take the application's required backup before rolling back. `--refresh`, `--run --to=0`, and `--rollback --to=0` prompt for confirmation because they reverse every applied migration. Use `--yes` only when that data loss is intended. `--run --to=0 --dry-run` previews the reversal without prompting or executing it.
+`down()` is application code. Reversing an initial migration drops its complete table, including rows and additions made later. Review the inverse and take the application's required backup before rolling back. `migrate:refresh`, `migrate:run --to=0`, and `migrate:rollback --to=0` prompt for confirmation because they reverse every applied migration. Use `--yes` only when that data loss is intended. `migrate:run --to=0 --dry-run` previews the reversal without prompting or executing it.
 :::
+
+### Adopt an existing installation
+
+For a fresh installation, run `wp your-plugin migrate:run` to create the schema and perform any data transformations. When adopting an existing installation, inspect its schema and data against the migration declarations. Mark each migration whose complete effects are already present:
+
+```shell
+wp your-plugin migrate:mark-applied 20260923000001_create_reports_table
+```
+
+Use `wp your-plugin migrate:mark-applied --all` only after verifying that **every currently pending migration's schema and data effects** are fulfilled. Then inspect status and preview the next run before enabling automatic upgrades. Later migrations continue through the normal `migrate:run` workflow.
+
+Marking changes history under the same database advisory lock used for migration execution. It may create the ledger, but does not invoke `up()`, `down()`, or data callbacks, plan schema changes, or verify the live database. You own verification of the recorded effects. Each marking command prompts for confirmation; use `--yes` for an already reviewed operation.
+
+Programmatic callers inject `Migrator` and use `markApplied(string $id): void`, `markAllApplied(): void`, or `markPending(string $id): void`. `markApplied()` requires a registered ID. Repeating it preserves the existing history entry and its timestamp. `markAllApplied()` records all currently registered pending IDs atomically in one transaction, preserving existing entries. A marked migration participates in normal rollback: reversing it invokes its `down()` declaration, with the same potential for data loss as an executed migration.
 
 ### Interrupted schema changes
 
@@ -571,12 +588,21 @@ Pause automatic upgrade attempts for this application and site. Inspect the fail
 
 If the ledger itself is wrong, pause all application upgrade triggers and migration workers for the affected site and take a backup. Restore any missing declarations needed to understand or reverse the affected work, then compare the ledger's exact IDs with the live schema and each migration's schema and data effects.
 
-Use your database administration tool against the configured physical ledger table, including its WordPress site prefix. For a confirmed bookkeeping error:
+After a manual schema change or a failed history write, verify or finish the migration's complete schema and data work before recording it:
 
-- Insert the migration's exact `version` only after verifying that its complete `up()` and any `migrate()` data callback already succeeded. The ledger supplies `applied_at` automatically.
-- Delete its `version` row only after verifying that its complete inverse has already been performed and that recorded dependent migrations remain valid.
+```shell
+wp your-plugin migrate:mark-applied 20260923000001_create_reports_table
+```
 
-These are deliberate manual SQL changes, not schema repairs. Do not record an incomplete migration merely to suppress an error. Verify or finish its intended schema and data work first. After correcting history, inspect status and preview the next run before resuming upgrades. Keep an operational record of the repair.
+If its complete inverse has already been performed, verify that recorded dependent migrations remain valid, then remove the history entry:
+
+```shell
+wp your-plugin migrate:mark-pending 20260923000001_create_reports_table
+```
+
+`markPending()` accepts a valid migration ID even when its declaration is missing and does nothing if the history entry is absent. A registered migration becomes pending and can run again. A missing migration disappears from status when its history is removed; restore its file before it can run again.
+
+After correcting history, inspect status and preview the next run before resuming upgrades. Keep an operational record of the repair.
 
 ### Concurrent upgrades
 

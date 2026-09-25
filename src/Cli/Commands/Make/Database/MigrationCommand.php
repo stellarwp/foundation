@@ -60,7 +60,7 @@ final class MigrationCommand extends Command
 		}
 
 		$output->writeln(sprintf('<info>Created:</info> %s', $migration->relativePath));
-		$output->writeln('Complete up() and down(), then preview with wp <prefix> migrate --run --dry-run.');
+		$output->writeln('Complete up() and down(), then preview with wp <prefix> migrate:run --dry-run.');
 		$warning = $this->runtimeDependencyWarning();
 
 		if ($warning !== null) {

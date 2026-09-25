@@ -258,7 +258,7 @@ final class DeclarativeMigratorTest extends DatabaseTestCase
 		$this->assertSame([self::CREATE], $this->history());
 		$this->assertSame('Keep this', $this->observer->fetchOne('SELECT note FROM ' . $this->quotedEntries));
 		// An operator verifies the completed schema and deliberately repairs its ledger entry.
-		$this->observer->insert($this->quotedHistory, ['version' => self::ALTER]);
+		$this->migrator()->markApplied(self::ALTER);
 		$this->assertSame([], $this->migrator()->migrate(self::ALTER));
 		$this->assertSame([self::CREATE, self::ALTER], $this->history());
 	}
