@@ -4,9 +4,14 @@ namespace StellarWP\Foundation\Tests\Support\Fixtures\WPCli;
 
 use StellarWP\Foundation\WPCli\Command;
 use StellarWP\Foundation\WPCli\CommandContext;
+use Throwable;
 
 final class TestCommand extends Command
 {
+	public ?Throwable $failure = null;
+
+	public int $status = 0;
+
 	/**
 	 * @var list<mixed>
 	 */
@@ -35,7 +40,11 @@ final class TestCommand extends Command
 		$this->args      = $args;
 		$this->assocArgs = $assocArgs;
 
-		return self::SUCCESS;
+		if ($this->failure !== null) {
+			throw $this->failure;
+		}
+
+		return $this->status;
 	}
 
 	public function name(CommandContext $context): string {

@@ -235,6 +235,16 @@ wp your-plugin migrate:run
 
 Foundation holds the application's migration lock and records each migration after its schema and data work succeeds. The first run creates the history table. If no migrations are pending, the command completes without changing the schema.
 
+### Inspect a command failure
+
+Migration commands display exceptions as `Error: <message>` and exit with status `1`. Add `--debug` when running a command to include the original exception chain and stack trace:
+
+```shell
+wp your-plugin migrate:run --debug
+```
+
+Execution stops at the failed migration. Schema changes may already have committed, so inspect and repair the failure before running it again. `--debug` changes diagnostic output; the command still executes its requested operation.
+
 ### Migrate to a specific version
 
 Bring the schema to a selected migration by reversing applied IDs above it, then applying pending IDs through it. The target is the migration's filename without `.php`.
