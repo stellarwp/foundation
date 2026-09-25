@@ -205,16 +205,6 @@ Once a migration has been applied anywhere, retain its filename and declarations
 
 The examples use the `your-plugin` command prefix configured during setup. A complete WordPress application using Foundation's default prefix runs the same commands as `wp nx migrate:*`.
 
-### Run pending migrations
-
-Apply all pending migrations in ascending ID order:
-
-```shell
-wp your-plugin migrate:run
-```
-
-Foundation holds the application's migration lock and records each migration after its schema and data work succeeds. The first run creates the history table. If no migrations are pending, the command completes without changing the schema.
-
 ### Check migration status
 
 See which migrations are applied, pending, or recorded in history with a missing declaration:
@@ -234,6 +224,16 @@ wp your-plugin migrate:run --dry-run
 ```
 
 Preview does not change the schema or execute data callbacks. It reports when a data callback will run. The database can change between preview and execution, so review failures even after a successful preview.
+
+### Run pending migrations
+
+Apply all pending migrations in ascending ID order:
+
+```shell
+wp your-plugin migrate:run
+```
+
+Foundation holds the application's migration lock and records each migration after its schema and data work succeeds. The first run creates the history table. If no migrations are pending, the command completes without changing the schema.
 
 ### Migrate to a specific version
 
