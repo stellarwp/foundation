@@ -201,7 +201,7 @@ Once a migration has been applied anywhere, retain its filename and declarations
 
 ## Write schema changes
 
-`up()` and `down()` declare schema changes. Foundation may replay them during planning, including previews. Keep queries and application work in the separate [data callback](#transform-existing-data).
+`up()` and `down()` declare schema changes. Foundation evaluates the selected declaration during planning, including previews. Keep queries and application work in the separate [data callback](#transform-existing-data).
 
 ### Choose column types
 
@@ -238,7 +238,7 @@ $table->mediumText( 'content' )->nullable();
 
 Columns are non-nullable unless you call `nullable()`. Existing modifiers such as `default()`, `comment()`, and `change()` apply to the new types too. A `char()` length is a storage choice, not application validation that a supplied code has exactly that many characters. `useCurrent()` and `useCurrentOnUpdate()` are intended for `dateTime()` columns.
 
-[MySQL](https://dev.mysql.com/doc/refman/8.0/en/json.html) stores JSON natively; [MariaDB](https://mariadb.com/docs/server/reference/data-types/string-data-types/json) uses text with JSON validation. Foundation preserves that distinction through migration retries and renames. For compatibility with MySQL 5.7, supply a JSON value on insertion or make the column nullable instead of declaring a non-null JSON default. When writing PHP arrays through a table or Doctrine connection, bind the column as `Doctrine\DBAL\Types\Types::JSON` so Doctrine encodes it. Query results are not automatically decoded; see [queries and parameter types](/components/database/query-builder/).
+[MySQL](https://dev.mysql.com/doc/refman/8.0/en/json.html) stores JSON natively; [MariaDB](https://mariadb.com/docs/server/reference/data-types/string-data-types/json) uses text with JSON validation. Foundation preserves that distinction through alterations and renames. For compatibility with MySQL 5.7, supply a JSON value on insertion or make the column nullable instead of declaring a non-null JSON default. When writing PHP arrays through a table or Doctrine connection, bind the column as `Doctrine\DBAL\Types\Types::JSON` so Doctrine encodes it. Query results are not automatically decoded; see [queries and parameter types](/components/database/query-builder/).
 
 ### Change a column
 
@@ -284,7 +284,7 @@ public function down( Blueprint $schema ): void {
 
 Remove the generated `IrreversibleMigration` import and annotation when supplying this inverse. `renameColumn()` retains the column's values and complete definition, including its default, nullability, and comment. Indexes and foreign keys continue to refer to the renamed column. Use a distinct destination name that does not already exist. Column renames run before other alterations on that table; use the new name in a `change()` declaration. When creating a new table, declare columns with their final names.
 
-Keep renamed objects identifiable until the migration is recorded. Put reuse of an old name or removal of the renamed object in a later migration. Foundation rejects ambiguous sequences, such as swapping two column names, because a retry cannot distinguish their completed state.
+Renames run in declaration order. You can reuse an old column name after renaming it, including swapping names through a temporary name. If execution stops partway through, inspect which renames completed and repair the partial change before retrying.
 
 Column renames work across the supported database versions. Foundation uses native `RENAME COLUMN` when available and otherwise uses `CHANGE` with the existing column definition. Your migration declaration stays the same.
 
@@ -325,7 +325,9 @@ Remove the generated irreversible exception import and annotation. Both argument
 
 Preview and apply with `wp your-plugin migrate --run --dry-run` and `wp your-plugin migrate --run`. Update the application table class's `unprefixedName()` to return `'your_plugin_articles'`, and use that name in new migrations. Keep all earlier migration filenames and historical table names unchanged. Coordinate these application changes with migration execution; application queries must use the name currently present in the database.
 
-Existing foreign keys retain their physical constraint names after a table rename. Continue using their original logical names with `dropForeignKey()` on the renamed table. If a later migration creates a different table under the old table name, give its foreign keys different logical names from those still owned by the renamed table, so their physical names do not collide.
+If you recreate the old table while the renamed table still exists, choose different logical foreign-key names for the new table. For example, use `current_order` on the new table when the archived table retains `order`. Constraint names must be unique across the database on supported MySQL and MariaDB versions.
+
+Existing foreign keys retain their physical constraint names after a table rename. Continue using their original logical names with `dropForeignKey()` on the renamed table.
 
 ### Remove a column
 
@@ -386,7 +388,7 @@ Keep the generated `down()` that drops `your_plugin_order_items`. The later migr
 
 `order` is the relationship's stable logical name within the items table. Foundation scopes the physical constraint name to that table, so another table can also use `order`. Pass the same logical name to `dropForeignKey()` later. `references()` takes the historical, unprefixed application table name; Foundation resolves both tables for the current WordPress site.
 
-Foreign-key drift errors include the logical name, such as `order`, alongside the database constraint name, such as `fk_…`. Use the logical name to locate your migration declaration and the database name to inspect the constraint. Constraints without a known declaration are identified by their database name alone.
+Generated constraint names contain separate table and logical identity components. This lets `dropForeignKey('order')` locate the same relationship after a table rename without loading earlier migrations. An existing logical name must be dropped explicitly before adding its replacement.
 
 :::caution[Keep foreign keys between application-owned tables]
 Use this workflow for tables your application owns. For relationships to WordPress posts or users, store the ID in an indexed column and coordinate cleanup through WordPress's deletion hooks.
@@ -394,7 +396,7 @@ Use this workflow for tables your application owns. For relationships to WordPre
 `references()` applies the current site's prefix. On multisite, `references( 'users', 'ID' )` would target a site table such as `wp_2_users`, while WordPress uses a shared users table. Even for site-specific core tables such as `posts`, a restrictive foreign key can block WordPress deletion after related data has already been removed. A cascading foreign key deletes your application's rows directly, bypassing its PHP cleanup. See WordPress's [table naming](https://developer.wordpress.org/reference/classes/wpdb/tables/) and [post deletion workflow](https://developer.wordpress.org/reference/functions/wp_delete_post/).
 :::
 
-If you change WordPress's table prefix, rename the application's tables and migration ledger together before running migrations again. Keep historical migration declarations unchanged. Existing constraint names can retain the old prefix's identity; Foundation recognizes a uniquely matching historical relationship by its columns, referenced table, and update/delete actions. Later migrations can still change or remove it. If multiple constraints make that identity ambiguous, migration planning stops with `IncompatibleSchema` so you can inspect the named constraints before retrying.
+If you change WordPress's table prefix, rename the application's tables and migration ledger together before running migrations again. Keep historical migration declarations unchanged. Preserve existing constraint names: their logical identity component lets later declarations locate the relationship on its current table. Externally renamed constraints require explicit repair before a declaration can address them by their original logical name.
 
 Declare columns and indexes explicitly. The local and referenced column types must match, including integer size and unsignedness. Reference a primary or unique key. Foundation-created tables use InnoDB, which enforces these constraints.
 
@@ -442,7 +444,7 @@ $table->foreignKey( 'order', 'order_id' )
 	->restrictOnDelete();
 ```
 
-Its `down()` can drop and redeclare the relationship with the original action. To remove a relationship entirely, use only `dropForeignKey( 'order' )`. This retains its columns and indexes; remove those separately when that migration owns their removal. Remove dependent relationships or child tables before dropping a referenced parent table.
+Its `down()` can drop and redeclare the relationship with the original action. To remove a relationship entirely, use only `dropForeignKey( 'order' )`. This retains its columns and indexes; remove those separately when that migration owns their removal. Remove dependent relationships or child tables before dropping a referenced parent table. Table operations execute in declaration order, including within a single migration. Create referenced parent tables before their children, and reverse that order when removing them.
 
 #### Reference a composite key
 
@@ -480,7 +482,7 @@ Omitting both produces a generic migration with an empty `up()` and an irreversi
 
 Columns support `nullable()`, `notNull()`, `unsigned()`, `default()`, `comment()`, and `change()`. Date/time declarations additionally support `useCurrent()` and `useCurrentOnUpdate()`. Use strings for exact decimal defaults. Table declarations support `primary(...$columns)` and `comment()`.
 
-`up()` and `down()` must be pure schema declarations. Foundation may replay them many times, including during previews. Do not query the live database, perform application work, or put existence guards in them.
+`up()` and `down()` must be pure schema declarations. Foundation evaluates the selected declaration during planning and again if you later execute a previewed migration. Previously applied declarations are not replayed. Do not query the live database, perform application work, or put existence guards in them.
 
 ### Transform existing data
 
@@ -547,7 +549,7 @@ public function describe(): string {
 }
 ```
 
-`migrate($target)` and `--run --to=<id>` reverse applied IDs above the target in descending order, then apply pending IDs through it in ascending order. `latest` applies all pending migrations. `rollbackTo($target)` and `--rollback --to=<id>` only reverse applied IDs above the target; any pending IDs, including the target itself, remain pending. Rollback counts IDs, not deployment batches. Developers own dependencies and choosing a safe target, especially when a newly enabled package adds an older ID. Missing applied migration files must be restored before execution can continue.
+`migrate($target)` and `--run --to=<id>` reverse applied IDs above the target in descending order, then apply pending IDs through it in ascending order. `latest` applies all pending migrations. `rollbackTo($target)` and `--rollback --to=<id>` only reverse applied IDs above the target; any pending IDs, including the target itself, remain pending. Rollback counts IDs, not deployment batches. Developers own dependencies and choosing a safe target, especially when a newly enabled package adds an older ID. Missing applied files appear in status but do not block new forward migrations. Before rollback, Foundation checks that every migration selected for reversal is available; unrelated missing files do not block it. Refresh requires every applied declaration because it reverses all migrations. Retain migration files for fresh installations and rollbacks; deleting history is not a supported schema-squashing workflow.
 
 :::danger[Rollback can delete data]
 `down()` is application code. Reversing an initial migration drops its complete table, including rows and additions made later. Review the inverse and take the application's required backup before rolling back. `--refresh`, `--run --to=0`, and `--rollback --to=0` prompt for confirmation because they reverse every applied migration. Use `--yes` only when that data loss is intended. `--run --to=0 --dry-run` previews the reversal without prompting or executing it.
@@ -555,28 +557,32 @@ public function describe(): string {
 
 ### Interrupted schema changes
 
-MySQL DDL can commit before the history write. A retry compares the actual schema with the migration's declared change: compatible existing additions and already-absent removals count as completed work. An interrupted index replacement resumes its missing work. Undeclared columns, indexes, and constraints are retained during alterations.
+MySQL and MariaDB DDL can commit before a later statement, data callback, or history write fails. Foundation stops on failure and leaves that migration unrecorded. Earlier migrations that completed remain recorded, and earlier statements within the failed migration may already have changed the database.
 
-Retries also recognize completed table and column renames, then continue any remaining work without renaming them again. A conflicting destination or a missing source and destination stops execution with `IncompatibleSchema`; inspect the live names before retrying.
+Foundation plans the current migration against the affected live tables. Alterations preserve unrelated columns, indexes, and relationships; the runner does not replay historical declarations or check unrelated tables against old definitions. Adding an existing object or removing a missing one fails rather than automatically completing an interrupted migration.
 
-An incompatible existing declaration stops the run with `IncompatibleSchema`; Foundation does not silently reconcile unrelated drift. Inspect and correct the mismatch before retrying. `LedgerFailure` means a history write failed after migration work; fix the storage failure and retry with the same declarations. Any data callback must tolerate repetition.
+:::caution[Inspect failures before retrying]
+Pause automatic upgrade attempts for this application and site. Inspect the failed migration, live schema, data effects, and history. Either undo its partial work and correct the failure before rerunning, or verify and complete all intended work before deliberately repairing the ledger. Do not blindly retry: data callbacks and completed DDL may run again.
+:::
+
+`LedgerFailure` means migration work completed but its history update failed. Fixing the storage error alone does not reconcile the ledger; verify the completed schema and data effects before repairing history. A failed rollback likewise leaves its history entry in place even if some inverse statements committed.
 
 ### Repair inconsistent history
 
-If the ledger itself is wrong, pause all application upgrade triggers and migration workers for the affected site and take a backup. Restore missing migration files first, then compare the ledger's exact IDs with the live schema and each migration's schema and data effects.
+If the ledger itself is wrong, pause all application upgrade triggers and migration workers for the affected site and take a backup. Restore any missing declarations needed to understand or reverse the affected work, then compare the ledger's exact IDs with the live schema and each migration's schema and data effects.
 
 Use your database administration tool against the configured physical ledger table, including its WordPress site prefix. For a confirmed bookkeeping error:
 
 - Insert the migration's exact `version` only after verifying that its complete `up()` and any `migrate()` data callback already succeeded. The ledger supplies `applied_at` automatically.
 - Delete its `version` row only after verifying that its complete inverse has already been performed and that recorded dependent migrations remain valid.
 
-These are deliberate manual SQL changes, not schema repairs. Do not change history to suppress a genuine `IncompatibleSchema` mismatch. Restore the intended schema first when history is accurate. After correcting history, inspect status and preview the next run before resuming upgrades. Keep an operational record of the repair.
+These are deliberate manual SQL changes, not schema repairs. Do not record an incomplete migration merely to suppress an error. Verify or finish its intended schema and data work first. After correcting history, inspect status and preview the next run before resuming upgrades. Keep an operational record of the repair.
 
 ### Concurrent upgrades
 
 One database advisory lock covers planning, schema execution, data callbacks, and history writes. The lock survives DDL commits and lasts until release or session termination. It has no lease TTL to configure. `MigrationAlreadyRunning` means another session is migrating this application's site ledger: defer and retry after it finishes. This is distinct from a database failure.
 
-`MigrationInterrupted` means ownership or the starting session could not be confirmed. The database layer reports `AdvisoryLockInterrupted` during a data callback; the migrator translates it to `MigrationInterrupted` when it escapes the run. Catching it inside a callback does not make the run successful. Foundation stops and releases only the original session's lock where possible. Never change sites or sessions during a migration, even temporarily. Foundation migration exceptions live under `StellarWP\Foundation\Migrations\Exceptions` and extend `MigrationException`, which extends `StellarWP\Foundation\Database\Exceptions\DatabaseException`. Catch `MigrationException` for shared reporting, and use the specific exception when choosing whether to defer, retry, or stop. Native SQL failures still use Doctrine exceptions; application data callbacks can propagate their own exceptions.
+`MigrationInterrupted` reports a declaration that cannot be applied to the current schema, an unavailable migration required for rollback, or a lost operation scope/session. Inspect its message and underlying exception before deciding how to repair the failure. The database layer reports `AdvisoryLockInterrupted` during a data callback; the migrator translates it to `MigrationInterrupted` when it escapes the run. Catching it inside a callback does not make the run successful. Foundation stops and releases only the original session's lock where possible. Never change sites or sessions during a migration, even temporarily. Foundation migration exceptions live under `StellarWP\Foundation\Migrations\Exceptions` and extend `MigrationException`, which extends `StellarWP\Foundation\Database\Exceptions\DatabaseException`. Catch `MigrationException` for shared reporting, and use the specific exception when choosing whether to defer, retry, or stop. Native SQL failures still use Doctrine exceptions; application data callbacks can propagate their own exceptions.
 
 All migration participants must reach the same primary database server. Advisory locks are local to that server; a proxy that moves statements between sessions or servers cannot provide this guarantee. Preview and status are observations and can become stale before a later run.
 
@@ -658,4 +664,4 @@ The registration supplies the ID. IDs are compared in ascending byte order. They
 
 Copy the package stubs into `foundation/stubs/database/` to customize generated code. Start with the [CLI stub guide](/tooling/foundation-cli/#override-package-stubs). Table namespaces remain configurable through generator settings; migration placement is controlled by `migrations.path`.
 
-Test create, alteration, rollback, and retry against real database tables. Include a failure after successful DDL but before history recording, then verify that retry preserves existing rows and records the migration once. Register a fresh container per test and use application-specific test table names.
+Test create, alteration, rollback, and preview against real database tables. Include failures after an earlier DDL statement and before history recording. Verify that the failed migration remains unrecorded, existing data survives, later migrations do not run, and deliberate repair allows a subsequent run. Register a fresh container per test and use application-specific test table names.

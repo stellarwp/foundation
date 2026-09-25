@@ -6,7 +6,6 @@ use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use PHPUnit\Framework\Attributes\DataProvider;
-use StellarWP\Foundation\Migrations\Exceptions\LedgerFailure;
 use StellarWP\Foundation\Migrations\MigrationsProvider;
 use StellarWP\Foundation\Migrations\Migrator;
 use StellarWP\Foundation\Migrations\Schema\Renames\ChangeColumnRename;
@@ -19,7 +18,7 @@ use StellarWP\Foundation\Tests\Support\Fixtures\Migrations\Columns\CreateCommonC
 use StellarWP\Foundation\Tests\Support\Fixtures\Migrations\Columns\RenameCommonColumns;
 
 /**
- * Common column declarations round-trip through the database and migration recovery.
+ * Common column declarations round-trip through the database and migration execution.
  */
 final class CommonColumnTest extends DatabaseTestCase
 {
@@ -48,15 +47,15 @@ final class CommonColumnTest extends DatabaseTestCase
 	}
 
 	/**
-	 * Retry completed creation without replacing the table or losing written values.
+	 * Completed migrations are not repeated and retain their column definitions and values.
 	 */
-	public function test_creation_retry_preserves_types_defaults_and_data(): void {
+	public function test_creation_preserves_types_defaults_and_data(): void {
 		$migrator = $this->container->get(Migrator::class);
 		$migrator->migrate(Migrator::NONE);
-		$this->failLedgerWrite($migrator, '1');
+		$migrator->migrate('1');
 		$this->insertEntry();
 		$steps = $migrator->migrate('1');
-		$this->assertSame([], $steps[0]->sql);
+		$this->assertSame([], $steps);
 		$this->assertInitialColumns();
 		$this->assertEntry();
 		$this->assertSame(1, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->history} WHERE version = '1'"));
@@ -74,14 +73,14 @@ final class CommonColumnTest extends DatabaseTestCase
 	}
 
 	/**
-	 * Alter each complete definition, retry after committed DDL, then restore the original attributes.
+	 * Alter each complete definition, then restore the original attributes.
 	 */
-	public function test_alteration_retry_and_rollback_preserve_values(): void {
+	public function test_alteration_and_rollback_preserve_values(): void {
 		$migrator = $this->container->get(Migrator::class);
 		$migrator->migrate('1');
 		$this->insertEntry();
-		$this->failLedgerWrite($migrator, '2');
-		$this->assertSame([], $migrator->migrate('2')[0]->sql);
+		$migrator->migrate('2');
+		$this->assertSame([], $migrator->migrate('2'));
 		$table = $this->introspect();
 		$this->assertTrue($table->getColumn('metadata')->getNotnull());
 		$this->assertSame('Required metadata', $table->getColumn('metadata')->getComment());
@@ -121,13 +120,13 @@ final class CommonColumnTest extends DatabaseTestCase
 	 * @dataProvider renameStrategies
 	 */
 	#[DataProvider('renameStrategies')]
-	public function test_column_types_survive_rename_and_retry(string $strategy): void {
+	public function test_column_types_survive_rename(string $strategy): void {
 		$this->container->singleton(ColumnRename::class, $strategy);
 		$migrator = $this->container->get(Migrator::class);
 		$migrator->migrate('2');
 		$this->insertEntry();
-		$this->failLedgerWrite($migrator, '3');
-		$this->assertSame([], $migrator->migrate('3')[0]->sql);
+		$migrator->migrate('3');
+		$this->assertSame([], $migrator->migrate('3'));
 		$this->assertSame(Types::JSON, Type::lookupName($this->introspect()->getColumn('metadata_renamed')->getType()));
 		$migrator->rollbackTo('1');
 		$this->assertInitialColumns();
@@ -190,23 +189,5 @@ final class CommonColumnTest extends DatabaseTestCase
 
 	private function introspect(): Table {
 		return $this->observer->createSchemaManager()->introspectTable($this->source->prefix . $this->suffix . '_entries');
-	}
-
-	private function failLedgerWrite(Migrator $migrator, string $target): void {
-		$trigger = $this->observer->quoteSingleIdentifier($this->suffix . '_reject_history');
-		$this->observer->executeStatement("CREATE TRIGGER $trigger
-			BEFORE INSERT ON {$this->history}
-			FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'ledger rejected'");
-
-		try {
-			$migrator->migrate($target);
-			$this->fail('DDL must complete before the ledger write fails.');
-		} catch (LedgerFailure) {
-			$this->assertSame(0, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->history} WHERE version = ?", [
-				$target,
-			]));
-		} finally {
-			$this->observer->executeStatement('DROP TRIGGER ' . $trigger);
-		}
 	}
 }

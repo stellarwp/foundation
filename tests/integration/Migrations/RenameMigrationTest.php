@@ -4,8 +4,8 @@ namespace StellarWP\Foundation\Tests\Integration\Migrations;
 
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
-use StellarWP\Foundation\Migrations\Exceptions\IncompatibleSchema;
 use StellarWP\Foundation\Migrations\Exceptions\LedgerFailure;
+use StellarWP\Foundation\Migrations\Exceptions\MigrationInterrupted;
 use StellarWP\Foundation\Migrations\Migration;
 use StellarWP\Foundation\Migrations\MigrationsProvider;
 use StellarWP\Foundation\Migrations\Migrator;
@@ -17,7 +17,7 @@ use StellarWP\Foundation\Migrations\ValueObjects\MigrationRegistration;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\DatabaseTestCase;
 
 /**
- * Explicit renames preserve rows and remain recoverable after an interrupted history write.
+ * Explicit renames preserve rows, current attributes, and relationships.
  */
 final class RenameMigrationTest extends DatabaseTestCase
 {
@@ -73,47 +73,13 @@ final class RenameMigrationTest extends DatabaseTestCase
 	}
 
 	/**
-	 * Column rename retries without ddl after history write failure.
-	 *
-	 * @param class-string<ColumnRename> $strategy
-	 *
-	 * @dataProvider renameStrategies
-	 */
-	#[DataProvider('renameStrategies')]
-	public function test_column_rename_retries_without_ddl_after_history_write_failure(string $strategy): void {
-		$this->container->singleton(ColumnRename::class, $strategy);
-		$migrator = $this->migrations($this->createReports(), $this->renameTitle());
-		$migrator->migrate('1');
-		$this->insertReport();
-		$this->failHistoryWrite($migrator);
-		$steps = $migrator->migrate();
-		$this->assertSame([], $steps[0]->sql);
-		$this->assertSame('Original', $this->observer->fetchOne('SELECT headline FROM ' . $this->reports));
-		$this->assertSame(1, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $this->history . " WHERE version = '2'"));
-	}
-
-	/**
-	 * Table rename retries without ddl after history write failure.
-	 */
-	public function test_table_rename_retries_without_ddl_after_history_write_failure(): void {
-		$migrator = $this->migrations($this->createReports(), $this->renameReports());
-		$migrator->migrate('1');
-		$this->insertReport();
-		$this->failHistoryWrite($migrator);
-		$steps = $migrator->migrate();
-		$this->assertSame([], $steps[0]->sql);
-		$this->assertSame('Original', $this->observer->fetchOne('SELECT title FROM ' . $this->archive));
-		$this->assertSame(1, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $this->history . " WHERE version = '2'"));
-	}
-
-	/**
 	 * Column rename rejects existing source and destination.
 	 */
 	public function test_column_rename_rejects_existing_source_and_destination(): void {
 		$migrator = $this->migrations($this->createReports(), $this->renameTitle());
 		$migrator->migrate('1');
 		$this->observer->executeStatement('ALTER TABLE ' . $this->reports . ' ADD headline VARCHAR(80) NOT NULL');
-		$this->expectException(IncompatibleSchema::class);
+		$this->expectException(MigrationInterrupted::class);
 		$migrator->migrate();
 	}
 
@@ -124,7 +90,7 @@ final class RenameMigrationTest extends DatabaseTestCase
 		$migrator = $this->migrations($this->createReports(), $this->renameReports());
 		$migrator->migrate('1');
 		$this->observer->executeStatement('CREATE TABLE ' . $this->archive . ' LIKE ' . $this->reports);
-		$this->expectException(IncompatibleSchema::class);
+		$this->expectException(InvalidArgumentException::class);
 		$migrator->migrate();
 	}
 
@@ -135,7 +101,7 @@ final class RenameMigrationTest extends DatabaseTestCase
 		$migrator = $this->migrations($this->createReports(), $this->renameTitle());
 		$migrator->migrate('1');
 		$this->observer->executeStatement('ALTER TABLE ' . $this->reports . ' DROP COLUMN title');
-		$this->expectException(IncompatibleSchema::class);
+		$this->expectException(MigrationInterrupted::class);
 		$migrator->migrate();
 	}
 
@@ -146,7 +112,7 @@ final class RenameMigrationTest extends DatabaseTestCase
 		$migrator = $this->migrations($this->createReports(), $this->renameReports());
 		$migrator->migrate('1');
 		$this->observer->executeStatement('DROP TABLE ' . $this->reports);
-		$this->expectException(IncompatibleSchema::class);
+		$this->expectException(InvalidArgumentException::class);
 		$migrator->migrate();
 	}
 
@@ -217,8 +183,8 @@ final class RenameMigrationTest extends DatabaseTestCase
 		$migrator = $this->migrations($this->createReports(), $rename);
 		$migrator->migrate('1');
 		$this->insertReport();
-		$this->failHistoryWrite($migrator);
-		$this->assertSame([], $migrator->migrate()[0]->sql);
+		$migrator->migrate();
+		$this->assertSame([], $migrator->migrate());
 		$this->assertSame('2026-01-02 03:04:05.123456', $this->observer->fetchOne('SELECT modified_at FROM ' . $this->archive));
 		$column = $this->observer->fetchAssociative(
 			"SELECT DATETIME_PRECISION, EXTRA
@@ -313,8 +279,8 @@ final class RenameMigrationTest extends DatabaseTestCase
 			'id'        => 2,
 			'report_id' => 1,
 		]);
-		$this->failHistoryWrite($migrator, '3');
-		$this->assertSame([], $migrator->migrate('3')[0]->sql);
+		$migrator->migrate('3');
+		$this->assertSame([], $migrator->migrate('3'));
 		$this->assertSame(1, (int) $this->observer->fetchOne('SELECT archive_id FROM ' . $archiveItems));
 		$migrator->rollback();
 		$this->assertSame(1, (int) $this->observer->fetchOne('SELECT report_id FROM ' . $items));
@@ -325,30 +291,6 @@ final class RenameMigrationTest extends DatabaseTestCase
 		$this->assertSame(0, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $archiveItems));
 		$migrator->migrate();
 		$this->assertSame([], $this->observer->createSchemaManager()->introspectTable($this->source->prefix . $this->suffix . '_archive_items')->getForeignKeys());
-	}
-
-	/**
-	 * Resume only the missing suffix of a chained rename sequence, then reverse it.
-	 *
-	 * @param class-string<ColumnRename> $strategy
-	 *
-	 * @dataProvider renameStrategies
-	 */
-	#[DataProvider('renameStrategies')]
-	public function test_partial_chained_renames_resume_and_roll_back_without_losing_rows(string $strategy): void {
-		$this->container->singleton(ColumnRename::class, $strategy);
-		$migrator = $this->migrations($this->createReports(), $this->chainedRename());
-		$migrator->migrate('1');
-		$this->insertReport();
-		$sql = $migrator->preview()[0]->sql;
-		$this->assertCount(3, $sql);
-		$this->observer->executeStatement($sql[0]);
-		$this->observer->executeStatement($sql[1]);
-		$steps = $migrator->migrate();
-		$this->assertCount(1, $steps[0]->sql);
-		$this->assertSame('Original', $this->observer->fetchOne('SELECT headline FROM ' . $this->archive));
-		$migrator->rollback();
-		$this->assertSame('Original', $this->observer->fetchOne('SELECT title FROM ' . $this->reports));
 	}
 
 	/**
@@ -394,23 +336,16 @@ final class RenameMigrationTest extends DatabaseTestCase
 	}
 
 	/**
-	 * An incompatible source definition must stop the migration before any rename executes.
+	 * A rename preserves the live definition without checking historical declarations.
 	 */
-	public function test_schema_drift_is_rejected_before_the_first_rename(): void {
+	public function test_rename_preserves_the_current_column_definition(): void {
 		$migrator = $this->migrations($this->createReports(), $this->chainedRename());
 		$migrator->migrate('1');
 		$this->insertReport();
 		$this->observer->executeStatement('ALTER TABLE ' . $this->reports . " MODIFY title VARCHAR(255) NOT NULL DEFAULT ''");
-
-		try {
-			$migrator->migrate();
-			$this->fail('Schema drift must fail before renaming the live table.');
-		} catch (IncompatibleSchema) {
-			$this->assertSame('Original', $this->observer->fetchOne('SELECT title FROM ' . $this->reports));
-			$this->assertFalse($this->observer->createSchemaManager()->tablesExist([
-				$this->source->prefix . $this->suffix . '_archive',
-			]));
-		}
+		$migrator->migrate();
+		$this->assertSame('Original', $this->observer->fetchOne('SELECT headline FROM ' . $this->archive));
+		$this->assertSame(255, $this->observer->createSchemaManager()->introspectTable($this->source->prefix . $this->suffix . '_archive')->getColumn('headline')->getLength());
 	}
 
 	/**
@@ -489,9 +424,9 @@ final class RenameMigrationTest extends DatabaseTestCase
 	}
 
 	/**
-	 * Swapping column names cannot be safely distinguished from an interrupted retry.
+	 * Explicit rename sequences may swap column names through a temporary name.
 	 */
-	public function test_column_name_cycles_are_rejected_before_sql_executes(): void {
+	public function test_column_name_cycles_execute_in_declaration_order(): void {
 		$swap = new class($this->suffix) extends Migration {
 			/**
 			 * Identify this test's private tables.
@@ -515,19 +450,15 @@ final class RenameMigrationTest extends DatabaseTestCase
 		$migrator->migrate('1');
 		$this->insertReport();
 
-		try {
-			$migrator->migrate();
-			$this->fail('A rename cycle must be rejected before modifying the live schema.');
-		} catch (InvalidArgumentException) {
-			$this->assertSame('Original', $this->observer->fetchOne('SELECT title FROM ' . $this->reports));
-			$this->assertSame('2026-01-02 03:04:05.123456', $this->observer->fetchOne('SELECT updated_at FROM ' . $this->reports));
-		}
+		$migrator->migrate();
+		$this->assertSame('Original', $this->observer->fetchOne('SELECT updated_at FROM ' . $this->reports));
+		$this->assertSame('2026-01-02 03:04:05.123456', $this->observer->fetchOne('SELECT title FROM ' . $this->reports));
 	}
 
 	/**
-	 * Reusing a source name requires a later migration so retries remain unambiguous.
+	 * A renamed source may be reused by a later operation in the same migration.
 	 */
-	public function test_renaming_and_recreating_the_source_column_in_one_migration_is_rejected(): void {
+	public function test_renaming_and_recreating_the_source_column(): void {
 		$reuse = new class($this->suffix) extends Migration {
 			/**
 			 * Identify this test's private tables.
@@ -550,51 +481,15 @@ final class RenameMigrationTest extends DatabaseTestCase
 		$migrator->migrate('1');
 		$this->insertReport();
 
-		try {
-			$migrator->migrate();
-			$this->fail('Reusing the source name must fail before modifying the live schema.');
-		} catch (InvalidArgumentException) {
-			$this->assertSame('Original', $this->observer->fetchOne('SELECT title FROM ' . $this->reports));
-			$this->assertFalse($this->observer->createSchemaManager()->introspectTable($this->source->prefix . $this->suffix . '_reports')->hasColumn('headline'));
-		}
-	}
-
-	/**
-	 * A failed rollback history deletion must not repeat already completed inverse renames.
-	 *
-	 * @param class-string<ColumnRename> $strategy
-	 *
-	 * @dataProvider renameStrategies
-	 */
-	#[DataProvider('renameStrategies')]
-	public function test_chained_rollback_retries_without_ddl_after_history_delete_failure(string $strategy): void {
-		$this->container->singleton(ColumnRename::class, $strategy);
-		$migrator = $this->migrations($this->createReports(), $this->chainedRename());
-		$migrator->migrate('1');
-		$this->insertReport();
 		$migrator->migrate();
-		$trigger = $this->observer->quoteSingleIdentifier($this->suffix . '_reject_delete');
-		$this->observer->executeStatement("CREATE TRIGGER $trigger BEFORE DELETE ON {$this->history} FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'ledger rejected'");
-
-		try {
-			$migrator->rollback();
-			$this->fail('The history deletion must fail after the inverse renames complete.');
-		} catch (LedgerFailure) {
-			$this->assertSame('Original', $this->observer->fetchOne('SELECT title FROM ' . $this->reports));
-		} finally {
-			$this->observer->executeStatement('DROP TRIGGER ' . $trigger);
-		}
-
-		$steps = $migrator->rollback();
-		$this->assertSame([], $steps[0]->sql);
-		$this->assertSame('Original', $this->observer->fetchOne('SELECT title FROM ' . $this->reports));
-		$this->assertSame(1, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $this->history));
+		$this->assertSame('Original', $this->observer->fetchOne('SELECT headline FROM ' . $this->reports));
+		$this->assertSame('', $this->observer->fetchOne('SELECT title FROM ' . $this->reports));
 	}
 
 	/**
-	 * An unrelated final rename does not make an earlier name-swap safe to resume.
+	 * Later renames follow an earlier name swap in the declared order.
 	 */
-	public function test_cycle_followed_by_another_rename_is_rejected_before_sql(): void {
+	public function test_cycle_followed_by_another_rename_executes_in_order(): void {
 		$swap = new class($this->suffix) extends Migration {
 			/**
 			 * Identify this test's private tables.
@@ -619,14 +514,10 @@ final class RenameMigrationTest extends DatabaseTestCase
 		$migrator->migrate('1');
 		$this->insertReport();
 
-		try {
-			$migrator->migrate();
-			$this->fail('An ambiguous intermediate rename state must be rejected before SQL.');
-		} catch (InvalidArgumentException) {
-			$this->assertSame('Original', $this->observer->fetchOne('SELECT title FROM ' . $this->reports));
-			$this->assertSame('Other', $this->observer->fetchOne('SELECT subtitle FROM ' . $this->reports));
-			$this->assertSame('2026-01-02 03:04:05.123456', $this->observer->fetchOne('SELECT updated_at FROM ' . $this->reports));
-		}
+		$migrator->migrate();
+		$this->assertSame('Other', $this->observer->fetchOne('SELECT title FROM ' . $this->reports));
+		$this->assertSame('Original', $this->observer->fetchOne('SELECT subtitle FROM ' . $this->reports));
+		$this->assertSame('2026-01-02 03:04:05.123456', $this->observer->fetchOne('SELECT modified_at FROM ' . $this->reports));
 	}
 
 	/**
@@ -667,7 +558,7 @@ final class RenameMigrationTest extends DatabaseTestCase
 	/**
 	 * A rename can change the destination definition while preserving the existing value.
 	 */
-	public function test_column_rename_and_destination_definition_change_resume_together(): void {
+	public function test_column_rename_and_destination_definition_change_execute_together(): void {
 		$rename = new class($this->suffix) extends Migration {
 			/**
 			 * Identify this test's private tables.
@@ -698,8 +589,6 @@ final class RenameMigrationTest extends DatabaseTestCase
 		$migrator = $this->migrations($this->createReports(), $rename);
 		$migrator->migrate('1');
 		$this->insertReport();
-		$sql = $migrator->preview()[0]->sql;
-		$this->observer->executeStatement($sql[0]);
 		$migrator->migrate();
 		$this->assertSame('Original', $this->observer->fetchOne('SELECT headline FROM ' . $this->reports));
 		$column = $this->observer->createSchemaManager()->introspectTable($this->source->prefix . $this->suffix . '_reports')->getColumn('headline');
@@ -707,6 +596,26 @@ final class RenameMigrationTest extends DatabaseTestCase
 		$this->assertFalse($column->getNotnull());
 		$migrator->rollback();
 		$this->assertSame('Original', $this->observer->fetchOne('SELECT title FROM ' . $this->reports));
+	}
+
+	/**
+	 * A completed rename with missing history is reported for operator repair.
+	 */
+	public function test_interrupted_rename_is_not_repeated_or_recorded_on_retry(): void {
+		$migrator = $this->migrations($this->createReports(), $this->renameTitle());
+		$migrator->migrate('1');
+		$this->insertReport();
+		$this->failHistoryWrite($migrator);
+
+		try {
+			$migrator->migrate();
+			$this->fail('The old column is gone; repair must precede another run.');
+		} catch (MigrationInterrupted $failure) {
+			$this->assertStringContainsString('title does not exist', $failure->getMessage());
+		}
+
+		$this->assertSame('Original', $this->observer->fetchOne('SELECT headline FROM ' . $this->reports));
+		$this->assertSame(0, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->history} WHERE version = '2'"));
 	}
 
 	private function chainedRename(): Migration {
@@ -764,7 +673,7 @@ final class RenameMigrationTest extends DatabaseTestCase
 	}
 
 	/**
-	 * Exercise both SQL implementations with the same recovery guarantees.
+	 * Exercise both SQL implementations with the same rename and preservation behavior.
 	 *
 	 * @return iterable<string, array{class-string<ColumnRename>}>
 	 */

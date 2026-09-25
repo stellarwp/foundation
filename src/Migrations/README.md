@@ -3,7 +3,7 @@
 > [!WARNING]
 > **This is a read-only repository!** For pull requests or issues, see [stellarwp/foundation](https://github.com/stellarwp/foundation).
 
-Declarative WordPress migrations with automatic file discovery, schema recovery,
+Declarative WordPress migrations with automatic file discovery, SQL preview,
 version history, and database advisory locking.
 
 ## Installation
@@ -21,4 +21,4 @@ first to enable the migration command, or inject `Migrator` for programmatic upg
 ## Documentation
 
 See the [Migrations guide](https://foundation.nexcess.dev/components/migrations/)
-for setup, generating tables and migrations, deployment, rollback, and recovery.
+for setup, generating tables and migrations, deployment, rollback, and handling interrupted upgrades.

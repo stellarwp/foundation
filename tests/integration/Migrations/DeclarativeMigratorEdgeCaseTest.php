@@ -3,9 +3,9 @@
 namespace StellarWP\Foundation\Tests\Integration\Migrations;
 
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
-use StellarWP\Foundation\Migrations\Exceptions\IncompatibleSchema;
 use StellarWP\Foundation\Migrations\Exceptions\IrreversibleMigration;
 use StellarWP\Foundation\Migrations\Exceptions\MigrationAlreadyRunning;
+use StellarWP\Foundation\Migrations\Exceptions\MigrationInterrupted;
 use StellarWP\Foundation\Migrations\MigrationsProvider;
 use StellarWP\Foundation\Migrations\Migrator;
 use StellarWP\Foundation\Migrations\ValueObjects\MigrationRegistration;
@@ -31,7 +31,6 @@ use StellarWP\Foundation\Tests\Support\Fixtures\Database\Declarative\WidenEntryN
 final class DeclarativeMigratorEdgeCaseTest extends DatabaseTestCase
 {
 	private string $quotedEntries;
-	private string $tagsName;
 	private string $historyName;
 
 	protected function configuration(): array {
@@ -42,7 +41,6 @@ final class DeclarativeMigratorEdgeCaseTest extends DatabaseTestCase
 		parent::setUp();
 		$this->container->register(MigrationsProvider::class);
 		$this->quotedEntries = $this->privateTable($this->suffix . '_entries');
-		$this->tagsName      = $this->source->prefix . $this->suffix . '_tags';
 		$this->privateTable($this->suffix . '_tags');
 		$this->historyName = $this->source->prefix . $this->suffix . '_history';
 		$this->privateTable($this->suffix . '_history');
@@ -143,24 +141,15 @@ final class DeclarativeMigratorEdgeCaseTest extends DatabaseTestCase
 		$this->assertStringContainsString('`created_at` datetime(6) not null default current_timestamp(6),', $this->createTableSql());
 	}
 
-	public function test_undeclared_timestamp_drift_is_rejected(): void {
+	public function test_unrelated_timestamp_changes_are_preserved(): void {
 		$this->migrator()->migrate(AddEntryArchivedFlag::ID);
 		$this->observer->executeStatement("ALTER TABLE {$this->quotedEntries} MODIFY created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)");
-
-		try {
-			$this->migrator()->migrate(WidenEntryName::ID);
-			$this->fail('Expected the undeclared ON UPDATE to be rejected.');
-		} catch (IncompatibleSchema $failure) {
-			$this->assertStringContainsString('created_at', $failure->getMessage());
-			$this->assertStringContainsString('ON UPDATE', $failure->getMessage());
-		}
-		$this->assertNotContains(WidenEntryName::ID, $this->history());
+		$this->migrator()->migrate(WidenEntryName::ID);
+		$this->assertContains(WidenEntryName::ID, $this->history());
+		$this->assertStringContainsString('on update current_timestamp(6)', $this->createTableSql());
 	}
 
 	public function test_preview_sees_existing_tables_from_later_steps_and_creates_no_ledger(): void {
-		// An interrupted earlier attempt left the tags table behind, exactly as declared.
-		$this->observer->executeStatement("CREATE TABLE `{$this->tagsName}` (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, label VARCHAR(50) NOT NULL, PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
 		$preview = $this->migrator()->preview();
 
 		$this->assertSame(
@@ -168,7 +157,7 @@ final class DeclarativeMigratorEdgeCaseTest extends DatabaseTestCase
 			array_map(static fn (Step $step): string => $step->id, $preview),
 		);
 		$this->assertCount(1, $preview[0]->sql, 'Entries is created');
-		$this->assertSame([], $preview[1]->sql, 'Tags already matches its declaration');
+		$this->assertStringContainsStringIgnoringCase('CREATE TABLE', $preview[1]->sql[0]);
 		$this->assertStringContainsStringIgnoringCase('DROP TABLE', $preview[2]->sql[0]);
 		$this->assertStringContainsStringIgnoringCase('CREATE TABLE', $preview[3]->sql[0], 'Preview remembers the simulated drop and does not reload the old table');
 		$this->assertFalse($this->observer->createSchemaManager()->tablesExist([$this->historyName]), 'Preview executes nothing, not even ledger creation');
@@ -180,18 +169,18 @@ final class DeclarativeMigratorEdgeCaseTest extends DatabaseTestCase
 		);
 	}
 
-	public function test_interrupted_index_replacement_recovers_on_retry(): void {
+	public function test_interrupted_index_replacement_stops_without_recording_success(): void {
 		$this->migrator()->migrate(IndexEntryNote::ID);
-		// A previous attempt dropped the old index and died before creating the new one.
 		$this->observer->executeStatement("DROP INDEX note_lookup ON {$this->quotedEntries}");
 
-		$steps = $this->migrator()->migrate(ReplaceNoteLookup::ID);
+		try {
+			$this->migrator()->migrate(ReplaceNoteLookup::ID);
+			$this->fail('A missing index requires inspection before retry.');
+		} catch (MigrationInterrupted $failure) {
+			$this->assertStringContainsString('note_lookup does not exist', $failure->getMessage());
+		}
 
-		$last = end($steps);
-		$this->assertInstanceOf(Step::class, $last);
-		$this->assertCount(1, $last->sql, 'Only the creation half remains');
-		$this->assertStringContainsString('unique key `note_lookup` (`note`)', $this->createTableSql());
-		$this->assertContains(ReplaceNoteLookup::ID, $this->history());
+		$this->assertNotContains(ReplaceNoteLookup::ID, $this->history());
 	}
 
 	public function test_conflicting_existing_index_stops_an_addition(): void {
@@ -201,8 +190,8 @@ final class DeclarativeMigratorEdgeCaseTest extends DatabaseTestCase
 		try {
 			$this->migrator()->migrate(IndexEntryNote::ID);
 			$this->fail('Expected the conflicting index to be rejected.');
-		} catch (IncompatibleSchema $failure) {
-			$this->assertStringContainsString('existing index note_lookup conflicts', $failure->getMessage());
+		} catch (MigrationInterrupted $failure) {
+			$this->assertStringContainsString('Index note_lookup already exists', $failure->getMessage());
 		}
 		$this->assertStringContainsString('unique key `note_lookup` (`name`)', $this->createTableSql(), 'The uniqueness guarantee was not replaced');
 		$this->assertNotContains(IndexEntryNote::ID, $this->history());

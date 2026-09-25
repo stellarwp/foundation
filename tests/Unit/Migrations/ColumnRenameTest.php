@@ -90,11 +90,10 @@ final class ColumnRenameTest extends TestCase
 		$before = new SchemaState(new Schema([
 			$table,
 		]));
-		$actual = clone $before;
-		$after  = clone $before;
+		$after = clone $before;
 		$after->rename(new Rename('old', 'new', 'reports'));
 
-		$this->assertSame($statements, $planner->plan($before, $actual, $after, '1'));
+		$this->assertSame($statements, $planner->plan($before, $after));
 	}
 
 	/**

@@ -103,7 +103,7 @@ Transactions and migrations capture their starting scope and reject detected sit
 Applications can replace `DatabaseScope` and `TableNameResolver` when they own a different naming policy. Register replacements after `DatabaseProvider`, before resolving database services. Replacing the Doctrine connection also requires preserving Foundation's documented transaction and migration guarantees, including terminal failure tracking and acknowledged commits. When using Foundation Migrations, a replacement must also supply a coherent `Database\Contracts\AdvisorySession` using the same connection: every execution must check ownership and retain terminal failures. Registering an unrelated lock implementation cannot supply those guarantees. A plain DBAL connection alone does not provide those guarantees.
 
 <CardGrid>
-  <LinkCard title="Migrations" description="Generate historical changes, preview SQL, and recover interrupted deployments." href="/components/migrations/" />
+  <LinkCard title="Migrations" description="Generate migrations, preview SQL, and manage application schema changes." href="/components/migrations/" />
   <LinkCard title="Queries and transactions" description="Use application tables and native Doctrine operations." href="/components/database/query-builder/" />
   <LinkCard title="Database Lock" description="Choose database-backed coordination for application work." href="/components/lock/database/" />
 </CardGrid>
@@ -114,4 +114,4 @@ Applications can replace `DatabaseScope` and `TableNameResolver` when they own a
 
 Implementations acquire once without waiting, retain the original site and connection across DDL and nested transactions, check ownership before execution and completion, and preserve a caught database failure until the locked operation ends. An escaping callback exception takes precedence over release failure. Connection changes must never reconnect or replay protected work. Contention raises `AdvisoryLockContended`; failed or uncertain ownership raises `AdvisoryLockInterrupted`.
 
-Database owns the supported DBAL constraint. When upgrading it, verify the migration schema APIs and recovery tests as well as queries and transactions. Foundation Migrations requires a compatible Database release; applications should update their Composer lock file and run their migration tests before deployment.
+Database owns the supported DBAL constraint. When upgrading it, verify the migration schema APIs and failure-handling tests as well as queries and transactions. Foundation Migrations requires a compatible Database release; applications should update their Composer lock file and run their migration tests before deployment.

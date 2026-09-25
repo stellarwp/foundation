@@ -9,7 +9,7 @@ use Doctrine\DBAL\Schema\TableEditor;
 use StellarWP\Foundation\Migrations\Schema\ValueObjects\Rename;
 
 /**
- * A schema snapshot that keeps relationships, logical labels, and supplemental timestamp facts together.
+ * A schema snapshot that keeps relationships and supplemental timestamp facts together.
  *
  * @internal Owned by one planning operation; copies keep both representations together.
  */
@@ -19,16 +19,6 @@ final class SchemaState
 	 * @var list<Rename> Name changes declared by the migration being planned.
 	 */
 	public array $renames = [];
-
-	/**
-	 * @var array<string, non-empty-string> Original table names retain foreign-key identity after a rename.
-	 */
-	public array $tableOrigins = [];
-
-	/**
-	 * @var array<string, array<string, string>> Logical names keyed by physical table and constraint.
-	 */
-	public array $foreignKeyNames = [];
 
 	/**
 	 * Hold a schema snapshot and its supplemental timestamp facts.
@@ -42,20 +32,7 @@ final class SchemaState
 	}
 
 	/**
-	 * Describe a constraint using its declared name when this snapshot knows it.
-	 *
-	 * An interrupted addition may have a declaration only in the target snapshot.
-	 */
-	public function foreignKeyLabel(string $table, string $constraint, ?self $target = null): string {
-		$name = $this->foreignKeyNames[strtolower($table)][strtolower($constraint)]
-			?? $target?->foreignKeyNames[strtolower($table)][strtolower($constraint)]
-			?? null;
-
-		return $name === null ? $constraint : sprintf('"%s" (database constraint "%s")', $name, $constraint);
-	}
-
-	/**
-	 * Rename an object and carry its references, logical labels, and timestamp facts with it.
+	 * Rename an object and carry its references and timestamp facts with it.
 	 */
 	public function rename(Rename $rename): void {
 		$tables = [];
@@ -73,13 +50,6 @@ final class SchemaState
 				unset($this->timestamps[$key]);
 				$this->timestamps[$to . substr($key, strlen($from))] = $attributes;
 			}
-		}
-
-		if ($rename->table === null) {
-			$this->foreignKeyNames[$to] = $this->foreignKeyNames[$from] ?? [];
-			unset($this->foreignKeyNames[$from]);
-			$this->tableOrigins[strtolower($rename->to)] = $this->tableOrigins[strtolower($rename->from)] ?? $rename->from;
-			unset($this->tableOrigins[strtolower($rename->from)]);
 		}
 
 		$this->renames[] = $rename;

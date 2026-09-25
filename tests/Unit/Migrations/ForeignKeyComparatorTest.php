@@ -11,50 +11,27 @@ use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Types;
 use PHPUnit\Framework\TestCase;
-use StellarWP\Foundation\Migrations\Exceptions\IncompatibleSchema;
 use StellarWP\Foundation\Migrations\Schema\ForeignKeyComparator;
 use StellarWP\Foundation\Migrations\Schema\SchemaState;
 
 /**
- * Physical aliases must identify exactly one historical relationship.
+ * Constraint comparison preserves explicitly declared identities.
  */
 final class ForeignKeyComparatorTest extends TestCase
 {
 	/**
-	 * Prefix aliases retain the declared label while errors identify the actual database constraint.
+	 * Changing the declared name must replace even a structurally equivalent constraint.
 	 */
-	public function test_aliases_keep_logical_labels_in_both_planning_snapshots(): void {
+	public function test_distinct_names_require_drop_and_add(): void {
 		$config     = new ComparatorConfig();
 		$platform   = new MySQL84Platform();
 		$comparator = new ForeignKeyComparator($platform, new Comparator($platform, $config), $config);
-		$historical = 'fk_' . str_repeat('a', 40);
-		$live       = 'fk_' . str_repeat('b', 40);
-		$before     = $this->schema($historical);
+		$before     = $this->schema('original');
+		$after      = $this->schema('replacement');
+		$diff       = $comparator->compareTables($before->schema->getTable('items'), $after->schema->getTable('items'));
 
-		$before->foreignKeyNames['items'][$historical] = 'order';
-
-		$after  = clone $before;
-		$actual = $this->schema($live);
-		$comparator->alignForeignKeyNames($before, $actual, $after, '4');
-
-		$this->assertSame('"order" (database constraint "' . $live . '")', $before->foreignKeyLabel('items', $live));
-		$this->assertSame($before->foreignKeyLabel('items', $live), $after->foreignKeyLabel('items', $live));
-		$this->assertSame($historical, $after->foreignKeyLabel('items', $historical));
-		$this->assertTrue($comparator->compareSchemas($actual->schema, $after->schema)->isEmpty());
-		$this->assertSame($live, $actual->foreignKeyLabel('items', $live));
-	}
-
-	public function test_two_historical_relationships_cannot_claim_the_same_live_constraint(): void {
-		$config     = new ComparatorConfig();
-		$platform   = new MySQL84Platform();
-		$comparator = new ForeignKeyComparator($platform, new Comparator($platform, $config), $config);
-		$before     = $this->schema('fk_' . str_repeat('a', 40), 'fk_' . str_repeat('b', 40));
-		$actual     = $this->schema('fk_' . str_repeat('c', 40));
-		$after      = clone $before;
-
-		$this->expectException(IncompatibleSchema::class);
-		$this->expectExceptionMessage('ambiguous foreign-key identity');
-		$comparator->alignForeignKeyNames($before, $actual, $after, '4');
+		$this->assertCount(1, $diff->getAddedForeignKeys());
+		$this->assertCount(1, $diff->getDroppedForeignKeyConstraintNames());
 	}
 
 	/**

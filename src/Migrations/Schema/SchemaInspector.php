@@ -37,6 +37,10 @@ final readonly class SchemaInspector
 	 * @throws Exception When the database schema or supplemental metadata cannot be read.
 	 */
 	public function inspect(array $names, ?SchemaState $overlay = null, array $simulated = []): SchemaState {
+		foreach ($overlay?->schema->getTables() ?? [] as $table) {
+			$names[] = $table->getObjectName()->toString();
+		}
+
 		$manager    = $this->db->createSchemaManager();
 		$tables     = [];
 		$timestamps = $this->timestampAttributes($names);

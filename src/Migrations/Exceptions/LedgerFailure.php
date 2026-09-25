@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\Migrations\Exceptions;
 
 /**
- * Schema work completed but recording its result failed; retry through the migrator.
+ * Migration work completed but recording failed; inspect and repair before retrying.
  */
 final class LedgerFailure extends MigrationException
 {

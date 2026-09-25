@@ -19,8 +19,15 @@ use StellarWP\Foundation\Migrations\Schema\ValueObjects\Rename;
  */
 final class Blueprint
 {
-	/** @var list<Closure(): void> Deferred mutations of the Doctrine schema, in declaration order. */
+	/**
+	 * @var list<Closure(): void> Deferred mutations of the Doctrine schema, in declaration order.
+	 */
 	private array $operations = [];
+
+	/**
+	 * @var list<string> Physical tables used by this declaration.
+	 */
+	private array $tableNames = [];
 
 	/**
 	 * @param array<string, mixed> $tableOptions Default engine/charset options for created tables.
@@ -50,7 +57,6 @@ final class Blueprint
 				throw TableAlreadyExists::new($name);
 			}
 
-			unset($this->state->tableOrigins[strtolower($name)], $this->state->foreignKeyNames[strtolower($name)]);
 			$table = DoctrineTable::editor()->setUnquotedName($name)->setOptions($this->tableOptions);
 			$this->replaceTable($blueprint->applyTo($table, $this->state, $this->names));
 		};
@@ -105,7 +111,6 @@ final class Blueprint
 		$name               = $this->resolve($table);
 		$this->operations[] = function () use ($name): void {
 			$this->state->schema->dropTable($name);
-			unset($this->state->tableOrigins[strtolower($name)], $this->state->foreignKeyNames[strtolower($name)]);
 
 			foreach (array_keys($this->state->timestamps) as $key) {
 				if (str_starts_with($key, strtolower($name) . '.')) {
@@ -121,20 +126,42 @@ final class Blueprint
 	 * @return non-empty-string
 	 */
 	public function resolve(Table|string $table): string {
-		return $this->names->tableName($table);
+		$name               = $this->names->tableName($table);
+		$this->tableNames[] = $name;
+
+		return $name;
+	}
+
+	/**
+	 * Return the tables to inspect before applying this declaration.
+	 *
+	 * @internal
+	 *
+	 * @return list<string>
+	 */
+	public function tableNames(): array {
+		return array_values(array_unique($this->tableNames));
 	}
 
 	/**
 	 * Mutate the underlying Doctrine schema with the collected declarations.
 	 *
 	 * @internal Called by the runner after up()/down() returns.
+	 *
+	 * @return list<SchemaState> Snapshots after each operation, in declaration order.
 	 */
-	public function apply(): void {
+	public function apply(): array {
+		$steps = [];
+
 		foreach ($this->operations as $operation) {
+			$this->state->renames = [];
 			$operation();
+			$steps[] = clone $this->state;
 		}
 
 		$this->operations = [];
+
+		return $steps;
 	}
 
 	private function replaceTable(DoctrineTable $table): void {

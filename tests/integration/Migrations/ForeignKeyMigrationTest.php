@@ -7,8 +7,7 @@ use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use PHPUnit\Framework\Attributes\DataProvider;
 use StellarWP\Foundation\Migrations\Contracts\Migration;
-use StellarWP\Foundation\Migrations\Exceptions\IncompatibleSchema;
-use StellarWP\Foundation\Migrations\Exceptions\LedgerFailure;
+use StellarWP\Foundation\Migrations\Exceptions\MigrationInterrupted;
 use StellarWP\Foundation\Migrations\MigrationsProvider;
 use StellarWP\Foundation\Migrations\Migrator;
 use StellarWP\Foundation\Migrations\ValueObjects\MigrationRegistration;
@@ -25,7 +24,7 @@ use StellarWP\Foundation\Tests\Support\Fixtures\Migrations\ForeignKeys\RemoveOrd
 use StellarWP\Foundation\Tests\Support\Fixtures\Migrations\ForeignKeys\RenameOrderReference;
 
 /**
- * Relationships enforce data integrity and retain migration retry and ownership guarantees.
+ * Relationships enforce data integrity through creation, alteration, and reversal.
  */
 final class ForeignKeyMigrationTest extends DatabaseTestCase
 {
@@ -104,25 +103,11 @@ final class ForeignKeyMigrationTest extends DatabaseTestCase
 		$this->assertTrue($this->observer->createSchemaManager()->introspectTable($this->source->prefix . $this->suffix . '_items')->hasIndex('order_lookup'));
 	}
 
-	public function test_replacement_changes_actions_and_retries_without_ddl_after_a_failed_ledger_write(): void {
+	public function test_replacement_changes_actions_and_rollback_restores_them(): void {
 		$migrator = $this->migrations(new CreateOrders($this->suffix), new CreateItems($this->suffix), new AddOrderReference($this->suffix), new CascadeOrderReference($this->suffix));
 		$migrator->migrate('3');
 		$this->rows();
-		$trigger = $this->observer->quoteSingleIdentifier($this->suffix . '_reject_history');
-		$this->observer->executeStatement("CREATE TRIGGER $trigger BEFORE INSERT ON {$this->history} FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'ledger rejected'");
-
-		try {
-			$migrator->migrate();
-			$this->fail('The history write must fail after DDL.');
-		} catch (LedgerFailure) {
-			$this->assertCount(1, $this->constraints());
-		} finally {
-			$this->observer->executeStatement('DROP TRIGGER ' . $trigger);
-		}
-
-		$steps = $migrator->migrate();
-		$this->assertSame([], $steps[0]->sql);
-		$this->assertSame(1, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $this->history . " WHERE version = '4'"));
+		$migrator->migrate();
 		$this->observer->update($this->orders, ['id' => 3], ['id' => 1]);
 		$this->assertSame(3, (int) $this->observer->fetchOne('SELECT order_id FROM ' . $this->items));
 		$this->observer->delete($this->orders, ['id' => 3]);
@@ -157,16 +142,14 @@ final class ForeignKeyMigrationTest extends DatabaseTestCase
 		$this->assertSame($old, $this->constraints()[0]->getObjectName()?->getIdentifier()->getValue());
 	}
 
-	public function test_replacement_resumes_after_only_the_drop_completed(): void {
+	public function test_replacement_stops_after_only_the_drop_completed(): void {
 		$migrator = $this->migrations(new CreateOrders($this->suffix), new CreateItems($this->suffix), new AddOrderReference($this->suffix), new CascadeOrderReference($this->suffix));
 		$migrator->migrate('3');
 		$name = $this->constraints()[0]->getObjectName()?->getIdentifier()->getValue();
 		$this->assertNotNull($name);
 		$this->observer->executeStatement('ALTER TABLE ' . $this->items . ' DROP FOREIGN KEY ' . $this->observer->quoteSingleIdentifier($name));
+		$this->expectException(MigrationInterrupted::class);
 		$migrator->migrate();
-		$this->rows();
-		$this->observer->delete($this->orders, ['id' => 1]);
-		$this->assertSame([], $this->observer->fetchAllAssociative('SELECT * FROM ' . $this->items));
 	}
 
 	public function test_conflicting_existing_constraint_is_not_silently_replaced(): void {
@@ -178,8 +161,8 @@ final class ForeignKeyMigrationTest extends DatabaseTestCase
 		$this->observer->executeStatement('ALTER TABLE ' . $this->items . ' DROP FOREIGN KEY ' . $quoted);
 		$this->observer->executeStatement('ALTER TABLE ' . $this->items . ' ADD CONSTRAINT ' . $quoted . ' FOREIGN KEY (order_id) REFERENCES ' . $this->orders . ' (id) ON DELETE CASCADE');
 		$this->observer->delete($this->history, ['version' => '3']);
-		$this->expectException(IncompatibleSchema::class);
-		$this->expectExceptionMessage('foreign key "order" (database constraint "' . $name . '")');
+		$this->expectException(MigrationInterrupted::class);
+		$this->expectExceptionMessage('already exists');
 		$migrator->migrate();
 	}
 
@@ -209,12 +192,12 @@ final class ForeignKeyMigrationTest extends DatabaseTestCase
 	}
 
 	/**
-	 * Name the affected declaration and database constraint wherever drift is detected.
+	 * Pending operations do not repair or reject unrelated relationship changes.
 	 *
 	 * @dataProvider foreignKeyDrift
 	 */
 	#[DataProvider('foreignKeyDrift')]
-	public function test_drift_names_the_logical_and_physical_foreign_key(bool $replace, bool $alterItems): void {
+	public function test_unrelated_relationship_drift_is_preserved(bool $replace, bool $alterItems): void {
 		$pending  = $alterItems ? new AddItemNote($this->suffix) : new AddOrderNote($this->suffix);
 		$migrator = $this->migrations(new CreateOrders($this->suffix), new CreateItems($this->suffix), new AddOrderReference($this->suffix), $pending);
 		$migrator->migrate('3');
@@ -229,15 +212,13 @@ final class ForeignKeyMigrationTest extends DatabaseTestCase
 				REFERENCES {$this->orders} (id) ON DELETE CASCADE");
 		}
 
-		try {
-			$migrator->migrate();
-			$this->fail('Undeclared relationship drift must stop the migration.');
-		} catch (IncompatibleSchema $failure) {
-			$this->assertStringContainsString('foreign key "order" (database constraint "' . $name . '")', $failure->getMessage());
-			$this->assertStringContainsString($this->suffix . '_items', $failure->getMessage());
-			$this->assertStringNotContainsString('table would be altered', $failure->getMessage());
-			$pendingTable = $this->source->prefix . $this->suffix . ($alterItems ? '_items' : '_orders');
-			$this->assertFalse($this->observer->createSchemaManager()->introspectTable($pendingTable)->hasColumn('note'));
+		$migrator->migrate();
+		$pendingTable = $this->source->prefix . $this->suffix . ($alterItems ? '_items' : '_orders');
+		$this->assertTrue($this->observer->createSchemaManager()->introspectTable($pendingTable)->hasColumn('note'));
+		$this->assertCount($replace ? 1 : 0, $this->constraints());
+
+		if ($replace) {
+			$this->assertSame('CASCADE', $this->constraints()[0]->onDelete());
 		}
 	}
 
@@ -263,36 +244,21 @@ final class ForeignKeyMigrationTest extends DatabaseTestCase
 		$this->observer->executeStatement('ALTER TABLE ' . $this->items . ' DROP FOREIGN KEY ' . $quoted);
 		$this->observer->executeStatement('ALTER TABLE ' . $this->items . ' ADD CONSTRAINT ' . $quoted . ' FOREIGN KEY (order_id) REFERENCES ' . $this->orders . ' (id)');
 		$this->observer->delete($this->history, ['version' => '2']);
-		$this->expectException(IncompatibleSchema::class);
-		$this->expectExceptionMessage('foreign key "order" (database constraint "' . $name . '")');
+		$this->expectException(MigrationInterrupted::class);
+		$this->expectExceptionMessage('already exists');
 		$migrator->migrate();
-	}
-
-	public function test_create_retry_adds_a_missing_constraint_without_recreating_the_table(): void {
-		$migrator = $this->migrations(new CreateOrders($this->suffix), new CreateReferencedItems($this->suffix));
-		$migrator->migrate();
-		$this->rows();
-		$name = $this->constraints()[0]->getObjectName()?->getIdentifier()->getValue();
-		$this->assertNotNull($name);
-		$this->observer->executeStatement('ALTER TABLE ' . $this->items . ' DROP FOREIGN KEY ' . $this->observer->quoteSingleIdentifier($name));
-		$this->observer->delete($this->history, ['version' => '2']);
-		$steps = $migrator->migrate();
-		$this->assertStringNotContainsString('CREATE TABLE', implode('; ', $steps[0]->sql));
-		$this->assertCount(1, $this->constraints());
-		$this->assertSame(1, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $this->items));
 	}
 
 	/**
 	 * Resume rollback after the child table was dropped but its ledger entry remains.
 	 */
-	public function test_rollback_retry_accepts_an_already_dropped_table_with_foreign_keys(): void {
+	public function test_rollback_retry_requires_repair_when_the_table_is_already_gone(): void {
 		$migrator = $this->migrations(new CreateOrders($this->suffix), new CreateReferencedItems($this->suffix));
 		$migrator->migrate();
 		$this->observer->executeStatement('DROP TABLE ' . $this->items);
 
-		$steps = $migrator->rollback();
-		$this->assertSame([], $steps[0]->sql);
-		$this->assertSame(0, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->history} WHERE version = '2'"));
+		$this->expectException(MigrationInterrupted::class);
+		$migrator->rollback();
 	}
 
 	public function test_the_same_migrations_use_distinct_foreign_keys_on_another_site(): void {

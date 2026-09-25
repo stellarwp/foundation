@@ -8,8 +8,8 @@ use StellarWP\Foundation\Migrations\Schema\Blueprint;
  * Declare one historical schema change through Foundation's blueprint vocabulary.
  *
  * Declarations must be pure: no queries, no conditionals on the live database.
- * The runner replays them in memory to compute desired states and decides what
- * remains to be executed, so migrations never need existence guards.
+ * The runner evaluates the current declaration against live tables, or simulated tables
+ * during preview. A failed migration requires inspection and repair before retry.
  */
 interface Migration
 {

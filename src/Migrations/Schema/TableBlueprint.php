@@ -398,12 +398,11 @@ final class TableBlueprint
 	 * @internal Called by Blueprint::apply().
 	 */
 	public function applyTo(TableEditor $editor, SchemaState $state, TableNameResolver $names): Table {
-		$scope = $state->tableOrigins[strtolower($this->name)] ?? $this->name;
+		$existing = $state->schema->hasTable($this->name) ? $state->schema->getTable($this->name)->getForeignKeys() : [];
 
 		foreach ($this->droppedForeignKeys as $name) {
-			$constraint = $this->foreignKeyName($scope, $name);
+			$constraint = $this->foreignKeyName($existing, $name);
 			$editor->dropForeignKeyConstraintByUnquotedName($constraint);
-			unset($state->foreignKeyNames[strtolower($this->name)][$constraint]);
 		}
 
 		foreach ($this->droppedIndexes as $index) {
@@ -437,9 +436,9 @@ final class TableBlueprint
 		}
 
 		foreach ($this->foreignKeys as $foreignKey) {
-			$constraint = $this->foreignKeyName($scope, $foreignKey->name());
+			$constraint = $this->foreignKeyName($existing, $foreignKey->name());
+
 			$foreignKey->applyTo($editor, $names, $constraint);
-			$state->foreignKeyNames[strtolower($this->name)][$constraint] = $foreignKey->name();
 		}
 
 		if ($this->comment !== null) {
@@ -450,12 +449,31 @@ final class TableBlueprint
 	}
 
 	/**
-	 * Scope constraint identity to its physical table without exceeding MySQL's identifier limit.
+	 * Resolve a logical key on its live table, retaining its identity after table renames.
+	 *
+	 * Generated names have independent table and logical components, within MySQL's 64-byte limit.
+	 *
+	 * @param array<string, \Doctrine\DBAL\Schema\ForeignKeyConstraint> $constraints
 	 *
 	 * @return non-empty-string
 	 */
-	private function foreignKeyName(string $scope, string $name): string {
-		return 'fk_' . substr(hash('sha256', $scope . "\0" . $name), 0, 40);
+	private function foreignKeyName(array $constraints, string $name): string {
+		$identity = '_' . hash('sha1', $name);
+		$matches  = [];
+
+		foreach ($constraints as $key) {
+			$physical = $key->getObjectName()?->getIdentifier()->getValue();
+
+			if ($physical !== null && preg_match('/^fk_[0-9a-f]{20}_[0-9a-f]{40}$/D', $physical) === 1 && str_ends_with($physical, $identity)) {
+				$matches[] = $physical;
+			}
+		}
+
+		if (count($matches) > 1) {
+			throw new InvalidArgumentException('More than one constraint has the logical name ' . $name . ' on table ' . $this->name . '.');
+		}
+
+		return $matches[0] ?? 'fk_' . substr(hash('sha256', $this->name), 0, 20) . $identity;
 	}
 
 	/**

@@ -12,7 +12,7 @@ use InvalidArgumentException;
 final readonly class Rename
 {
 	/**
-	 * Keep the resolved names used by schema replay and SQL planning.
+	 * Keep the resolved names used by schema changes and SQL planning.
 	 *
 	 * @param non-empty-string      $from
 	 * @param non-empty-string      $to
@@ -28,12 +28,5 @@ final readonly class Rename
 		if (trim($from) === '' || trim($to) === '' || strcasecmp($from, $to) === 0) {
 			throw new InvalidArgumentException('A rename requires two distinct, non-empty names.');
 		}
-	}
-
-	/**
-	 * Return the inverse declaration for rollback inspection.
-	 */
-	public function inverse(): self {
-		return new self($this->to, $this->from, $this->table);
 	}
 }

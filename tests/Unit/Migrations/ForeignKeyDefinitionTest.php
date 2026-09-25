@@ -63,9 +63,9 @@ final class ForeignKeyDefinitionTest extends TestCase
 	}
 
 	/**
-	 * Labels follow declarations through renames without leaking into reused tables or prior snapshots.
+	 * Logical identities remain discoverable from live constraint names after renames.
 	 */
-	public function test_logical_labels_follow_the_relationship_lifecycle(): void {
+	public function test_logical_identity_survives_table_and_column_renames(): void {
 		$names = $this->createStub(TableNameResolver::class);
 		$names->method('tableName')->willReturnCallback(static fn (string $name): string => 'wp_' . $name);
 		$state     = new SchemaState(new Schema());
@@ -76,32 +76,50 @@ final class ForeignKeyDefinitionTest extends TestCase
 		$blueprint->apply();
 		$constraint = array_key_first($state->schema->getTable('wp_items')->getForeignKeys());
 		$this->assertNotNull($constraint);
-		$label = '"order" (database constraint "' . $constraint . '")';
-		$this->assertSame($label, $state->foreignKeyLabel('wp_items', $constraint));
-		$this->assertSame($constraint, $state->foreignKeyLabel('wp_other_items', $constraint));
-		$this->assertSame('external_constraint', $state->foreignKeyLabel('wp_items', 'external_constraint'));
-		$before = clone $state;
+		$this->assertSame(64, strlen($constraint));
 
 		$blueprint->table('items')->renameColumn('order_id', 'purchase_id');
 		$blueprint->rename('items', 'archive');
 		$blueprint->apply();
-		$this->assertSame($label, $state->foreignKeyLabel('wp_archive', $constraint));
-		$this->assertSame($constraint, $state->foreignKeyLabel('wp_items', $constraint));
-		$this->assertSame($label, $before->foreignKeyLabel('wp_items', $constraint));
+		$this->assertTrue($state->schema->getTable('wp_archive')->hasForeignKey($constraint));
 
-		$blueprint->create('items')->integer('id');
-		$blueprint->apply();
-		$this->assertSame($constraint, $state->foreignKeyLabel('wp_items', $constraint));
-		$blueprint->table('archive')->dropForeignKey('order');
-		$blueprint->apply();
-		$this->assertSame($constraint, $state->foreignKeyLabel('wp_archive', $constraint));
+		// A fresh blueprint has no historical naming metadata.
+		$drop = new Blueprint($state, $names);
+		$drop->table('archive')->dropForeignKey('order');
+		$drop->apply();
+		$this->assertSame([], $state->schema->getTable('wp_archive')->getForeignKeys());
+	}
 
-		$blueprint->table('archive')->foreignKey('order', 'purchase_id')->references('orders', 'id');
+	/**
+	 * A logical removal must not guess between constraints combined from different tables.
+	 */
+	public function test_ambiguous_logical_identity_requires_an_explicit_repair(): void {
+		$names = $this->createStub(TableNameResolver::class);
+		$names->method('tableName')->willReturnCallback(static fn (string $name): string => 'wp_' . $name);
+		$state     = new SchemaState(new Schema());
+		$blueprint = new Blueprint($state, $names);
+
+		foreach ([
+			'items',
+			'archive',
+		] as $name) {
+			$table = $blueprint->create($name);
+			$table->unsignedBigInteger('order_id');
+			$table->foreignKey('order', 'order_id')->references('orders', 'id');
+		}
+
 		$blueprint->apply();
-		$this->assertSame($label, $state->foreignKeyLabel('wp_archive', $constraint));
-		$blueprint->drop('archive');
-		$blueprint->apply();
-		$this->assertSame($constraint, $state->foreignKeyLabel('wp_archive', $constraint));
+		$archivedKey   = array_values($state->schema->getTable('wp_archive')->getForeignKeys())[0];
+		$combined      = $state->schema->getTable('wp_items')->edit()->addForeignKeyConstraint($archivedKey)->create();
+		$state->schema = new Schema([
+			$combined,
+		]);
+		$drop = new Blueprint($state, $names);
+		$drop->table('items')->dropForeignKey('order');
+
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('More than one constraint has the logical name order on table wp_items.');
+		$drop->apply();
 	}
 
 	/**

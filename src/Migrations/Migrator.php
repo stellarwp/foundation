@@ -20,12 +20,10 @@ use StellarWP\Foundation\Migrations\ValueObjects\Step;
 use Throwable;
 
 /**
- * Apply or reverse declarative migrations by diffing desired states against the live schema.
+ * Apply or reverse migration declarations against the current schema under one advisory lock.
  *
- * For each step the runner replays history in memory to obtain the desired schema before and
- * after the migration, introspects the owned tables, and executes only the remaining difference.
- * Work a previous attempt already completed produces no SQL; differences the migration never
- * declared stop the run. All of this happens under one MySQL advisory lock on the shared session.
+ * Each migration is recorded after its schema and data work succeeds. Failed work may already
+ * have committed; inspect and repair it before retrying an unrecorded migration.
  */
 final class Migrator
 {
@@ -194,8 +192,7 @@ final class Migrator
 
 		foreach ($this->plan($target, $applied, $applyPending) as [$id, $reverse]) {
 			$migration = $this->migrations->get($id);
-			$afterIds  = $reverse ? array_values(array_diff($applied, [$id])) : array_merge($applied, [$id]);
-			$change    = $this->planner->plan($applied, $id, $reverse, $simulated, $simulatedNames);
+			$change    = $this->planner->plan($id, $reverse, $simulated, $simulatedNames);
 			$sql       = $change->sql;
 
 			if ($execute) {
@@ -216,14 +213,13 @@ final class Migrator
 				try {
 					$reverse ? $this->history->remove($id) : $this->history->record($id);
 				} catch (Throwable $failure) {
-					throw new Exceptions\LedgerFailure('Migration ' . $id . ' changed the schema but could not update its history; retry the migration.', 0, $failure);
+					throw new Exceptions\LedgerFailure('Migration ' . $id . ' completed its work but could not update its history. Inspect the schema and data, then repair the history or undo the work before retrying.', 0, $failure);
 				}
 			} else {
 				$simulated      = $change->schema;
 				$simulatedNames = array_values(array_unique(array_merge($simulatedNames, array_map('strtolower', $change->tableNames))));
 			}
 
-			$applied = $afterIds;
 			$steps[] = new Step($id, self::displayName($migration, $id), $reverse, $sql, ! $reverse && $migration instanceof MigratesData);
 		}
 
@@ -243,7 +239,7 @@ final class Migrator
 			static fn (string $id): bool => $target === self::NONE || strcmp($id, $target) > 0,
 		));
 		rsort($reverse, SORT_STRING);
-		$this->assertKnown($applied);
+		$this->assertKnown($reverse);
 		$plan = array_map(static fn (string $id): array => [$id, true], $reverse);
 
 		if ($target === self::NONE || ! $applyPending) {
@@ -265,13 +261,13 @@ final class Migrator
 	private function assertKnown(array $ids): void {
 		foreach ($ids as $id) {
 			if (! $this->migrations->has($id)) {
-				throw new MigrationInterrupted('Restore the missing migration before running migrations: ' . $id);
+				throw new MigrationInterrupted('Restore the missing migration before reversing it: ' . $id);
 			}
 		}
 	}
 
 	private function assertTarget(string $target): void {
-		if (! in_array($target, [self::NONE, self::LATEST], true) && ! $this->migrations->has($target)) {
+		if (! in_array($target, [self::NONE, self::LATEST], true) && ! $this->migrations->has($target) && ! array_key_exists($target, $this->history->applied())) {
 			throw new InvalidArgumentException('Unknown migration target: ' . $target);
 		}
 	}
