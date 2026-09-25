@@ -119,13 +119,15 @@ The filename supplies the persistent ID `20260923000001_create_reports_table`. T
 
 ### Preview and apply
 
+Review the generated SQL, apply the pending migration, then check its recorded status:
+
 ```shell
 wp your-plugin migrate:run --dry-run
 wp your-plugin migrate:run
 wp your-plugin migrate:status
 ```
 
-Review the previewed SQL before applying it. `migrate:run` applies all pending migrations; the last command shows their status. The first run creates the migration ledger automatically. `your-plugin` is the configured WP-CLI command prefix.
+The first run creates the migration ledger automatically. `your-plugin` is the configured WP-CLI command prefix.
 
 Foundation loads new migration files automatically from the configured directory. You do not add each migration to a provider list.
 
@@ -193,11 +195,125 @@ To reverse the highest applied migration, inspect its `down()` and run:
 wp your-plugin migrate:rollback
 ```
 
-In this example that removes `published_at` while retaining the reports table. Running `migrate:run` afterward reapplies the column; values deleted by rollback do not return. Reversing the initial migration drops the complete reports table. [Deployment commands](#deploy-and-recover) cover targets, multiple reversals, and interrupted operations.
+In this example that removes `published_at` while retaining the reports table. Running `migrate:run` afterward reapplies the column; values deleted by rollback do not return. Reversing the initial migration drops the complete reports table. [Migration commands](#run-and-reverse-migrations) cover targets, multiple reversals, reset, and refresh.
 
 :::caution[Keep applied history immutable]
 Once a migration has been applied anywhere, retain its filename and declarations. Create another migration for a later change. Renaming its filename changes its recorded identity. Moving a file between configured directories preserves identity when its basename stays unchanged. Keep historical table names literal; referencing a constant on a current application class would couple history to later refactors.
 :::
+
+## Run and reverse migrations
+
+The examples use the `your-plugin` command prefix configured during setup. A complete WordPress application using Foundation's default prefix runs the same commands as `wp nx migrate:*`.
+
+### Run pending migrations
+
+Apply all pending migrations in ascending ID order:
+
+```shell
+wp your-plugin migrate:run
+```
+
+Foundation holds the application's migration lock and records each migration after its schema and data work succeeds. The first run creates the history table. If no migrations are pending, the command completes without changing the schema.
+
+### Check migration status
+
+See which migrations are applied, pending, or recorded in history with a missing declaration:
+
+```shell
+wp your-plugin migrate:status
+```
+
+Status includes each migration's ID, application timestamp, and optional [description](#describe-a-migration). A missing applied file does not block new forward migrations, but it must be restored before reversing that migration.
+
+### Preview migration SQL
+
+Review the SQL for pending migrations before applying them:
+
+```shell
+wp your-plugin migrate:run --dry-run
+```
+
+Preview does not change the schema or execute data callbacks. It reports when a data callback will run. The database can change between preview and execution, so review failures even after a successful preview.
+
+### Migrate to a specific version
+
+Bring the schema to a selected migration by reversing applied IDs above it, then applying pending IDs through it. The target is the migration's filename without `.php`.
+
+A target below the current version can delete data through `down()`. Preview the target first:
+
+```shell
+wp your-plugin migrate:run --to=20260924000001_add_published_at --dry-run
+```
+
+After reviewing the planned changes, apply the target:
+
+```shell
+wp your-plugin migrate:run --to=20260924000001_add_published_at
+```
+
+IDs determine order across all migration directories. Choose a target that respects your migration dependencies, including older IDs contributed by newly enabled packages. Omit `--to`, or use `--to=latest`, to apply every pending migration.
+
+### Roll back migrations
+
+Reverse the highest applied migration ID by running its `down()` method:
+
+```shell
+wp your-plugin migrate:rollback
+```
+
+To reverse several applied migrations, specify a count:
+
+```shell
+wp your-plugin migrate:rollback --step=2
+```
+
+To reverse all applied IDs above a specific target, use `--to`. This leaves the target in place if already applied and never applies pending migrations:
+
+```shell
+wp your-plugin migrate:rollback --to=20260923000001_create_reports_table
+```
+
+Choose either `--step` or `--to`. Rollback counts migration IDs, not deployment batches. Foundation checks that the declarations selected for reversal exist; unrelated missing files do not block the operation.
+
+:::danger[Rollback can delete data]
+Review each selected migration's `down()` and take the application's required backup before running it. An inverse may remove columns or entire tables, including their rows. Reapplying the migration recreates the schema but does not restore deleted data. A failed inverse stops execution; follow [failure recovery](#interrupted-schema-changes) before retrying.
+:::
+
+### Reset all migrations
+
+Reverse every applied migration and leave the migrations pending:
+
+```shell
+wp your-plugin migrate:reset
+```
+
+Reset runs `down()` in descending ID order and removes each successfully reversed entry from history. It does not rerun migrations. All applied declarations must be available, and an irreversible or failed inverse stops the reset.
+
+The command asks for confirmation because the inverses can delete application data. For an already reviewed operation, skip the prompt with `--yes`:
+
+```shell
+wp your-plugin migrate:reset --yes
+```
+
+`migrate:rollback --to=0` provides the same reversal. To preview all inverses without executing them or prompting:
+
+```shell
+wp your-plugin migrate:run --to=0 --dry-run
+```
+
+### Roll back and rerun migrations
+
+Rebuild the schema by reversing all applied migrations, then running all migrations again:
+
+```shell
+wp your-plugin migrate:refresh
+```
+
+Refresh holds one migration lock across reversal and reapplication. Like reset, it requires every applied declaration and working `down()` methods. It asks for confirmation because reversing migrations can delete data; use `--yes` after reviewing the operation:
+
+```shell
+wp your-plugin migrate:refresh --yes
+```
 
 ## Write schema changes
 
@@ -524,41 +640,25 @@ Foundation runs this callback after schema changes and before writing history. I
 
 ## Deploy and recover
 
-Programmatic installation or upgrade code injects `Migrator` and calls `$migrator->migrate()` at its chosen upgrade boundary. A public plugin should run this after WordPress and its providers are ready, and record its installed application version only after migration succeeds. Run the same upgrade workflow for each affected site.
+### Run migrations from application code
 
-| Operation | Command |
-| --- | --- |
-| Inspect pending, applied, and missing migrations | `wp your-plugin migrate:status` |
-| Preview pending SQL | `wp your-plugin migrate:run --dry-run` |
-| Apply pending migrations | `wp your-plugin migrate:run` |
-| Reconcile to a registered ID | `wp your-plugin migrate:run --to=<id>` |
-| Reverse the highest applied ID | `wp your-plugin migrate:rollback` |
-| Reverse several applied IDs | `wp your-plugin migrate:rollback --step=2` |
-| Reverse applied IDs above a target | `wp your-plugin migrate:rollback --to=<id>` |
-| Reverse all applied migrations | `wp your-plugin migrate:reset` |
-| Reverse and rerun everything | `wp your-plugin migrate:refresh` |
-| Record an already completed migration | `wp your-plugin migrate:mark-applied <id>` |
-| Record all pending migrations as completed | `wp your-plugin migrate:mark-applied --all` |
-| Remove a migration's history entry | `wp your-plugin migrate:mark-pending <id>` |
-
-`migrate:reset` calls every applied migration's `down()` in descending ID order and removes each successfully reversed entry from history. It leaves migrations pending without rerunning them; `migrate:refresh` reverses and then reapplies them. Reset is equivalent to `migrate:rollback --to=0`, or `$migrator->rollbackTo(Migrator::NONE)` in application code. It executes the declared inverses rather than dropping every table in the database. If an inverse fails, execution stops; inspect and repair any partial changes before retrying.
-
-Programmatic equivalents are `Migrator::status()`, `preview($target)`, `migrate($target)`, `rollback($steps)`, `rollbackTo($target)`, and `refresh()`. Preview and execution operations return step objects containing the stable ID, direction, SQL, and whether a forward data callback was involved. To add a readable status description, implement `DescribesMigration` alongside `Migration`:
+Inject `StellarWP\Foundation\Migrations\Migrator` into the service that owns installation or upgrades. Once WordPress and the application's providers are ready, run pending migrations:
 
 ```php
-use StellarWP\Foundation\Migrations\Contracts\DescribesMigration;
-
-// Add DescribesMigration to the migration's implements list.
-public function describe(): string {
-	return 'Create report storage';
-}
+$migrator->migrate();
 ```
 
-`migrate($target)` and `migrate:run --to=<id>` reverse applied IDs above the target in descending order, then apply pending IDs through it in ascending order. `latest` applies all pending migrations. `rollbackTo($target)` and `migrate:rollback --to=<id>` only reverse applied IDs above the target; any pending IDs, including the target itself, remain pending. Rollback counts IDs, not deployment batches. Developers own dependencies and choosing a safe target, especially when a newly enabled package adds an older ID. Missing applied files appear in status but do not block new forward migrations. Before rollback, Foundation checks that every migration selected for reversal is available; unrelated missing files do not block it. Reset and refresh require every applied declaration because they reverse all migrations. Retain migration files for fresh installations and rollbacks; deleting history is not a supported schema-squashing workflow.
+Record the installed application version only after this succeeds. Run the same upgrade workflow for each affected WordPress site, switching sites only between complete migration operations.
 
-:::danger[Rollback can delete data]
-`down()` is application code. Reversing an initial migration drops its complete table, including rows and additions made later. Review the inverse and take the application's required backup before rolling back. `migrate:reset`, `migrate:refresh`, `migrate:run --to=0`, and `migrate:rollback --to=0` prompt for confirmation because they reverse every applied migration. Use `--yes` only when that data loss is intended. `migrate:run --to=0 --dry-run` previews the reversal without prompting or executing it.
-:::
+Use `status()` to inspect history and `preview($target)` to inspect planned steps. `migrate($target)` selects a target, `rollback($steps)` reverses a count of applied IDs, and `rollbackTo($target)` reverses only IDs above a target. To reset all applied migrations programmatically:
+
+```php
+use StellarWP\Foundation\Migrations\Migrator;
+
+$migrator->rollbackTo( Migrator::NONE );
+```
+
+Use `refresh()` to reverse and reapply all migrations. Programmatic calls do not prompt for confirmation; the application owns that decision. Preview and execution operations return step objects with the ID, direction, SQL, and whether a forward data callback was involved.
 
 ### Adopt an existing installation
 
@@ -568,9 +668,24 @@ For a fresh installation, run `wp your-plugin migrate:run` to create the schema 
 wp your-plugin migrate:mark-applied 20260923000001_create_reports_table
 ```
 
-Use `wp your-plugin migrate:mark-applied --all` only after verifying that **every currently pending migration's schema and data effects** are fulfilled. Then inspect status and preview the next run before enabling automatic upgrades. Later migrations continue through the normal `migrate:run` workflow.
-
 Marking changes history under the same database advisory lock used for migration execution. It may create the ledger, but does not invoke `up()`, `down()`, or data callbacks, plan schema changes, or verify the live database. You own verification of the recorded effects. Each marking command prompts for confirmation; use `--yes` for an already reviewed operation.
+
+#### Mark all pending migrations as applied
+
+When adopting a complete existing schema, verify that **every currently pending migration's schema and data effects** are fulfilled, then record them together:
+
+```shell
+wp your-plugin migrate:mark-applied --all
+```
+
+Check the recorded history and preview the next run before enabling automatic upgrades:
+
+```shell
+wp your-plugin migrate:status
+wp your-plugin migrate:run --dry-run
+```
+
+Later migrations continue through the normal `migrate:run` workflow.
 
 Programmatic callers inject `Migrator` and use `markApplied(string $id): void`, `markAllApplied(): void`, or `markPending(string $id): void`. `markApplied()` requires a registered ID. Repeating it preserves the existing history entry and its timestamp. `markAllApplied()` records all currently registered pending IDs atomically in one transaction, preserving existing entries. A marked migration participates in normal rollback: reversing it invokes its `down()` declaration, with the same potential for data loss as an executed migration.
 
@@ -687,6 +802,19 @@ Import `StellarWP\Foundation\Migrations\MigrationsProvider`, `StellarWP\Foundati
 Extend `Migration` and implement `up()`; override `down()` when a safe inverse exists. Direct implementation of `Contracts\Migration` remains supported for declarations that need a different base class, but requires both methods. Optional data and description behavior use separate interfaces. Foundation preserves these extension contracts within 2.x, including inherited method signatures and constructor expectations. Adding a base-class method can collide with consumer methods, so the base class is not an unrestricted extension surface for new Foundation features.
 
 The registration supplies the ID. IDs are compared in ascending byte order. They must be unique, nonblank, unpadded, and no more than 191 bytes; `0` and `latest` are reserved targets. Choose IDs whose lexical order respects dependencies. Applications using only explicit contributions can omit discovery configuration.
+
+### Describe a migration
+
+Add `DescribesMigration` to a migration to show a readable description in `migrate:status`:
+
+```php
+use StellarWP\Foundation\Migrations\Contracts\DescribesMigration;
+
+// Add DescribesMigration to the migration's implements list.
+public function describe(): string {
+	return 'Create report storage';
+}
+```
 
 ### Customize stubs and test migrations
 
