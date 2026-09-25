@@ -1,182 +1,118 @@
 ---
 title: Database
-description: WordPress-backed migrations, queries, and distributed locks built on wpdb and dbDelta.
+description: A shared Doctrine connection, application tables, and managed WordPress transactions.
 sidebar:
   order: 2
 ---
 
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-Foundation Database provides three focused capabilities for WordPress applications: versioned schema migrations, a small inspectable query API, and a database-backed implementation of the Foundation Lock contract. It intentionally builds on `wpdb`, `dbDelta()`, and WordPress table prefixes instead of acting as a generic database abstraction.
+Foundation Database provides a configured Doctrine DBAL connection, convenient application tables, and reliable WordPress transactions. Use Foundation's fluent queries for ordinary reads, joins, and writes. Use the shared Doctrine connection directly for transactions, specialized SQL, and native database operations.
 
-## Installation
+## Get started
 
-Install the runtime package in the application:
+Install the runtime package:
 
 ```shell
 composer require stellarwp/foundation-database
 ```
 
-Foundation Database installs its Container, Lock, and WP-CLI runtime dependencies automatically. Install `stellarwp/foundation-cli` separately with `--dev` only when the project uses its migration and table generators.
+Foundation requires PHP 8.3, mysqli, and Doctrine DBAL 4.4.
 
-:::note[Runtime requirements]
-Foundation Database requires WordPress 6.2 or newer because prepared identifier placeholders use `%i`. Database locks require MySQL 5.6.4 or newer, or MariaDB 5.3 or newer, for fractional-second timestamps.
+:::caution[Database requirements]
+Use MySQL **5.7.9+** or MariaDB **10.4.3+**, matching [Doctrine DBAL 4.4’s supported platforms](https://www.doctrine-project.org/projects/doctrine-dbal/en/4.4/reference/platforms.html). Check the database version on every deployment target before adopting Foundation.
 :::
 
-### Prepare the application
 
-Database services use the application's existing container, provider graph, Foundation prefix, and WP-CLI command prefix:
+Database services borrow the active WordPress connection. Use the primary MySQL or MariaDB database and InnoDB tables for transactional application data.
 
-<CardGrid>
-  <LinkCard
-    title="Configure the Container"
-    description="Load config.php and construct the shared application container."
-    href="/start/configure-the-container/"
-  />
-  <LinkCard
-    title="Register Service Providers"
-    description="Compose infrastructure and feature providers in dependency order."
-    href="/start/register-service-providers/"
-  />
-  <LinkCard
-    title="Scope Foundation"
-    description="Give a distributable plugin stable, application-specific resources."
-    href="/start/scope-foundation/"
-  />
-  <LinkCard
-    title="WP-CLI"
-    description="Understand command registration and prefix configuration."
-    href="/components/wp-cli/"
-  />
-</CardGrid>
-
-## Configuration
-
-### Scope database resources
-
-Set a stable application prefix in the root `config.php` for a standalone plugin:
+Set a stable, unique application prefix in your root configuration:
 
 ```php title="config.php"
 <?php declare(strict_types=1);
 
 return [
 	'foundation' => [
+		'root'   => __DIR__,
 		'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? 'your-plugin',
 	],
 ];
 ```
 
-With this prefix, Foundation uses these resources by default:
+:::caution[Standalone plugin resources]
+Use a stable, unique `foundation.prefix` for Foundation-managed resources such as migration history and database lock storage. Choose plugin-specific application table names separately, such as `your_plugin_reports`. See [application scoping](/start/scope-foundation/).
+:::
 
-| Resource | Default |
-| --- | --- |
-| Migration table | `<wp_prefix>your_plugin_foundation_migrations` |
-| Lock table | `<wp_prefix>your_plugin_foundation_locks` |
-| Migration lock | `your-plugin-foundation-database-migrations` |
-| WP-CLI command | `wp your-plugin migrate` |
+After [creating the application container](/start/configure-the-container/), register the database provider before application providers in `src/App.php`:
 
-Complete WordPress applications that own the entire installation can keep the zero-configuration `nx` prefix. Standalone plugins should not share the default because another Foundation consumer could otherwise read the same migration ledger or contend for the same lock.
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Database\DatabaseProvider;
 
-Keep the prefix stable after migrations have run. Changing it points the application at a different ledger and lock table, making every configured migration appear pending.
-
-Application table names are chosen by the developer. When [generating a table](/components/database/migrations/#create-and-change-a-table) for a standalone plugin, use a stable name unique to that plugin, such as `--table-name=your_plugin_reports`. WordPress adds its site prefix to produce `wp_your_plugin_reports`; `foundation.prefix` scopes the migration infrastructure listed above.
-
-### Override individual resources
-
-Package-specific settings in the root `config.php` override values derived from `foundation.prefix`:
-
-```php title="config.php"
-return [
-	'foundation' => [
-		'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? 'your-plugin',
-	],
-	'database' => [
-		'migrations_table' => $_ENV['FOUNDATION_DATABASE_MIGRATIONS_TABLE'] ?? '',
-		'locks_table'      => $_ENV['FOUNDATION_DATABASE_LOCKS_TABLE'] ?? '',
-		'lock_name'        => $_ENV['FOUNDATION_DATABASE_LOCK_NAME'] ?? null,
-		'lock_ttl'         => (int) ( $_ENV['FOUNDATION_DATABASE_LOCK_TTL'] ?? 300 ),
-	],
+/** @var list<class-string<Provider>> */
+private const array PROVIDERS = [
+	DatabaseProvider::class,
 ];
 ```
 
-Leave table names empty to use the scoped defaults. Override values are table names without a WordPress prefix; the active database scope applies the correct site prefix. For example, `your_plugin_migrations` becomes `wp_2_your_plugin_migrations` on site 2 of a typical multisite installation. All resulting prefixed table names must fit MySQL's 64-character identifier limit.
+`DatabaseProvider` supplies one shared `Doctrine\DBAL\Connection`. Tables and repositories resolved from the container participate in that connection's transactions. Registration is lazy: it creates no database tables. Register an application provider afterward when you need custom service bindings.
 
-The migration lock settings coordinate migration execution only. Applications selecting `DatabaseLock` for their own work choose each lock name and TTL when calling `acquire()`.
+### Query an application table
 
-Set `database.lock_ttl` longer than the longest uninterrupted operation between renewals. Foundation renews the migration lock immediately before and after every `up()` and `down()` call, but it cannot renew the lease while a blocking migration method or ledger update is still running. Split unusually long work into separate migrations or increase `FOUNDATION_DATABASE_LOCK_TTL` before deployment.
+Application tables declare their stable name and inherit their infrastructure constructor:
 
-### Use database services on multisite
+In `src/Database/Tables/Reports_Table.php`:
 
-Foundation resolves migration and lock table names from the active WordPress site's `$wpdb->prefix` whenever they are used. You can therefore reuse the same container and `Migrator` while iterating over sites, provided each migration operation completes before the blog changes:
+```php title="Reports_Table.php"
+<?php declare(strict_types=1);
 
-```php title="Migrate_Network.php"
-foreach ( $site_ids as $site_id ) {
-	switch_to_blog( $site_id );
+namespace Plugin\Database\Tables;
 
-	try {
-		$migrator->initialize();
-		$migrator->run();
-	} finally {
-		restore_current_blog();
+use StellarWP\Foundation\Database\Table\Table;
+
+final readonly class Reports_Table extends Table {
+
+	public function unprefixedName(): string {
+		return 'your_plugin_reports';
 	}
 }
 ```
 
-Each `initialize()`, `run()`, `rollback()`, `refresh()`, and `dropStore()` operation captures the active blog ID when it starts. Foundation confirms that context before renewing the migration lock, writing to the ledger, and releasing the lock.
+Inject `Reports_Table` into your service and call its operations:
 
-:::caution[Do not switch blogs inside a migration]
-A migration must not call `switch_to_blog()`, even if it would restore the original blog before returning. Foundation can detect a changed context at its lock and ledger boundaries, but it cannot detect a temporary switch that modifies another site's schema and returns to the original site. Switch blogs only around complete `Migrator` operations as shown above.
-:::
+```php
+$id = $this->reports->insertGetId( [
+	'title' => 'Weekly report',
+] );
 
-WP-CLI can also select each site without an in-process loop:
-
-```shell
-wp --url=https://site.example your-plugin migrate --initialize
-wp --url=https://site.example your-plugin migrate --run
+$report = $this->reports->query()
+	->select( 'id', 'title' )
+	->where( 'id', $id )
+	->first();
 ```
 
-Applications that create sites dynamically can use WordPress's `wp_initialize_site` action to schedule the same initialization and migration workflow. Do not run migrations during every normal request.
+[Create the table through a migration](/components/migrations/), then use the [query and transaction guide](/components/database/query-builder/) for results, writes, and failure handling.
 
-:::note[Network-wide migrations]
-Foundation Database currently manages site-specific migration state. It does not provide a network-wide migration ledger for shared global tables.
-:::
+## Multisite and customization
 
-### Register the providers
+`Table` is a supported base class. Inherit its constructor and implement `unprefixedName()`; application query methods may live on the subclass or in a composed repository. Foundation preserves supported behavior and subclass compatibility within a release line, including when considering new base-class methods.
 
-In `src/App.php`, register `WPCliProvider` before `DatabaseProvider`, then register application providers that contribute migrations or select the database lock:
+A shared container may be reused after `switch_to_blog()` between complete operations. Tables resolve the active prefix when called; a query already built retains its original table name. Build a fresh query after switching sites. Run migrations separately for each site, for example `wp --url=https://site.example your-plugin migrate:run`.
 
-```php title="App.php"
-use StellarWP\Foundation\Container\Contracts\Provider;
-use StellarWP\Foundation\Database;
-use StellarWP\Foundation\WPCli;
-use Plugin\Database as ApplicationDatabase;
+Transactions and migrations capture their starting scope and reject detected site or connection changes. Never switch sites, even temporarily, during those operations.
 
-/** @var list<class-string<Provider>> */
-private const array PROVIDERS = [
-	WPCli\WPCliProvider::class,
-	Database\DatabaseProvider::class,
-	ApplicationDatabase\Provider::class,
-];
-```
-
-`DatabaseProvider` configures `wpdb`, schema services, migration storage, the migration lock, and the `migrate` command. It does not create tables, run migrations, or select `DatabaseLock` as the application's general `Lock` implementation during WordPress bootstrap.
-
-## Choose a feature
+Applications can replace `DatabaseScope` and `TableNameResolver` when they own a different naming policy. Register replacements after `DatabaseProvider`, before resolving database services. Replacing the Doctrine connection also requires preserving Foundation's documented transaction and migration guarantees, including terminal failure tracking and acknowledged commits. When using Foundation Migrations, a replacement must also supply a coherent `Database\Contracts\AdvisorySession` using the same connection: every execution must check ownership and retain terminal failures. Registering an unrelated lock implementation cannot supply those guarantees. A plain DBAL connection alone does not provide those guarantees.
 
 <CardGrid>
-  <LinkCard
-    title="Migrations"
-    description="Define tables, register versioned changes, and run them through WP-CLI during deployment."
-    href="/components/database/migrations/"
-  />
-  <LinkCard
-    title="Query Builder"
-    description="Read and write through application table classes, with low-level SQL available when needed."
-    href="/components/database/query-builder/"
-  />
-  <LinkCard
-    title="Database Lock"
-    description="Coordinate WordPress requests through the shared database when Redis is not required."
-    href="/components/database/lock/"
-  />
+  <LinkCard title="Migrations" description="Generate migrations, preview SQL, and manage application schema changes." href="/components/migrations/" />
+  <LinkCard title="Queries and transactions" description="Use fluent application queries and shared transactions." href="/components/database/query-builder/" />
+  <LinkCard title="Database Lock" description="Choose database-backed coordination for application work." href="/components/lock/database/" />
 </CardGrid>
+
+### Database and migration integration
+
+`Database\Contracts\AdvisorySession` is the supported integration for running work under a database-session advisory lock. `DatabaseProvider` binds it to the same session used by the managed DBAL connection. Foundation Migrations uses it automatically; ordinary table and transaction consumers continue using their existing APIs.
+
+Implementations acquire once without waiting, retain the original site and connection across DDL and nested transactions, check ownership before execution and completion, and preserve a caught database failure until the locked operation ends. An escaping callback exception takes precedence over release failure. Connection changes must never reconnect or replay protected work. Contention raises `AdvisoryLockContended`; failed or uncertain ownership raises `AdvisoryLockInterrupted`.
+
+Database owns the supported DBAL constraint. When upgrading it, verify the migration schema APIs and failure-handling tests as well as queries and transactions. Foundation Migrations requires a compatible Database release; applications should update their Composer lock file and run their migration tests before deployment.

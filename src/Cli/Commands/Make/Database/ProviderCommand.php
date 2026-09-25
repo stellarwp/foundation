@@ -21,13 +21,13 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * Generates a database feature provider for registering Foundation Database classes.
  *
- * Use this before generating database tables or migrations when a consuming
+ * Use this before generating database tables when a consuming
  * project wants a single provider where generated database classes are wired.
  */
 final class ProviderCommand extends Command
 {
 	public const string CONFIG_KEY        = 'database-provider';
-	public const string NAME              = 'make:' . self::CONFIG_KEY;
+	public const string NAME              = 'make:database:provider';
 	public const string DEFAULT_NAMESPACE = 'Database';
 
 	public function __construct(
@@ -61,7 +61,7 @@ final class ProviderCommand extends Command
 
 		$output->writeln(sprintf('<info>Created:</info> %s', $file->relativePath));
 		$output->writeln('');
-		$output->writeln('<comment>Register this provider in your application provider list before adding generated tables and migrations.</comment>');
+		$output->writeln('<comment>Register this provider in your application provider list to supply table and service wiring.</comment>');
 
 		$runtimeDependencyWarning = $this->runtimeDependencyWarning();
 
@@ -126,6 +126,8 @@ final class ProviderCommand extends Command
 	 */
 	private function hasFoundationRuntimeDependency(array $dependencies): bool {
 		return array_key_exists('stellarwp/foundation-database', $dependencies)
+			|| array_key_exists('stellarwp/foundation-migrations', $dependencies)
+			|| array_key_exists('stellarwp/foundation-lock-database', $dependencies)
 			|| array_key_exists('stellarwp/foundation', $dependencies);
 	}
 }

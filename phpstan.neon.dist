@@ -13,3 +13,4 @@ parameters:
         analyse:
             - src/*/vendor/*
             - tests/CodeceptionSupport/*
+            - tests/_data/temp/*

@@ -5,13 +5,13 @@ namespace Acme\Plugin\Database;
 use Acme\Plugin\Database\Migrations\Create_Reports_Table;
 use Acme\Plugin\Database\Migrations\Wrapper;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
-use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\Migrations\MigrationsProvider;
 
 final class Provider
 {
 	public function register(): void
 	{
-		$this->container->mergeArrayVar( DatabaseProvider::MIGRATIONS, static fn ( C $c ): array => [
+		$this->container->mergeArrayVar( MigrationsProvider::MIGRATIONS, static fn ( C $c ): array => [
 			new Wrapper( $c->get( Create_Reports_Table::class ) ),
 		] );
 	}

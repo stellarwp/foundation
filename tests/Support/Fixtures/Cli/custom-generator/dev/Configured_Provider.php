@@ -14,16 +14,10 @@ use StellarWP\Foundation\Container\Contracts\Resolver as C;
  */
 final class Configured_Provider extends Provider
 {
-	private bool $registered = false;
-
 	/**
 	 * Wire the project's commands before the console application is resolved.
 	 */
 	public function register(): void {
-		if ($this->registered) {
-			return;
-		}
-
 		$this->container->when(Prefix_Command::class)
 			->needs('$prefix')
 			->give($this->config->get('foundation.prefix', 'nx'));
@@ -33,7 +27,5 @@ final class Configured_Provider extends Provider
 			$c->get(Report_Command::class),
 			$c->get(Prefix_Command::class),
 		]);
-
-		$this->registered = true;
 	}
 }

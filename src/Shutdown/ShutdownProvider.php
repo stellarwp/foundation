@@ -13,18 +13,10 @@ final class ShutdownProvider extends Provider
 {
 	public const string TASKS = self::class . '.tasks';
 
-	private bool $registered = false;
-
 	/**
 	 * Register contributed shutdown tasks and connect the shared runner to WordPress.
 	 */
 	public function register(): void {
-		// Repeated provider registration must not duplicate definitions or the WordPress hook.
-		if ($this->registered) {
-			return;
-		}
-
-		$this->registered = true;
 		$this->container->mergeArrayVar(self::TASKS, []);
 
 		$this->container->when(Runner::class)

@@ -1,0 +1,833 @@
+---
+title: Migrations
+description: Create tables, write later schema changes, preview SQL, and roll back safely.
+sidebar:
+  order: 1
+---
+
+`stellarwp/foundation-migrations` manages the history of your application's database schema. Each migration declares one change in `up()` and its inverse in `down()`. Foundation loads migration files, runs pending changes in order under a database lock, and records successful migrations.
+
+Unlike WordPress’s [`dbDelta()`](https://developer.wordpress.org/reference/functions/dbdelta/), which does not manage foreign-key constraints, Foundation supports creating, changing, and removing relationships between tables. See [foreign keys](#relate-tables-with-foreign-keys) for the complete workflow.
+
+## Create and change a table
+
+### Set up migrations
+
+:::caution[Database requirements]
+Use MySQL **5.7.9+** or MariaDB **10.4.3+**, matching [Doctrine DBAL 4.4’s supported platforms](https://www.doctrine-project.org/projects/doctrine-dbal/en/4.4/reference/platforms.html). Check the database version on every deployment target before adopting Foundation.
+:::
+
+Install the migrations runtime and development CLI. The runtime includes Foundation Database and the WP-CLI integration:
+
+```shell
+composer require stellarwp/foundation-migrations
+composer require --dev stellarwp/foundation-cli
+```
+
+Add your project root to the existing root `config.php`. The Foundation CLI reads this file, and your [application bootstrap](/start/configure-the-container/) supplies the same configuration to its container:
+
+```php title="config.php"
+<?php declare(strict_types=1);
+
+return [
+	'foundation' => [
+		'root'   => __DIR__,
+		'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? 'your-plugin',
+	],
+];
+```
+
+:::caution[Standalone plugin resources]
+Replace `your-plugin` with your plugin's stable, unique prefix. Sharing the default with another Foundation consumer can mix migration history and lock ownership. See [application scoping](/start/scope-foundation/).
+:::
+
+After [creating the application container](/start/configure-the-container/) with that configuration, register providers in dependency order in `src/App.php`:
+
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\Migrations\MigrationsProvider;
+use StellarWP\Foundation\WPCli\WPCliProvider;
+
+/** @var list<class-string<Provider>> */
+private const array PROVIDERS = [
+	WPCliProvider::class,
+	DatabaseProvider::class,
+	MigrationsProvider::class,
+];
+```
+
+`DatabaseProvider` supplies the shared connection. `MigrationsProvider` configures discovery, history, and migration execution; `WPCliProvider` enables the `wp <prefix> migrate:*` commands. Applications that invoke `Migrator` programmatically can omit `WPCliProvider`. Register application providers afterward, before resolving migration services.
+
+The default migration directory is `db/migrations`. Each PHP file returns an anonymous migration object. Migration files need no namespace or Composer autoload mapping; these examples use `Plugin\\` mapped to `src/` for the application table class. Keep migrations in the production archive even though the generator is a development dependency.
+
+### Generate a new table
+
+Create the table class and its first migration together:
+
+```shell
+vendor/bin/foundation make:database:table Reports \
+    --table-name=your_plugin_reports \
+    --migration
+```
+
+The command writes two files:
+
+```text
+db/migrations/
+└── 20260923000001_create_reports_table.php
+src/Database/Tables/
+└── Reports_Table.php
+```
+
+Your timestamp will differ. `Reports_Table` supplies the stable table name for application queries; Foundation adds the current WordPress site prefix. The migration supplies the schema. Generation writes PHP files; applying the migration creates the database table.
+
+### Define the initial schema
+
+The generated `up()` already declares an auto-incrementing `id`. Add the columns your application needs. For this example, the completed file is `db/migrations/20260923000001_create_reports_table.php`:
+
+```php title="20260923000001_create_reports_table.php"
+<?php declare(strict_types=1);
+
+use StellarWP\Foundation\Migrations\Migration;
+use StellarWP\Foundation\Migrations\Schema\Blueprint;
+
+return new class extends Migration {
+
+	/**
+	 * Create report storage.
+	 */
+	public function up( Blueprint $schema ): void {
+		$table = $schema->create( 'your_plugin_reports' );
+
+		$table->bigIncrements( 'id' );
+		$table->string( 'title' );
+		$table->string( 'status', 20 )->default( 'draft' );
+		$table->index( 'status_lookup', 'status' );
+	}
+
+	/**
+	 * Remove report storage and its data.
+	 */
+	public function down( Blueprint $schema ): void {
+		$schema->drop( 'your_plugin_reports' );
+	}
+};
+```
+
+The filename supplies the persistent ID `20260923000001_create_reports_table`. The migration owns its historical table name and schema. Foundation validates that unprefixed name and adds the active WordPress site prefix when planning the change. Refactoring or removing the application table class does not change this history.
+
+### Preview and apply
+
+Review the generated SQL, apply the pending migration, then check its recorded status:
+
+```shell
+wp your-plugin migrate:run --dry-run
+wp your-plugin migrate:run
+wp your-plugin migrate:status
+```
+
+The first run creates the migration ledger automatically. `your-plugin` is the configured WP-CLI command prefix.
+
+Foundation loads new migration files automatically from the configured directory. You do not add each migration to a provider list.
+
+### Add a column later
+
+Generate a new migration for the existing table:
+
+```shell
+vendor/bin/foundation make:database:migration add_published_at --table=your_plugin_reports
+```
+
+This creates a timestamped file returning an anonymous migration. It selects the table in `up()` and leaves a placeholder for your changes. The argument names the migration; it does not generate column definitions.
+
+Complete `db/migrations/20260924000001_add_published_at.php` like this:
+
+```php title="20260924000001_add_published_at.php"
+<?php declare(strict_types=1);
+
+use StellarWP\Foundation\Migrations\Migration;
+use StellarWP\Foundation\Migrations\Schema\Blueprint;
+
+return new class extends Migration {
+
+	/**
+	 * Allow reports to record their publication time.
+	 */
+	public function up( Blueprint $schema ): void {
+		$table = $schema->table( 'your_plugin_reports' );
+
+		$table->dateTime( 'published_at', 6 )->nullable();
+	}
+
+	/**
+	 * Remove publication times when rolling back this change.
+	 */
+	public function down( Blueprint $schema ): void {
+		$table = $schema->table( 'your_plugin_reports' );
+
+		$table->dropColumn( 'published_at' );
+	}
+};
+```
+
+The generated `down()` initially throws `IrreversibleMigration`. Replace it with the inverse above only if deleting publication times is acceptable; remove its unused exception import and annotation. Otherwise, keep the exception. Forward migration still works, but rollback stops at this migration.
+
+Leave the original migration and `Reports_Table` unchanged. Preview and apply the new migration with the same commands:
+
+```shell
+wp your-plugin migrate:run --dry-run
+wp your-plugin migrate:run
+wp your-plugin migrate:status
+```
+
+Existing reports have `NULL` in `published_at` until your application writes a value.
+
+:::note[Generate migrations before applying them]
+`--create=your_plugin_reports` declares ownership of a new table. `--table=your_plugin_reports` scaffolds a later alteration. Both take unprefixed database names, independently of PHP table classes. Generation does not inspect the live database. The table must exist when applying an alteration. For fresh installations, create it in an earlier migration; for an existing installation, follow the [adoption workflow](#adopt-an-existing-installation).
+:::
+
+### Roll back a change
+
+To reverse the highest applied migration, inspect its `down()` and run:
+
+```shell
+wp your-plugin migrate:rollback
+```
+
+In this example that removes `published_at` while retaining the reports table. Running `migrate:run` afterward reapplies the column; values deleted by rollback do not return. Reversing the initial migration drops the complete reports table. [Migration commands](#run-and-reverse-migrations) cover targets, multiple reversals, reset, and refresh.
+
+:::caution[Keep applied history immutable]
+Once a migration has been applied anywhere, retain its filename and declarations. Create another migration for a later change. Renaming its filename changes its recorded identity. Moving a file between configured directories preserves identity when its basename stays unchanged. Keep historical table names literal; referencing a constant on a current application class would couple history to later refactors.
+:::
+
+## Run and reverse migrations
+
+The examples use the `your-plugin` command prefix configured during setup. A complete WordPress application using Foundation's default prefix runs the same commands as `wp nx migrate:*`.
+
+### Check migration status
+
+See which migrations are applied, pending, or recorded in history with a missing declaration:
+
+```shell
+wp your-plugin migrate:status
+```
+
+Status includes each migration's ID, application timestamp, and optional [description](#describe-a-migration). A missing applied file does not block new forward migrations, but it must be restored before reversing that migration.
+
+### Preview migration SQL
+
+Review the SQL for pending migrations before applying them:
+
+```shell
+wp your-plugin migrate:run --dry-run
+```
+
+Preview does not change the schema or execute data callbacks. It reports when a data callback will run. The database can change between preview and execution, so review failures even after a successful preview.
+
+### Run pending migrations
+
+Apply all pending migrations in ascending ID order:
+
+```shell
+wp your-plugin migrate:run
+```
+
+Foundation holds the application's migration lock and records each migration after its schema and data work succeeds. The first run creates the history table. If no migrations are pending, the command completes without changing the schema.
+
+### Inspect a command failure
+
+Migration commands display exceptions as `Error: <message>` and exit with status `1`. Add `--debug` when running a command to include the original exception chain and stack trace:
+
+```shell
+wp your-plugin migrate:run --debug
+```
+
+Execution stops at the failed migration. Schema changes may already have committed, so inspect and repair the failure before running it again. `--debug` changes diagnostic output; the command still executes its requested operation.
+
+### Migrate to a specific version
+
+Bring the schema to a selected migration by reversing applied IDs above it, then applying pending IDs through it. The target is the migration's filename without `.php`.
+
+A target below the current version can delete data through `down()`. Preview the target first:
+
+```shell
+wp your-plugin migrate:run --to=20260924000001_add_published_at --dry-run
+```
+
+After reviewing the planned changes, apply the target:
+
+```shell
+wp your-plugin migrate:run --to=20260924000001_add_published_at
+```
+
+IDs determine order across all migration directories. Choose a target that respects your migration dependencies, including older IDs contributed by newly enabled packages. Omit `--to`, or use `--to=latest`, to apply every pending migration.
+
+### Roll back migrations
+
+Reverse the highest applied migration ID by running its `down()` method:
+
+```shell
+wp your-plugin migrate:rollback
+```
+
+To reverse several applied migrations, specify a count:
+
+```shell
+wp your-plugin migrate:rollback --step=2
+```
+
+To reverse all applied IDs above a specific target, use `--to`. This leaves the target in place if already applied and never applies pending migrations:
+
+```shell
+wp your-plugin migrate:rollback --to=20260923000001_create_reports_table
+```
+
+Choose either `--step` or `--to`. Rollback counts migration IDs, not deployment batches. Foundation checks that the declarations selected for reversal exist; unrelated missing files do not block the operation.
+
+:::danger[Rollback can delete data]
+Review each selected migration's `down()` and take the application's required backup before running it. An inverse may remove columns or entire tables, including their rows. Reapplying the migration recreates the schema but does not restore deleted data. A failed inverse stops execution; follow [failure recovery](#interrupted-schema-changes) before retrying.
+:::
+
+### Reset all migrations
+
+Reverse every applied migration and leave the migrations pending:
+
+```shell
+wp your-plugin migrate:reset
+```
+
+Reset runs `down()` in descending ID order and removes each successfully reversed entry from history. It does not rerun migrations. All applied declarations must be available, and an irreversible or failed inverse stops the reset.
+
+The command asks for confirmation because the inverses can delete application data. For an already reviewed operation, skip the prompt with `--yes`:
+
+```shell
+wp your-plugin migrate:reset --yes
+```
+
+`migrate:rollback --to=0` provides the same reversal. To preview all inverses without executing them or prompting:
+
+```shell
+wp your-plugin migrate:run --to=0 --dry-run
+```
+
+### Roll back and rerun migrations
+
+Rebuild the schema by reversing all applied migrations, then running all migrations again:
+
+```shell
+wp your-plugin migrate:refresh
+```
+
+Refresh holds one migration lock across reversal and reapplication. Like reset, it requires every applied declaration and working `down()` methods. It asks for confirmation because reversing migrations can delete data; use `--yes` after reviewing the operation:
+
+```shell
+wp your-plugin migrate:refresh --yes
+```
+
+## Write schema changes
+
+`up()` and `down()` declare schema changes. Foundation evaluates the selected declaration during planning, including previews. Keep queries and application work in the separate [data callback](#transform-existing-data).
+
+### Choose column types
+
+Use the same column methods when creating a table or adding columns to an existing one:
+
+```php
+$table = $schema->table( 'your_plugin_reports' );
+
+$table->json( 'metadata' )->nullable();
+$table->date( 'starts_on' )->nullable();
+$table->time( 'opens_at' )->nullable();
+$table->smallInteger( 'attempts' )->unsigned()->default( 0 );
+$table->char( 'currency', 3 )->default( 'USD' );
+$table->mediumText( 'content' )->nullable();
+```
+
+| Method | Storage and typical use |
+| --- | --- |
+| `bigIncrements()` | Unsigned auto-incrementing BIGINT primary key, named `id` by default |
+| `string( 'name', 191 )` | Variable-length text, with a default limit of 191 characters |
+| `char( 'currency', 3 )` | Fixed-length character storage; specify the length explicitly |
+| `text( 'summary' )` | Text up to 65,535 bytes |
+| `mediumText( 'content' )` | Text up to 16,777,215 bytes |
+| `longText( 'document' )` | LONGTEXT storage for larger documents |
+| `smallInteger( 'attempts' )` | SMALLINT; use `unsigned()` for nonnegative values |
+| `integer( 'quantity' )`, `bigInteger( 'external_id' )` | INT and BIGINT; unsigned convenience methods are also available |
+| `boolean( 'enabled' )` | Boolean storage |
+| `decimal( 'amount', 12, 4 )` | Exact numeric storage with explicit precision and scale |
+| `json( 'metadata' )` | JSON document storage with database validation |
+| `date( 'starts_on' )` | Calendar date, such as `2026-09-24` |
+| `time( 'opens_at' )` | Time with whole-second precision, such as `09:30:00` |
+| `dateTime( 'created_at', 6 )` | DATETIME with optional fractional-second precision from 0 to 6 |
+| `binary( 'token', 16 )` | Variable-length binary storage with an explicit byte limit |
+
+Columns are non-nullable unless you call `nullable()`. Existing modifiers such as `default()`, `comment()`, and `change()` apply to the new types too. A `char()` length is a storage choice, not application validation that a supplied code has exactly that many characters. `useCurrent()` and `useCurrentOnUpdate()` are intended for `dateTime()` columns.
+
+[MySQL](https://dev.mysql.com/doc/refman/8.0/en/json.html) stores JSON natively; [MariaDB](https://mariadb.com/docs/server/reference/data-types/string-data-types/json) uses text with JSON validation. Foundation preserves that distinction through alterations and renames. For compatibility with MySQL 5.7, supply a JSON value on insertion or make the column nullable instead of declaring a non-null JSON default. When writing PHP arrays through a table or Doctrine connection, bind the column as `Doctrine\DBAL\Types\Types::JSON` so Doctrine encodes it. Query results are not automatically decoded; see [queries and parameter types](/components/database/query-builder/).
+
+### Change a column
+
+Declare the complete replacement definition and call `change()`:
+
+```php
+$table = $schema->table( 'your_plugin_reports' );
+
+$table->string( 'title', 255 )->change();
+```
+
+Restate any default, nullability, unsigned flag, comment, or other attribute to retain. For this example, a safe inverse can restore the original length only after accounting for values longer than that length.
+
+### Rename a column
+
+Generate an alteration for the table whose column is changing:
+
+```shell
+vendor/bin/foundation make:database:migration rename_report_title --table=your_plugin_reports
+```
+
+Replace the generated methods with the rename and its inverse:
+
+```php
+/**
+ * Give report titles a clearer name.
+ */
+public function up( Blueprint $schema ): void {
+	$table = $schema->table( 'your_plugin_reports' );
+
+	$table->renameColumn( 'title', 'headline' );
+}
+
+/**
+ * Restore the original column name while retaining its values.
+ */
+public function down( Blueprint $schema ): void {
+	$table = $schema->table( 'your_plugin_reports' );
+
+	$table->renameColumn( 'headline', 'title' );
+}
+```
+
+Remove the generated `IrreversibleMigration` import and annotation when supplying this inverse. `renameColumn()` retains the column's values and complete definition, including its default, nullability, and comment. Indexes and foreign keys continue to refer to the renamed column. Use a distinct destination name that does not already exist. Column renames run before other alterations on that table; use the new name in a `change()` declaration. When creating a new table, declare columns with their final names.
+
+Renames run in declaration order. You can reuse an old column name after renaming it, including swapping names through a temporary name. If execution stops partway through, inspect which renames completed and repair the partial change before retrying.
+
+Column renames work across the supported database versions. Foundation uses native `RENAME COLUMN` when available and otherwise uses `CHANGE` with the existing column definition. Your migration declaration stays the same.
+
+Preview and apply the migration:
+
+```shell
+wp your-plugin migrate:run --dry-run
+wp your-plugin migrate:run
+```
+
+Update application queries to use `headline` when deploying this schema change. Leave the earlier migration that created `title` unchanged. Running `migrate:rollback` reverses the rename through `down()`, preserving the values under `title` again.
+
+### Rename a table
+
+Generate a migration without `--create` or `--table`, then fill in its methods:
+
+```shell
+vendor/bin/foundation make:database:migration rename_reports_to_articles
+```
+
+```php
+/**
+ * Move report storage to its new name.
+ */
+public function up( Blueprint $schema ): void {
+	$schema->rename( 'your_plugin_reports', 'your_plugin_articles' );
+}
+
+/**
+ * Restore the original table name while retaining its rows.
+ */
+public function down( Blueprint $schema ): void {
+	$schema->rename( 'your_plugin_articles', 'your_plugin_reports' );
+}
+```
+
+Remove the generated irreversible exception import and annotation. Both arguments are unprefixed names; Foundation applies the current WordPress site prefix. The destination must be unused. The rename preserves existing rows, indexes, and foreign-key relationships.
+
+Preview and apply with `wp your-plugin migrate:run --dry-run` and `wp your-plugin migrate:run`. Update the application table class's `unprefixedName()` to return `'your_plugin_articles'`, and use that name in new migrations. Keep all earlier migration filenames and historical table names unchanged. Coordinate these application changes with migration execution; application queries must use the name currently present in the database.
+
+If you recreate the old table while the renamed table still exists, choose different logical foreign-key names for the new table. For example, use `current_order` on the new table when the archived table retains `order`. Constraint names must be unique across the database on supported MySQL and MariaDB versions.
+
+Existing foreign keys retain their physical constraint names after a table rename. Continue using their original logical names with `dropForeignKey()` on the renamed table.
+
+### Remove a column
+
+```php
+$table = $schema->table( 'your_plugin_reports' );
+
+$table->dropColumn( 'published_at' );
+```
+
+Removing a column deletes its values. Adding it again in `down()` restores its structure, not the deleted data. Keep `IrreversibleMigration` when no acceptable inverse exists.
+
+### Add or replace an index
+
+```php
+$table = $schema->table( 'your_plugin_reports' );
+
+$table->index( 'publication_lookup', 'published_at' );
+$table->unique( 'report_title', 'title' );
+```
+
+Use `dropIndex()` for removal. To replace an index under the same name, declare both the removal and its replacement:
+
+```php
+$table = $schema->table( 'your_plugin_reports' );
+
+$table->dropIndex( 'status_lookup' );
+$table->index( 'status_lookup', 'status', 'published_at' );
+```
+
+### Relate tables with foreign keys
+
+Foreign keys let the database enforce relationships between your application's tables.
+
+For example, an order item must belong to an existing order. Create the parent table before its dependent table:
+
+```shell
+vendor/bin/foundation make:database:migration create_orders --create=your_plugin_orders
+vendor/bin/foundation make:database:migration create_order_items --create=your_plugin_order_items
+```
+
+The first migration's generated `bigIncrements( 'id' )` supplies the order's primary key. In the second migration, complete `up()` with the item columns, supporting index, and relationship:
+
+```php
+public function up( Blueprint $schema ): void {
+	$table = $schema->create( 'your_plugin_order_items' );
+
+	$table->bigIncrements( 'id' );
+	$table->unsignedBigInteger( 'order_id' );
+	$table->string( 'description' );
+	$table->index( 'order_lookup', 'order_id' );
+	$table->foreignKey( 'order', 'order_id' )
+		->references( 'your_plugin_orders', 'id' )
+		->cascadeOnDelete();
+}
+```
+
+Keep the generated `down()` that drops `your_plugin_order_items`. The later migration ID ensures rollback drops items before orders. When adding a relationship to existing tables, use `--table=your_plugin_order_items` and `$schema->table()` instead.
+
+`order` is the relationship's stable logical name within the items table. Foundation scopes the physical constraint name to that table, so another table can also use `order`. Pass the same logical name to `dropForeignKey()` later. `references()` takes the historical, unprefixed application table name; Foundation resolves both tables for the current WordPress site.
+
+Generated constraint names contain separate table and logical identity components. This lets `dropForeignKey('order')` locate the same relationship after a table rename without loading earlier migrations. An existing logical name must be dropped explicitly before adding its replacement.
+
+:::caution[Keep foreign keys between application-owned tables]
+Use this workflow for tables your application owns. For relationships to WordPress posts or users, store the ID in an indexed column and coordinate cleanup through WordPress's deletion hooks.
+
+`references()` applies the current site's prefix. On multisite, `references( 'users', 'ID' )` would target a site table such as `wp_2_users`, while WordPress uses a shared users table. Even for site-specific core tables such as `posts`, a restrictive foreign key can block WordPress deletion after related data has already been removed. A cascading foreign key deletes your application's rows directly, bypassing its PHP cleanup. See WordPress's [table naming](https://developer.wordpress.org/reference/classes/wpdb/tables/) and [post deletion workflow](https://developer.wordpress.org/reference/functions/wp_delete_post/).
+:::
+
+If you change WordPress's table prefix, rename the application's tables and migration ledger together before running migrations again. Keep historical migration declarations unchanged. Preserve existing constraint names: their logical identity component lets later declarations locate the relationship on its current table. Externally renamed constraints require explicit repair before a declaration can address them by their original logical name.
+
+Declare columns and indexes explicitly. The local and referenced column types must match, including integer size and unsignedness. Reference a primary or unique key. Foundation-created tables use InnoDB, which enforces these constraints.
+
+Preview and apply as usual:
+
+```shell
+wp your-plugin migrate:run --dry-run
+wp your-plugin migrate:run
+```
+
+The database now rejects an item whose `order_id` has no matching order. Deleting an order also deletes its items because this example chooses `cascadeOnDelete()`.
+
+:::caution[Check existing data before adding a relationship]
+Adding a foreign key fails if existing child rows reference missing parents. Repair those rows in an earlier [data migration](#transform-existing-data), then add the constraint in a later migration. A data callback on the constraint migration runs after DDL, so it cannot repair rows before that constraint is added.
+:::
+
+#### Choose deletion and update behavior
+
+Without an action method, both deletion and referenced-key updates are restrictive: the database rejects the parent change while child rows reference it.
+
+| Delete action | Referenced-key update action | Effect on child rows |
+| --- | --- | --- |
+| `restrictOnDelete()` | `restrictOnUpdate()` | Reject the parent change while references exist |
+| `cascadeOnDelete()` | `cascadeOnUpdate()` | Delete dependent rows, or propagate the new key |
+| `nullOnDelete()` | `nullOnUpdate()` | Set the referencing columns to `NULL` |
+
+For either null action, declare every local column as `nullable()`:
+
+```php
+$table->unsignedBigInteger( 'order_id' )->nullable();
+$table->index( 'order_lookup', 'order_id' );
+$table->foreignKey( 'order', 'order_id' )
+	->references( 'your_plugin_orders', 'id' )
+	->nullOnDelete();
+```
+
+Changing an existing relationship requires a new migration. Drop and redeclare the same logical name with its complete replacement definition:
+
+```php
+$table = $schema->table( 'your_plugin_order_items' );
+
+$table->dropForeignKey( 'order' );
+$table->foreignKey( 'order', 'order_id' )
+	->references( 'your_plugin_orders', 'id' )
+	->restrictOnDelete();
+```
+
+Its `down()` can drop and redeclare the relationship with the original action. To remove a relationship entirely, use only `dropForeignKey( 'order' )`. This retains its columns and indexes; remove those separately when that migration owns their removal. Remove dependent relationships or child tables before dropping a referenced parent table. Table operations execute in declaration order, including within a single migration. Create referenced parent tables before their children, and reverse that order when removing them.
+
+#### Reference a composite key
+
+Supply columns in corresponding order on both sides. For example, given an orders table with a unique key over `account_id` and `order_number`, declare matching item columns and their index:
+
+```php
+$table->unsignedBigInteger( 'account_id' );
+$table->unsignedBigInteger( 'order_number' );
+$table->index( 'order_lookup', 'account_id', 'order_number' );
+$table->foreignKey( 'order', 'account_id', 'order_number' )
+	->references( 'your_plugin_orders', 'account_id', 'order_number' );
+```
+
+The earlier parent migration must declare those column types and `$table->unique( 'account_order', 'account_id', 'order_number' )`. Each local value pairs with the referenced column in the same position.
+
+### Choose a scaffold
+
+Use `--create=your_plugin_reports` to generate an initial migration for that unprefixed table name. Its `up()` declares the complete initial table, and its `down()` drops that table. Use `--table=your_plugin_reports` for a later alteration. The options are mutually exclusive.
+
+Omitting both produces a generic migration with an empty `up()` and an irreversible `down()`. Declare the required schema changes using stable, unprefixed table names. Migration names alone never select table-dropping behavior.
+
+### Column declarations
+
+| Declaration | Meaning |
+| --- | --- |
+| `bigIncrements('id')` | Unsigned auto-incrementing BIGINT primary key |
+| `string('name', 191)` | VARCHAR with an explicit maximum length |
+| `text('body')`, `longText('body')` | TEXT or LONGTEXT |
+| `integer('count')`, `bigInteger('count')` | Integer columns |
+| `unsignedInteger('count')`, `unsignedBigInteger('count')` | Unsigned integers |
+| `boolean('active')` | Boolean storage |
+| `decimal('amount', 12, 4)` | Exact decimal precision and scale |
+| `binary('token', 16)` | VARBINARY with an explicit length |
+| `dateTime('updated_at', 6)` | DATETIME with fractional precision from 0 to 6 |
+
+Columns support `nullable()`, `notNull()`, `unsigned()`, `default()`, `comment()`, and `change()`. Date/time declarations additionally support `useCurrent()` and `useCurrentOnUpdate()`. Use strings for exact decimal defaults. Table declarations support `primary(...$columns)` and `comment()`.
+
+`up()` and `down()` must be pure schema declarations. Foundation evaluates the selected declaration during planning and again if you later execute a previewed migration. Previously applied declarations are not replayed. Do not query the live database, perform application work, or put existence guards in them.
+
+### Transform existing data
+
+An anonymous migration can implement `MigratesData`. Foundation supplies a `DataMigrationContext` to its data callback. Use `quotedTable()` to resolve a historical unprefixed name for the active site, and `$context->db` to run native Doctrine queries:
+
+```php
+use StellarWP\Foundation\Migrations\Contracts\MigratesData;
+use StellarWP\Foundation\Migrations\DataMigrationContext;
+use StellarWP\Foundation\Migrations\Migration;
+use StellarWP\Foundation\Migrations\Schema\Blueprint;
+
+return new class extends Migration implements MigratesData {
+
+	/**
+	 * This migration changes data in an already-declared table.
+	 */
+	public function up( Blueprint $schema ): void {
+	}
+
+	/**
+	 * Fill missing statuses without changing existing values.
+	 */
+	public function migrate( DataMigrationContext $context ): void {
+		$table = $context->quotedTable( 'your_plugin_reports' );
+
+		$context->db->executeStatement(
+			'UPDATE ' . $table . ' SET status = ? WHERE status IS NULL',
+			[ 'draft' ],
+		);
+	}
+};
+```
+
+The context uses the same connection and naming policy as application tables. For operations that need an unquoted physical name, use `$context->names->tableName( 'your_plugin_reports' )`. Foundation supplies the context for each callback; consumers do not construct or retain it.
+
+This example inherits the default irreversible `down()`: replacing data has no automatic safe inverse.
+
+Foundation runs this callback after schema changes and before writing history. It must be safe to repeat if the process stops or recording fails. You may use the shared connection's `transactional()` for a bounded data operation. Complete that transaction before returning; an open transaction interrupts the migration and is rolled back. DDL remains outside that transaction. Preview reports that a data callback exists but does not execute it. The data contract has no automatic reverse callback: supply schema rollback only when reversing remains safe for the resulting data, or throw `IrreversibleMigration`.
+
+## Deploy and recover
+
+### Run migrations from application code
+
+Inject `StellarWP\Foundation\Migrations\Migrator` into the service that owns installation or upgrades. Once WordPress and the application's providers are ready, run pending migrations:
+
+```php
+$migrator->migrate();
+```
+
+Record the installed application version only after this succeeds. Run the same upgrade workflow for each affected WordPress site, switching sites only between complete migration operations.
+
+Use `status()` to inspect history and `preview($target)` to inspect planned steps. `migrate($target)` selects a target, `rollback($steps)` reverses a count of applied IDs, and `rollbackTo($target)` reverses only IDs above a target. To reset all applied migrations programmatically:
+
+```php
+use StellarWP\Foundation\Migrations\Migrator;
+
+$migrator->rollbackTo( Migrator::NONE );
+```
+
+Use `refresh()` to reverse and reapply all migrations. Programmatic calls do not prompt for confirmation; the application owns that decision. Preview and execution operations return step objects with the ID, direction, SQL, and whether a forward data callback was involved.
+
+### Adopt an existing installation
+
+For a fresh installation, run `wp your-plugin migrate:run` to create the schema and perform any data transformations. When adopting an existing installation, inspect its schema and data against the migration declarations. Mark each migration whose complete effects are already present:
+
+```shell
+wp your-plugin migrate:mark-applied 20260923000001_create_reports_table
+```
+
+Marking changes history under the same database advisory lock used for migration execution. It may create the ledger, but does not invoke `up()`, `down()`, or data callbacks, plan schema changes, or verify the live database. You own verification of the recorded effects. Each marking command prompts for confirmation; use `--yes` for an already reviewed operation.
+
+#### Mark all pending migrations as applied
+
+When adopting a complete existing schema, verify that **every currently pending migration's schema and data effects** are fulfilled, then record them together:
+
+```shell
+wp your-plugin migrate:mark-applied --all
+```
+
+Check the recorded history and preview the next run before enabling automatic upgrades:
+
+```shell
+wp your-plugin migrate:status
+wp your-plugin migrate:run --dry-run
+```
+
+Later migrations continue through the normal `migrate:run` workflow.
+
+Programmatic callers inject `Migrator` and use `markApplied(string $id): void`, `markAllApplied(): void`, or `markPending(string $id): void`. `markApplied()` requires a registered ID. Repeating it preserves the existing history entry and its timestamp. `markAllApplied()` records all currently registered pending IDs atomically in one transaction, preserving existing entries. A marked migration participates in normal rollback: reversing it invokes its `down()` declaration, with the same potential for data loss as an executed migration.
+
+### Interrupted schema changes
+
+MySQL and MariaDB DDL can commit before a later statement, data callback, or history write fails. Foundation stops on failure and leaves that migration unrecorded. Earlier migrations that completed remain recorded, and earlier statements within the failed migration may already have changed the database.
+
+Foundation plans the current migration against the affected live tables. Alterations preserve unrelated columns, indexes, and relationships; the runner does not replay historical declarations or check unrelated tables against old definitions. Adding an existing object or removing a missing one fails rather than automatically completing an interrupted migration.
+
+:::caution[Inspect failures before retrying]
+Pause automatic upgrade attempts for this application and site. Inspect the failed migration, live schema, data effects, and history. Either undo its partial work and correct the failure before rerunning, or verify and complete all intended work before deliberately repairing the ledger. Do not blindly retry: data callbacks and completed DDL may run again.
+:::
+
+`LedgerFailure` means migration work completed but its history update failed. Fixing the storage error alone does not reconcile the ledger; verify the completed schema and data effects before repairing history. A failed rollback likewise leaves its history entry in place even if some inverse statements committed.
+
+### Repair inconsistent history
+
+If the ledger itself is wrong, pause all application upgrade triggers and migration workers for the affected site and take a backup. Restore any missing declarations needed to understand or reverse the affected work, then compare the ledger's exact IDs with the live schema and each migration's schema and data effects.
+
+After a manual schema change or a failed history write, verify or finish the migration's complete schema and data work before recording it:
+
+```shell
+wp your-plugin migrate:mark-applied 20260923000001_create_reports_table
+```
+
+If its complete inverse has already been performed, verify that recorded dependent migrations remain valid, then remove the history entry:
+
+```shell
+wp your-plugin migrate:mark-pending 20260923000001_create_reports_table
+```
+
+`markPending()` accepts a valid migration ID even when its declaration is missing and does nothing if the history entry is absent. A registered migration becomes pending and can run again. A missing migration disappears from status when its history is removed; restore its file before it can run again.
+
+After correcting history, inspect status and preview the next run before resuming upgrades. Keep an operational record of the repair.
+
+### Concurrent upgrades
+
+One database advisory lock covers planning, schema execution, data callbacks, and history writes. The lock survives DDL commits and lasts until release or session termination. It has no lease TTL to configure. `MigrationAlreadyRunning` means another session is migrating this application's site ledger: defer and retry after it finishes. This is distinct from a database failure.
+
+`MigrationInterrupted` reports a declaration that cannot be applied to the current schema, an unavailable migration required for rollback, or a lost operation scope/session. Inspect its message and underlying exception before deciding how to repair the failure. The database layer reports `AdvisoryLockInterrupted` during a data callback; the migrator translates it to `MigrationInterrupted` when it escapes the run. Catching it inside a callback does not make the run successful. Foundation stops and releases only the original session's lock where possible. Never change sites or sessions during a migration, even temporarily. Foundation migration exceptions live under `StellarWP\Foundation\Migrations\Exceptions` and extend `MigrationException`, which extends `StellarWP\Foundation\Database\Exceptions\DatabaseException`. Catch `MigrationException` for shared reporting, and use the specific exception when choosing whether to defer, retry, or stop. Native SQL failures still use Doctrine exceptions; application data callbacks can propagate their own exceptions.
+
+All migration participants must reach the same primary database server. Advisory locks are local to that server; a proxy that moves statements between sessions or servers cannot provide this guarantee. Preview and status are observations and can become stale before a later run.
+
+## Configure discovery
+
+### Name the migration ledger
+
+With `foundation.prefix` set to `your-plugin`, the ledger defaults to `your_plugin_foundation_migrations` before WordPress adds its site prefix. The advisory lock is scoped by database and ledger name, so applications using different ledgers migrate independently. Keep that name stable across releases.
+
+To override the ledger name, add `migrations.table` only when configured in root `config.php`:
+
+```php title="config.php"
+$config = [
+	'foundation' => [
+		'root'   => __DIR__,
+		'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? 'your-plugin',
+	],
+];
+
+if ( isset( $_ENV['FOUNDATION_DATABASE_MIGRATIONS_TABLE'] ) ) {
+	$config['migrations']['table'] = $_ENV['FOUNDATION_DATABASE_MIGRATIONS_TABLE'];
+}
+
+return $config;
+```
+
+### Use another directory
+
+Set the path once in root `config.php`; generation and runtime discovery use the same setting:
+
+```php title="config.php"
+return [
+	'foundation' => [
+		'root' => __DIR__,
+	],
+	'migrations' => [
+		'path' => 'migrations',
+	],
+];
+```
+
+Merge this with your existing configuration. Paths are relative to `foundation.root`; absolute paths such as `__DIR__ . '/db/migrations'` also work. An explicitly configured directory must exist when running migrations. Generation creates the directory when writing its first file. An absent default directory means the application has no discovered migrations yet.
+
+Migration directories do not need Composer autoload mappings or a classmap rebuild. Include the PHP files in production archives. Files are application code: keep executable work inside the documented methods, and use a top-level `return new class extends Migration` declaration.
+
+### Package migrations with Strauss
+
+Include your migration directory in the plugin's production archive. The Foundation generator reads `extra.strauss.namespace_prefix` and writes prefixed Foundation imports when configured. Handwritten files, older migrations, or a changed namespace-prefix configuration may still contain imports that need rewriting: include their directory in Strauss's call-site scan alongside `src/`. Verify that the packaged migration imports match the packaged Foundation namespace. PHP namespace scoping leaves filename IDs and literal historical table names unchanged.
+
+### Group migrations by feature
+
+Use a slash in the migration description:
+
+```shell
+vendor/bin/foundation make:database:migration reports/add_published_at --table=your_plugin_reports
+```
+
+With the default location, the file goes into `db/migrations/reports/`. Discovery includes subfolders, but execution is still globally ordered across all folders.
+
+Generated filenames use `<UTC timestamp>_<lowercase_description>.php`, such as `20260924000001_add_published_at.php`. Generation chooses a timestamp later than existing generated migrations in the configured tree, so consecutive commands preserve order. Developers still own dependencies when merging independently developed migrations. The filename without `.php` is the persistent ID; description changes after application are identity changes too. Discovery loads files matching 14 digits, an underscore, and a lowercase description containing letters, numbers, or underscores. Keep helper files under other names.
+
+### Contribute migrations explicitly
+
+Packages or applications with additional migration sources can contribute objects through a provider:
+
+```php
+$this->container->mergeArrayVar( MigrationsProvider::MIGRATIONS, static fn ( C $c ): array => [
+	new MigrationRegistration( '20260923000001_package_setup', $c->get( Package_Migration::class ) ),
+] );
+```
+
+Import `StellarWP\Foundation\Migrations\MigrationsProvider`, `StellarWP\Foundation\Migrations\ValueObjects\MigrationRegistration`, and `StellarWP\Foundation\Container\Contracts\Resolver as C` in that provider. `Package_Migration` should extend `StellarWP\Foundation\Migrations\Migration`, just like generated anonymous migrations. Explicit contributions and discovered migrations share one ordered collection; contribute each migration once. Registrations keep the ID separate from the declaration object, preserving optional data and description capabilities.
+
+Extend `Migration` and implement `up()`; override `down()` when a safe inverse exists. Direct implementation of `Contracts\Migration` remains supported for declarations that need a different base class, but requires both methods. Optional data and description behavior use separate interfaces. Foundation preserves these extension contracts within 2.x, including inherited method signatures and constructor expectations. Adding a base-class method can collide with consumer methods, so the base class is not an unrestricted extension surface for new Foundation features.
+
+The registration supplies the ID. IDs are compared in ascending byte order. They must be unique, nonblank, unpadded, and no more than 191 bytes; `0` and `latest` are reserved targets. Choose IDs whose lexical order respects dependencies. Applications using only explicit contributions can omit discovery configuration.
+
+### Describe a migration
+
+Add `DescribesMigration` to a migration to show a readable description in `migrate:status`:
+
+```php
+use StellarWP\Foundation\Migrations\Contracts\DescribesMigration;
+
+// Add DescribesMigration to the migration's implements list.
+public function describe(): string {
+	return 'Create report storage';
+}
+```
+
+### Customize stubs and test migrations
+
+Copy the package stubs into `foundation/stubs/database/` to customize generated code. Start with the [CLI stub guide](/tooling/foundation-cli/#override-package-stubs). Table namespaces remain configurable through generator settings; migration placement is controlled by `migrations.path`.
+
+Test create, alteration, rollback, and preview against real database tables. Include failures after an earlier DDL statement and before history recording. Verify that the failed migration remains unrecorded, existing data survives, later migrations do not run, and deliberate repair allows a subsequent run. Register a fresh container per test and use application-specific test table names.

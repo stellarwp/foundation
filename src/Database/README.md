@@ -3,17 +3,21 @@
 > [!WARNING]
 > **This is a read-only repository!** For pull requests or issues, see [stellarwp/foundation](https://github.com/stellarwp/foundation).
 
-Foundation Database provides WordPress-backed table gateways, versioned
-migrations, a small query API, database-backed locks, and a WP-CLI deployment
-workflow built on `wpdb` and `dbDelta()`.
+Foundation Database provides a shared Doctrine DBAL connection, application tables,
+and managed transactions for WordPress applications.
 
 ## Installation
+
+Requires MySQL **5.7.9+** or MariaDB **10.4.3+**, matching
+[Doctrine DBAL 4.4 platform support](https://www.doctrine-project.org/projects/doctrine-dbal/en/4.4/reference/platforms.html).
 
 ```shell
 composer require stellarwp/foundation-database
 ```
 
+For schema history and upgrade commands, install [Foundation Migrations](https://foundation.nexcess.dev/components/migrations/).
+
 ## Documentation
 
 See the [Foundation Database documentation](https://foundation.nexcess.dev/components/database/)
-for configuration, migrations, query building, database locks, and testing.
+for configuration, query building, transactions, and testing.

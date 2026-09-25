@@ -19,18 +19,11 @@ use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageScaffolder;
  */
 final class MonorepoProvider extends Provider
 {
-	private bool $registered = false;
-
 	/**
-	 * Wire repository maintenance and contribute its commands once.
+	 * Wire repository maintenance and contribute its commands.
 	 */
 	public function register(): void {
-		if ($this->registered) {
-			return;
-		}
-
 		$this->registerPackageCommand();
-		$this->registered = true;
 	}
 
 	/**

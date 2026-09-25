@@ -102,7 +102,7 @@ When the override is absent, WP-CLI uses `foundation.prefix`.
 Generate the initial class from the project root:
 
 ```shell
-vendor/bin/foundation make:wpcli-command Sync_Catalog \
+vendor/bin/foundation make:wpcli:command Sync_Catalog \
   --namespace="Plugin\\Catalog\\Cli" \
   --subcommand="catalog:sync" \
   --description="Synchronize the product catalog."
@@ -316,6 +316,35 @@ wp help your-plugin catalog:sync
 :::note[Choose the correct failure signal]
 Use `WP_CLI::error()` for invalid input or an operation that cannot continue; it stops the command with a failing exit code. Use `WP_CLI::warning()` when execution can continue. Returning any nonzero status from `runCommand()` also causes the Foundation command wrapper to halt with that status.
 :::
+
+### Read command failures
+
+An exception escaping `runCommand()` is displayed as `Error: <message>` and exits with status `1`. Command classes can let service exceptions propagate to this shared presentation boundary.
+
+Add `--debug` to include the exception class, source location, stack trace, and previous exceptions:
+
+```shell
+wp your-plugin catalog:sync staging --debug
+```
+
+Explicit `WP_CLI::error()` and `WP_CLI::halt()` calls retain their exit behavior. PHP errors such as `TypeError` remain with the host error handler. Calling `runCommand()` directly still throws its original exceptions.
+
+### Release runtime caches between batches
+
+Long-running commands can call the inherited `clearRuntimeCache()` method after each completed batch. For a command with an injected importer that yields batches, the loop inside `runCommand()` can look like this:
+
+```php
+foreach ( $this->importer->batches( 100 ) as $batch ) {
+	$this->importer->import( $batch );
+	unset( $batch );
+
+	$this->clearRuntimeCache();
+}
+```
+
+This clears WordPress's saved query log and flushes the process's runtime object cache when the cache backend supports [`flush_runtime`](https://developer.wordpress.org/reference/functions/wp_cache_supports/). Shared persistent cache entries, action counts, and registered hooks remain intact. If runtime flushing is unsupported, only the query log is cleared.
+
+Call it after WordPress has loaded and the batch has completed its writes. Release application-held batch and query objects as well; cache cleanup cannot release references your own code still retains. Saved query diagnostics are discarded, so inspect them before cleanup when debugging.
 
 ## Testing
 

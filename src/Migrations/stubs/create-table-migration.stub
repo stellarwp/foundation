@@ -1,0 +1,26 @@
+<?php declare(strict_types=1);
+
+use {{ foundation_database_migration }};
+use {{ foundation_database_schema }};
+
+return new class extends Migration {
+
+	/**
+	 * Declare this migration's schema changes.
+	 */
+	public function up( Blueprint $schema ): void {
+		$table = $schema->create( {{ table_php }} );
+
+		$table->bigIncrements( 'id' );
+
+		// Add the initial columns and indexes before running this migration.
+	}
+
+	/**
+	 * Drop the table and its data.
+	 */
+	public function down( Blueprint $schema ): void {
+		$schema->drop( {{ table_php }} );
+	}
+
+};
