@@ -121,6 +121,11 @@ final readonly class Compiler
 	 * Preserve shaped selections because HAVING may depend on their aliases.
 	 */
 	public function exists(QueryState $state): Fragment {
+		// MySQL 5.7 ignores LIMIT 0 inside EXISTS, and no rows can match it anyway.
+		if ($state->limit === 0) {
+			return new Fragment('SELECT 0');
+		}
+
 		$inner = $this->select($state, $this->shaped($state) ? null : [
 			new Selection(new Fragment('1')),
 		], ordered: $this->shaped($state));
