@@ -51,7 +51,7 @@ $rows = $this->reports->query()
 	->setMaxResults( 50 )
 	->fetchAllAssociative();
 
-$count = $this->reports->query()->select( 'COUNT(*)' )->fetchOne();
+$count = $this->reports->count();
 ```
 
 Doctrine supplies `fetchAssociative()` (one row or `false`), `fetchAllAssociative()` (rows), `fetchOne()` (one value or `false`), and `executeQuery()` for a native result. Database drivers may return numeric values as strings. Convert results according to your application contract.
@@ -64,7 +64,7 @@ $this->reports->update( [ 'status' => 'ready' ], [ 'id' => $id ] );
 $this->reports->delete( [ 'id' => $id ] );
 ```
 
-`insert()`, `update()`, and `delete()` return Doctrine's affected-row count (`int|string`). `insertGetId()` returns the generated identifier (`int|string`) without truncation. Each accepts an optional `$types` map for Doctrine parameter types. Update and delete criteria must be nonempty; use the connection for an intentional whole-table operation.
+`insert()`, `update()`, and `delete()` return Doctrine's affected-row count (`int|string`). `insertGetId()` returns the generated identifier (`int|string`) without truncation. Each accepts an optional `$types` map for Doctrine parameter types. Update and delete criteria must be nonempty. Use `deleteAll()` for an intentional whole-table deletion, or the connection for a whole-table update.
 
 Inject `Doctrine\DBAL\Connection` for joins, specialized SQL, and operations spanning tables. Resolve physical names through each table's `quotedName()`:
 
@@ -76,6 +76,52 @@ $db->executeStatement(
 ```
 
 Queries, results, types, and DBAL exceptions are supported native Doctrine APIs. See [Doctrine's query builder reference](https://www.doctrine-project.org/projects/doctrine-dbal/en/4.4/reference/query-builder.html) for expressions and advanced usage.
+
+## Count or clear a table
+
+### Count all rows
+
+Get the number of rows as an integer. An empty table returns `0`; a missing table throws an exception.
+
+```php
+$count = $this->reports->count();
+```
+
+For a filtered count, use `query()->select( 'COUNT(*)' )` with the required conditions.
+
+### Delete all rows
+
+Remove every row and receive the affected-row count (`int|string`):
+
+```php
+$deleted = $this->reports->deleteAll();
+```
+
+`deleteAll()` preserves the auto-increment sequence and applies the table's foreign-key rules and delete triggers. With InnoDB, deletion participates in the caller's transaction. For example, clear and replace data atomically:
+
+```php
+$this->db->transactional( function () use ( $rows ): void {
+	$this->reports->deleteAll();
+
+	foreach ( $rows as $row ) {
+		$this->reports->insert( $row );
+	}
+} );
+```
+
+An insertion failure rolls back the deletion and preserves the previous rows.
+
+### Truncate a table
+
+Remove all rows and reset auto-increment:
+
+```php
+$this->reports->truncate();
+```
+
+`truncate()` returns no value. MySQL and MariaDB truncation implicitly commits and cannot be rolled back, so Foundation rejects this method with `DatabaseException` when the shared connection has an active transaction. Use `deleteAll()` for transactional replacement. Truncation does not run delete triggers, and references from other tables can prevent it.
+
+Both clearing methods keep foreign-key checks enabled and throw if the table is missing.
 
 ## Choose a transaction boundary
 

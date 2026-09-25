@@ -94,7 +94,7 @@ $report = $this->reports->query()
 
 ## Multisite and customization
 
-`Table` is a supported base class. Inherit its constructor and implement `unprefixedName()`; application query methods may live on the subclass or in a composed repository. During 2.x, Foundation keeps its final method set (`name`, `quotedName`, `query`, `insert`, `insertGetId`, `update`, and `delete`) unchanged. New conveniences must avoid colliding with application subclass methods; they can be offered through separate collaborators.
+`Table` is a supported base class. Inherit its constructor and implement `unprefixedName()`; application query methods may live on the subclass or in a composed repository. Foundation preserves supported behavior and subclass compatibility within a release line, including when considering new base-class methods.
 
 A shared container may be reused after `switch_to_blog()` between complete operations. Tables resolve the active prefix when called; a query already built retains its original table name. Build a fresh query after switching sites. Run migrations separately for each site, for example `wp --url=https://site.example your-plugin migrate:run`.
 

@@ -65,6 +65,16 @@ abstract readonly class Table implements TableContract
 	}
 
 	/**
+	 * Count all rows in this table at the current site.
+	 *
+	 * @throws DatabaseException When the physical name or managed session is invalid.
+	 * @throws Exception         When the count cannot be read.
+	 */
+	final public function count(): int {
+		return (int) $this->query()->select('COUNT(*)')->fetchOne();
+	}
+
+	/**
 	 * Insert a row and return its affected-row count.
 	 *
 	 * @param array<string, mixed>                     $data  Application-owned column names and bound values.
@@ -123,9 +133,38 @@ abstract readonly class Table implements TableContract
 	 */
 	final public function delete(array $where, array $types = []): int|string {
 		if ($where === []) {
-			throw new InvalidArgumentException('Table deletions require criteria; use the connection for an intentional whole-table delete.');
+			throw new InvalidArgumentException('Table deletions require criteria; use deleteAll() for an intentional whole-table delete.');
 		}
 
 		return $this->db->delete($this->quotedName(), $where, $types);
+	}
+
+	/**
+	 * Delete all rows, returning the affected-row count and preserving foreign-key enforcement.
+	 *
+	 * Participates in the caller's transaction and does not reset auto-increment.
+	 *
+	 * @throws DatabaseException When the physical name or managed session is invalid.
+	 * @throws Exception         When deletion fails, including a missing table or foreign-key restriction.
+	 */
+	final public function deleteAll(): int|string {
+		return $this->db->executeStatement('DELETE FROM ' . $this->quotedName());
+	}
+
+	/**
+	 * Truncate this table and reset auto-increment outside a transaction.
+	 *
+	 * Truncation implicitly commits and cannot be rolled back. Foreign-key checks remain enabled.
+	 *
+	 * @throws DatabaseException When a transaction is active or the physical name or managed session is invalid.
+	 * @throws Exception         When truncation fails, including a missing table or foreign-key restriction.
+	 */
+	final public function truncate(): void {
+		if ($this->db->isTransactionActive()) {
+			throw new DatabaseException('Table truncation cannot run inside a transaction; use deleteAll() instead.');
+		}
+
+		$sql = $this->db->getDatabasePlatform()->getTruncateTableSQL($this->quotedName());
+		$this->db->executeStatement($sql);
 	}
 }
