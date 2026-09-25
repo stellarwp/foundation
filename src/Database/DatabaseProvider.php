@@ -15,6 +15,8 @@ use StellarWP\Foundation\Database\Contracts\AdvisorySession;
 use StellarWP\Foundation\Database\Contracts\DatabaseScope;
 use StellarWP\Foundation\Database\Contracts\TableNameResolver;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
+use StellarWP\Foundation\Database\Query\Upsert\Contracts\Builder;
+use StellarWP\Foundation\Database\Query\Upsert\ServerBuilder;
 use StellarWP\Foundation\Database\Scope\SiteScope;
 use wpdb;
 
@@ -38,6 +40,8 @@ final class DatabaseProvider extends Provider
 		});
 		$this->container->singleton(DatabaseScope::class, SiteScope::class);
 		$this->container->singleton(TableNameResolver::class, Table\TableNameResolver::class);
+		$this->container->singleton(Builder::class, ServerBuilder::class);
+		$this->container->singleton(Query\Database::class);
 		$this->container->singleton(WordPressSession::class);
 		$this->container->singleton(AdvisorySession::class, static fn (C $c): WordPressSession => $c->get(WordPressSession::class));
 		$this->container->singleton(Connection::class, static function (C $c): Connection {

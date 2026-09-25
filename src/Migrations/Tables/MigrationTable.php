@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\Migrations\Tables;
 
 use Doctrine\DBAL\Connection;
 use StellarWP\Foundation\Database\Contracts\TableNameResolver;
+use StellarWP\Foundation\Database\Query\Database;
 use StellarWP\Foundation\Database\Table\Table;
 
 /**
@@ -18,10 +19,11 @@ final readonly class MigrationTable extends Table
 	 */
 	public function __construct(
 		private string $unprefixedTableName,
-		Connection $db,
-		TableNameResolver $names,
+		Connection $connection,
+		TableNameResolver $resolver,
+		Database $db,
 	) {
-		parent::__construct($db, $names);
+		parent::__construct($connection, $resolver, $db);
 	}
 
 	/**

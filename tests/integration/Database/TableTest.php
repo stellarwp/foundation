@@ -2,6 +2,7 @@
 
 namespace StellarWP\Foundation\Tests\Integration\Database;
 
+use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\DBAL\Exception\TableNotFoundException;
@@ -24,10 +25,10 @@ final class TableTest extends DatabaseTestCase
 	}
 
 	public function test_ordinary_table_calls_share_the_transaction_and_bind_values(): void {
-		$id = $this->entries->insertGetId(['name' => "O'Reilly", 'active' => true], ['active' => Types::BOOLEAN]);
-		$this->assertSame("O'Reilly", $this->entries->query()->select('name')->where('id = :id')->setParameter('id', $id)->fetchOne());
+		$id = $this->entries->insertGetId(['name' => "O'Reilly", 'active' => true]);
+		$this->assertSame("O'Reilly", ($this->entries->query()->select('name')->where('id', $id)->first()['name'] ?? null));
 		$this->assertSame(1, (int) $this->entries->update(['name' => 'Changed'], ['id' => $id]));
-		$this->assertSame(1, (int) $this->entries->query()->select('active')->fetchOne());
+		$this->assertSame(1, (int) ($this->entries->query()->select('active')->first()['active'] ?? null));
 
 		try {
 			$this->db->transactional(function (): void {
@@ -42,15 +43,226 @@ final class TableTest extends DatabaseTestCase
 		$this->assertSame(1, (int) $this->entries->delete(['id' => $id]));
 	}
 
+	/**
+	 * Both entry points share bulk input, scalar conversion, dates, and empty input.
+	 */
+	public function test_table_and_query_insertions_have_identical_behavior(): void {
+		$this->observer->executeStatement('ALTER TABLE ' . $this->entries->quotedName() . '
+			ADD COLUMN amount DECIMAL(12, 2) NULL,
+			ADD COLUMN created_at DATETIME(6) NULL');
+
+		foreach ([
+			$this->entries,
+			$this->entries->query(),
+		] as $target) {
+			$this->assertSame(0, $target->insert([]));
+			$this->assertSame(1, $target->insert([
+				'name'       => "O'Reilly",
+				'active'     => true,
+				'amount'     => '12.30',
+				'created_at' => new DateTimeImmutable('2026-09-25 12:34:56.123456+08:00'),
+			]));
+			$this->assertSame(2, $target->insert([
+				[
+					'name'   => 'Two',
+					'active' => false,
+				],
+				[
+					'active' => true,
+					'name'   => null,
+				],
+			]));
+			$row = $this->entries->query()->orderBy('id')->first();
+			$this->assertNotNull($row);
+			$this->assertArrayHasKey('name', $row);
+			$this->assertSame("O'Reilly", $row['name']);
+			$this->assertSame(1, (int) $row['active']);
+			$this->assertSame('12.30', $row['amount']);
+			$this->assertSame('2026-09-25 12:34:56.123456', $row['created_at']);
+			$this->assertSame(3, $this->entries->count());
+			$this->entries->deleteAll();
+		}
+	}
+
+	/**
+	 * Table and fluent mutations share value normalization and equality semantics.
+	 */
+	public function test_table_and_query_updates_and_deletes_have_identical_behavior(): void {
+		$this->observer->executeStatement('ALTER TABLE ' . $this->entries->quotedName() . ' ADD COLUMN updated_at DATETIME(6) NULL');
+		$first = $this->entries->insertGetId([
+			'name' => 'Table',
+		]);
+		$second = $this->entries->insertGetId([
+			'name' => 'Query',
+		]);
+		$updatedAt = new DateTimeImmutable('2026-09-25 12:34:56.123456+08:00');
+		$values    = [
+			'name'       => null,
+			'active'     => false,
+			'updated_at' => $updatedAt,
+		];
+		$this->assertSame(1, (int) $this->entries->update($values, [
+			'id'         => $first,
+			'active'     => false,
+			'updated_at' => null,
+		]));
+		$this->assertSame(1, (int) $this->entries->query()->where([
+			'id'         => $second,
+			'active'     => false,
+			'updated_at' => null,
+		])->update($values));
+		$rows = $this->entries->query()->select('name', 'active', 'updated_at')->get();
+		$this->assertCount(2, $rows);
+		$this->assertSame($rows[0], $rows[1]);
+		$this->assertSame('2026-09-25 12:34:56.123456', $rows[0]['updated_at']);
+		$this->assertSame(1, (int) $this->entries->delete([
+			'id'         => $first,
+			'name'       => null,
+			'active'     => false,
+			'updated_at' => $updatedAt,
+		]));
+		$this->assertSame(1, (int) $this->entries->query()->where([
+			'id'         => $second,
+			'name'       => null,
+			'active'     => false,
+			'updated_at' => $updatedAt,
+		])->delete());
+		$this->assertSame(0, $this->entries->count());
+	}
+
+	/**
+	 * Both table mutations participate in the same caller-owned transaction.
+	 */
+	public function test_table_update_and_filtered_delete_roll_back_together(): void {
+		$first = $this->entries->insertGetId([
+			'name' => 'First',
+		]);
+		$second = $this->entries->insertGetId([
+			'name' => 'Second',
+		]);
+
+		try {
+			$this->db->transactional(function () use ($first, $second): void {
+				$this->assertSame(1, (int) $this->entries->update([
+					'name' => 'Changed',
+				], [
+					'id' => $first,
+				]));
+				$this->assertSame(1, (int) $this->entries->delete([
+					'id' => $second,
+				]));
+
+				throw new RuntimeException('Cancel mutations');
+			});
+		} catch (RuntimeException $failure) {
+			$this->assertSame('Cancel mutations', $failure->getMessage());
+		}
+
+		$this->assertSame([
+			'First',
+			'Second',
+		], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->entries->quotedName() . ' ORDER BY id'));
+	}
+
+	/**
+	 * Requesting an ID always inserts a row, including when only defaults are needed.
+	 */
+	public function test_generated_ids_follow_single_row_and_defaults_only_insertions(): void {
+		foreach ([
+			$this->entries,
+			$this->entries->query(),
+		] as $target) {
+			$previous = $target->insertGetId([
+				'name'   => 'Previous',
+				'active' => true,
+			]);
+			$this->assertSame(0, $target->insert([]));
+			$id = $target->insertGetId([]);
+			$this->assertNotSame((string) $previous, (string) $id);
+			$row = $this->entries->query()->where('id', $id)->first();
+			$this->assertNotNull($row);
+			$this->assertNull($row['name']);
+			$this->assertSame(0, (int) $row['active']);
+		}
+
+		$this->assertSame(4, $this->entries->count());
+	}
+
+	/**
+	 * Explicit Doctrine conversions remain available on the shared connection.
+	 */
+	public function test_native_insert_supports_explicit_doctrine_types(): void {
+		$this->observer->executeStatement('ALTER TABLE ' . $this->entries->quotedName() . ' ADD COLUMN payload TEXT');
+		$this->db->insert($this->entries->quotedName(), [
+			'name'    => 'Typed',
+			'payload' => [
+				'enabled' => true,
+			],
+		], [
+			'payload' => Types::JSON,
+		]);
+
+		$row = $this->entries->query()->first();
+		$this->assertNotNull($row);
+		$this->assertArrayHasKey('payload', $row);
+		$this->assertSame([
+			'enabled' => true,
+		], json_decode((string) $row['payload'], true));
+		$this->assertSame(1, (int) $this->db->update($this->entries->quotedName(), [
+			'payload' => [
+				'enabled' => false,
+			],
+		], [
+			'name' => 'Typed',
+		], [
+			'payload' => Types::JSON,
+		]));
+		$updated = $this->entries->query()->first();
+		$this->assertNotNull($updated);
+		$this->assertArrayHasKey('payload', $updated);
+		$this->assertSame([
+			'enabled' => false,
+		], json_decode((string) $updated['payload'], true));
+		$this->assertSame(1, (int) $this->db->delete($this->entries->quotedName(), [
+			'name' => 'Typed',
+		], [
+			'name' => Types::STRING,
+		]));
+	}
+
+	/**
+	 * A bulk table insertion participates in the caller's existing transaction.
+	 */
+	public function test_bulk_table_insert_rolls_back_with_the_callers_transaction(): void {
+		try {
+			$this->db->transactional(function (): void {
+				$this->entries->insert([
+					[
+						'name' => 'First',
+					],
+					[
+						'name' => 'Second',
+					],
+				]);
+
+				throw new RuntimeException('Cancel bulk insertion');
+			});
+		} catch (RuntimeException $failure) {
+			$this->assertSame('Cancel bulk insertion', $failure->getMessage());
+		}
+
+		$this->assertSame(0, $this->entries->count());
+	}
+
 	public function test_queries_are_fresh_and_capture_the_site_when_built(): void {
 		$old   = $this->entries->query('entry')->select('entry.id');
 		$fresh = $this->entries->query();
 		$this->assertNotSame($old, $fresh);
 		$oldName = $this->entries->name();
 		$this->source->set_prefix($this->source->prefix . 'other_');
-		$this->assertStringContainsString($oldName, $old->getSQL());
+		$this->assertStringContainsString($oldName, $old->toSql());
 		$this->assertNotSame($oldName, $this->entries->name());
-		$this->assertStringContainsString($this->entries->name(), $this->entries->query()->select('id')->getSQL());
+		$this->assertStringContainsString($this->entries->name(), $this->entries->query()->select('id')->toSql());
 	}
 
 	public function test_count_and_delete_all_preserve_the_identity_sequence(): void {
@@ -94,7 +306,7 @@ final class TableTest extends DatabaseTestCase
 
 		$this->assertSame([
 			'Original',
-		], $this->entries->query()->select('name')->fetchFirstColumn());
+		], array_column($this->entries->query()->select('name')->get(), 'name'));
 	}
 
 	public function test_truncate_empties_the_table_and_resets_auto_increment(): void {
@@ -133,7 +345,7 @@ final class TableTest extends DatabaseTestCase
 
 		$this->assertSame([
 			'Original',
-		], $this->entries->query()->select('name')->fetchFirstColumn());
+		], array_column($this->entries->query()->select('name')->get(), 'name'));
 	}
 
 	public function test_whole_table_deletions_preserve_foreign_key_enforcement(): void {
@@ -189,7 +401,7 @@ final class TableTest extends DatabaseTestCase
 				$method === 'update' ? $this->entries->update(['name' => 'All'], []) : $this->entries->delete([]);
 				$this->fail('Expected empty criteria rejection.');
 			} catch (InvalidArgumentException) {
-				$this->assertSame(0, (int) $this->entries->query()->select('COUNT(*)')->fetchOne());
+				$this->assertSame(0, (int) $this->entries->query()->count());
 			}
 		}
 	}
@@ -206,7 +418,7 @@ final class TableTest extends DatabaseTestCase
 
 				return 'updated';
 			}));
-			$this->assertSame('Reconnected', $this->entries->query()->select('name')->fetchOne());
+			$this->assertSame('Reconnected', ($this->entries->query()->select('name')->first()['name'] ?? null));
 
 			try {
 				$oldStatement->executeQuery();

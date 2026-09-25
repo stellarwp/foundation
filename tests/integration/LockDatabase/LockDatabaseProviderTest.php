@@ -1,6 +1,6 @@
 <?php declare(strict_types=1);
 
-namespace StellarWP\Foundation\Tests\Unit\LockDatabase;
+namespace StellarWP\Foundation\Tests\Integration\LockDatabase;
 
 use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -8,6 +8,7 @@ use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
 use StellarWP\Foundation\Container\Contracts\Configuration;
 use StellarWP\Foundation\Database\Contracts\DatabaseScope;
 use StellarWP\Foundation\Database\Contracts\TableNameResolver;
+use StellarWP\Foundation\Database\DatabaseProvider;
 use StellarWP\Foundation\Database\Table\TableNameResolver as DatabaseTableNameResolver;
 use StellarWP\Foundation\Lock\Contracts\Lock;
 use StellarWP\Foundation\Lock\InMemoryLock;
@@ -15,9 +16,9 @@ use StellarWP\Foundation\Lock\SystemClock;
 use StellarWP\Foundation\LockDatabase\DatabaseLock;
 use StellarWP\Foundation\LockDatabase\LockDatabaseProvider;
 use StellarWP\Foundation\LockDatabase\Tables\LockTable;
-use StellarWP\Foundation\Tests\TestCase;
+use StellarWP\Foundation\Tests\WPUnitSupport\WPTestCase;
 
-final class LockDatabaseProviderTest extends TestCase
+final class LockDatabaseProviderTest extends WPTestCase
 {
 	/**
 	 * @return iterable<string, array{array<string, mixed>, string}>
@@ -40,6 +41,7 @@ final class LockDatabaseProviderTest extends TestCase
 	 */
 	#[DataProvider('tableNames')]
 	public function test_it_uses_the_shared_database_services_and_configured_storage(array $configuration, string $name): void {
+		$this->container->register(DatabaseProvider::class);
 		$db = $this->createMock(Connection::class);
 		$db->expects($this->never())->method('executeStatement');
 		$scope = $this->createMock(DatabaseScope::class);

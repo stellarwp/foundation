@@ -1,17 +1,15 @@
 ---
 title: Queries and Transactions
-description: Query application tables with Doctrine DBAL and choose reliable transaction boundaries.
+description: Query application tables with Foundation's fluent builder and choose reliable transaction boundaries.
 sidebar:
   order: 2
 ---
 
-[Register DatabaseProvider](/components/database/) and inject your concrete table into the service that owns its queries. A table can wrap an existing WordPress or third-party table without owning its migrations.
+[Register DatabaseProvider](/components/database/) and inject your concrete table into the service that owns its queries. Foundation's fluent builder binds values and quotes structured identifiers, then executes through the shared Doctrine connection. A table can wrap an existing WordPress or third-party table without owning its migrations.
 
-## Read and write rows
+## Read rows
 
 A repository is an optional way to organize reusable application queries:
-
-In `src/Report/Report_Repository.php`:
 
 ```php title="Report_Repository.php"
 <?php declare(strict_types=1);
@@ -28,100 +26,241 @@ final readonly class Report_Repository {
 	}
 
 	/**
-	 * @return array<string, mixed>|false
+	 * Find one report, or return null when it does not exist.
+	 *
+	 * @return array<string, mixed>|null
 	 */
-	public function find( int $id ): array|false {
+	public function find( int $id ): ?array {
 		return $this->reports->query()
 			->select( 'id', 'title' )
-			->where( 'id = :id' )
-			->setParameter( 'id', $id )
-			->fetchAssociative();
+			->where( 'id', $id )
+			->first();
 	}
 }
 ```
 
-`query()` returns a fresh native Doctrine builder with the table configured as its source. Use `query('report')` for an alias. Supply SQL expressions yourself and bind external values using `setParameter()` or `setParameters()`. SQL fragments, column names, sorting, and aliases must come from application-owned choices, not request input.
+`query()` returns a fresh `StellarWP\Foundation\Database\Query\Query`. Use `query( 'report' )` for an alias. `get()` returns a list of associative arrays; `first()` returns one associative array or `null`. Driver-returned numeric values can be strings, so convert results according to your application contract.
 
 ```php
 $rows = $this->reports->query()
 	->select( 'id', 'title' )
-	->where( 'status = :status' )
-	->setParameter( 'status', 'ready' )
-	->orderBy( 'id', 'DESC' )
-	->setMaxResults( 50 )
-	->fetchAllAssociative();
-
-$count = $this->reports->count();
+	->where( 'status', 'ready' )
+	->orderBy( 'id', 'desc' )
+	->limit( 50 )
+	->get();
 ```
 
-Doctrine supplies `fetchAssociative()` (one row or `false`), `fetchAllAssociative()` (rows), `fetchOne()` (one value or `false`), and `executeQuery()` for a native result. Database drivers may return numeric values as strings. Convert results according to your application contract.
+The initial builder is deliberately bounded. It supplies the operations described here; familiar Laravel-style names do not imply the whole Laravel API is available.
 
-Common writes stay table-scoped:
+### Conditions and literal substring searches
+
+Use two arguments for equality, or three for an explicit comparison. Supported comparison operators are `=`, `!=`, `<>`, `<`, `<=`, `>`, and `>=`. Comparing equality to `null` means `IS NULL`; inequality means `IS NOT NULL`. Ordering comparisons against null are rejected.
+
+Group alternatives with a callback receiving `WhereGroup`:
 
 ```php
-$id = $this->reports->insertGetId( [ 'title' => 'Weekly', 'status' => 'draft' ] );
-$this->reports->update( [ 'status' => 'ready' ], [ 'id' => $id ] );
-$this->reports->delete( [ 'id' => $id ] );
+use StellarWP\Foundation\Database\Query\WhereGroup;
+
+$rows = $this->reports->query()
+	->where( 'status', 'ready' )
+	->where( static fn ( WhereGroup $where ) => $where
+		->where( 'priority', '>', 5 )
+		->orWhere( 'owner_id', $ownerId ) )
+	->get();
 ```
 
-`insert()`, `update()`, and `delete()` return Doctrine's affected-row count (`int|string`). `insertGetId()` returns the generated identifier (`int|string`) without truncation. Each accepts an optional `$types` map for Doctrine parameter types. Update and delete criteria must be nonempty. Use `deleteAll()` for an intentional whole-table deletion, or the connection for a whole-table update.
-
-Inject `Doctrine\DBAL\Connection` for joins, specialized SQL, and operations spanning tables. Resolve physical names through each table's `quotedName()`:
+`where()` also accepts an associative map of equalities. `whereIn()` accepts a list of values, and an empty list matches no rows. `whereNull()` expresses a null test directly.
 
 ```php
-$db->executeStatement(
-	'UPDATE ' . $reports->quotedName() . ' SET status = ? WHERE id = ?',
-	[ 'ready', $id ],
-);
+$rows = $this->reports->query()
+	->where( [
+		'status' => 'ready',
+		'owner_id' => $ownerId,
+	] )
+	->whereContainsAny( 'title', $searchTerms )
+	->limit( 50 )
+	->get();
 ```
 
-Queries, results, types, and DBAL exceptions are supported native Doctrine APIs. See [Doctrine's query builder reference](https://www.doctrine-project.org/projects/doctrine-dbal/en/4.4/reference/query-builder.html) for expressions and advanced usage.
+`whereContainsAny()` matches any literal substring. Percent signs, underscores, and the escape character in search terms are escaped before values are bound. An empty term list matches nothing. Structured column names, aliases, and sort directions are validated; choose an application allowlist when users should be limited to particular columns.
+
+### Grouping and aggregates
+
+`count()` returns an integer, `exists()` returns a boolean, and `max( 'column' )` returns the driver's scalar value or null when no value exists. Terminal reads do not alter the builder, so you can count and then fetch the same query.
+
+```php
+$query = $this->reports->query()->where( 'status', 'ready' );
+$count = $query->count();
+$rows  = $query->get();
+```
+
+`distinct()`, `groupBy()`, `having()`, `limit()`, and `offset()` shape the rows seen by aggregates. Foundation aggregates a derived table when those operations are present. In particular, `limit( 10 )->count()` counts at most ten rows, and a grouped count counts groups. Explicit projections and their aliases remain intact, including aliases used by ordering.
+
+```php
+$largest = $this->reports->query()
+	->select( 'score as report_score' )
+	->orderBy( 'report_score', 'desc' )
+	->limit( 10 )
+	->max( 'report_score' );
+```
+
+For grouped reports, use application-owned SQL expressions through `selectRaw()` and pass external values in its bindings array:
+
+```php
+$groups = $this->reports->query()
+	->selectRaw( 'status, COUNT(*) AS total' )
+	->groupBy( 'status' )
+	->having( 'total', '>', 1 )
+	->get();
+```
+
+Raw projections are opaque: Foundation preserves every `selectRaw()` projection when counting, finding a maximum, or checking existence. For example, `selectRaw( 'COUNT(*) AS total' )->exists()` returns true even when the source table is empty, because that aggregate produces one result row. Calling `select()` replaces the projection and clears this raw-projection behavior.
+
+A shaped column aggregate must name an output column or alias of the inner query. For example, `select( 'name' )->limit( 10 )->max( 'amount' )` throws `InvalidArgumentException` because `amount` is not selected. Include `amount` in the projection, or use its selected alias. Foundation leaves the projection, grouping, and distinctness unchanged. Foundation does not parse raw expressions to discover their outputs; invalid raw output references fail through the database. Shaped joins require an explicit projection to avoid duplicate column names in a derived table.
+
+## Join application and WordPress tables
+
+Inject `StellarWP\Foundation\Database\Query\Database` when a query needs a table entry point independent of a concrete application table. `DatabaseProvider` supplies its dependencies automatically.
+
+`table()` accepts a `Table`, an unprefixed application name, or a `Query\ValueObjects\TableReference`, with an optional alias argument. `wordpress()` returns a resolved reference to a known WordPress core table. It honors WordPress's site and network table properties, including custom users tables. References are resolved when created; build a fresh query after switching sites between operations.
+
+```php
+$rows = $this->db->table( $this->reports, 'r' )
+	->join( $this->db->wordpress( 'users' )->as( 'u' ), 'u.ID', '=', 'r.owner_id' )
+	->select( 'r.id', 'r.title', 'u.user_email' )
+	->where( 'r.status', 'ready' )
+	->get();
+```
+
+`join()` and `leftJoin()` accept the same table kinds. A callback receives `JoinClause` for grouped ON conditions and bound value predicates. Pass application table objects directly; passing their physical `name()` as an unprefixed string would prefix the name again.
+
+## Write rows
+
+Insert one row and retrieve its generated identifier:
+
+```php
+$id = $this->reports->insertGetId( [
+	'title' => 'Weekly',
+	'status' => 'draft',
+] );
+
+$this->reports->update( [
+	'status' => 'ready',
+], [
+	'id' => $id,
+] );
+```
+
+`insert()` accepts one associative row or a list of rows and returns the total affected-row count as `int`. The table convenience and fluent query use the same implementation, including value normalization and bulk insertion:
+
+```php
+$this->reports->insert( [
+	[
+		'title' => 'Weekly',
+		'status' => 'draft',
+	],
+	[
+		'title' => 'Monthly',
+		'status' => 'draft',
+	],
+] );
+
+$this->reports->query()
+	->where( 'id', $id )
+	->update( [
+		'status' => 'ready',
+	] );
+
+$this->reports->query()->where( 'id', $id )->delete();
+```
+
+You can also call `$this->reports->query()->insert( $rows )`; it has the same behavior as `$this->reports->insert( $rows )`. Empty input returns zero without inserting a row.
+
+`insertGetId()` accepts exactly one associative row and returns its generated ID as `int|string`. Use it on the table or a fresh query. Passing `[]` explicitly inserts one row using database defaults and returns that new ID. A list of rows is rejected, and insertion or ID retrieval failures throw.
+
+`Table::update( $values, $criteria )` and `delete( $criteria )` delegate to filtered queries and return affected-row counts as `int|string`. Criteria are column-to-value equality comparisons; null matches `IS NULL`. Both methods reject empty criteria. Table and fluent writes share value normalization.
+
+For writes that require explicit Doctrine conversions, such as a JSON type or a custom type, use the shared connection’s `insert()`, `update()`, or `delete()`:
+
+```php
+use Doctrine\DBAL\Types\Types;
+
+$this->connection->insert( $this->reports->quotedName(), [
+	'payload' => [
+		'enabled' => true,
+	],
+], [
+	'payload' => Types::JSON,
+] );
+```
+
+Insert, upsert, and delete queries use an unaliased target table. Start them with `$table->query()` without an alias.
+
+Query `insert()` and `upsert()` return total affected rows as `int`; `update()` and `delete()` preserve Doctrine’s `int|string` affected-row counts. Rows in a multi-row write must have identical column sets, although their key order may differ. Empty insert and upsert inputs return zero. Boolean values are bound as integers; use decimal strings for exact amounts. Date/time values are formatted with microseconds, and the target column and database determine retained precision.
+
+MySQL normally rounds fractional seconds when writing to a lower-precision column, which can advance the stored date near midnight. Use `DATETIME(6)` to preserve microseconds, or pass `$date->format('Y-m-d H:i:s')` to deliberately discard them before writing to a second-precision column.
+
+Large writes split into multiple statements within the parameter limit. Each statement is atomic, but the complete write needs a caller-owned transaction to roll back earlier chunks if a later chunk fails.
+
+`update()` and `delete()` require conditions, retain supported ordering and limits, and reject joins, projections, distinct, grouping, having, or offsets. `insert()`, `insertGetId()`, and `upsert()` reject previously accumulated query conditions, projections, ordering, limits, and other shaping state, even for empty input. Start from a fresh query for those operations.
+
+### Upsert using existing keys
+
+`upsert( $rows, $update )` uses the table's existing primary and unique keys. The required update list names the columns to change on conflict. There is no conflict-target argument: MySQL and MariaDB choose conflicts from all existing primary and unique keys.
+
+For a table whose schema already defines `external_id` as unique:
+
+```php
+$this->reports->query()->upsert( [
+	[
+		'external_id' => 'weekly-2026-09-25',
+		'title' => 'Weekly report',
+		'status' => 'ready',
+	],
+], update: [
+	'title',
+	'status',
+] );
+```
+
+A normal nonunique index does not create upsert conflict semantics. Upsert does not alter your schema, and a multi-statement upsert has the same caller-owned transaction boundary as insert.
 
 ## Count or clear a table
 
-### Count all rows
+`$this->reports->count()` counts all rows; use `query()->where( ... )->count()` for a filtered count.
 
-Get the number of rows as an integer. An empty table returns `0`; a missing table throws an exception.
-
-```php
-$count = $this->reports->count();
-```
-
-For a filtered count, use `query()->select( 'COUNT(*)' )` with the required conditions.
-
-### Delete all rows
-
-Remove every row and receive the affected-row count (`int|string`):
+`deleteAll()` explicitly deletes every row, preserves the auto-increment sequence, and follows foreign-key rules and delete triggers. With InnoDB, deletion participates in the caller's transaction:
 
 ```php
-$deleted = $this->reports->deleteAll();
-```
-
-`deleteAll()` preserves the auto-increment sequence and applies the table's foreign-key rules and delete triggers. With InnoDB, deletion participates in the caller's transaction. For example, clear and replace data atomically:
-
-```php
-$this->db->transactional( function () use ( $rows ): void {
+$this->connection->transactional( function () use ( $rows ): void {
 	$this->reports->deleteAll();
-
-	foreach ( $rows as $row ) {
-		$this->reports->insert( $row );
-	}
+	$this->reports->query()->insert( $rows );
 } );
 ```
 
 An insertion failure rolls back the deletion and preserves the previous rows.
 
-### Truncate a table
+`truncate()` removes all rows and resets auto-increment. It returns no value. MySQL and MariaDB truncation implicitly commits and cannot be rolled back, so Foundation rejects it with `DatabaseException` inside an active shared transaction. Truncation does not run delete triggers, and references from other tables can prevent it. Both clearing methods keep foreign-key checks enabled and fail if the table is missing.
 
-Remove all rows and reset auto-increment:
+## Native SQL and inspection
+
+`toSql()` and `getBindings()` inspect the compiled read query without executing it. Bindings remain separate from SQL.
+
+Inject `Doctrine\DBAL\Connection` for specialized SQL or native Doctrine builders and results. Resolve application table names through `quotedName()` and bind external values:
 
 ```php
-$this->reports->truncate();
+$connection->executeStatement(
+	'UPDATE ' . $reports->quotedName() . '
+	SET status = ?
+	WHERE id = ?',
+	[
+		'ready',
+		$id,
+	],
+);
 ```
 
-`truncate()` returns no value. MySQL and MariaDB truncation implicitly commits and cannot be rolled back, so Foundation rejects this method with `DatabaseException` when the shared connection has an active transaction. Use `deleteAll()` for transactional replacement. Truncation does not run delete triggers, and references from other tables can prevent it.
-
-Both clearing methods keep foreign-key checks enabled and throw if the table is missing.
+Native Doctrine execution exceptions remain unchanged. Foundation validation failures reject invalid query construction before execution. Keep raw SQL and expressions application-owned; `selectRaw()` does not make untrusted SQL safe.
 
 ## Choose a transaction boundary
 
@@ -134,14 +273,17 @@ use Plugin\Database\Tables\Reports_Table;
 final readonly class Create_Report {
 
 	public function __construct(
-		private Connection $db,
+		private Connection $connection,
 		private Reports_Table $reports,
 	) {
 	}
 
 	public function create( string $title ): int|string {
-		return $this->db->transactional( function () use ( $title ): int|string {
-			return $this->reports->insertGetId( [ 'title' => $title, 'status' => 'draft' ] );
+		return $this->connection->transactional( function () use ( $title ): int|string {
+			return $this->reports->insertGetId( [
+				'title' => $title,
+				'status' => 'draft',
+			] );
 		} );
 	}
 }

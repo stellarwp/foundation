@@ -4,13 +4,12 @@ namespace StellarWP\Foundation\Database\Table;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception;
-use Doctrine\DBAL\ParameterType;
-use Doctrine\DBAL\Query\QueryBuilder;
-use Doctrine\DBAL\Types\Type;
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Table as TableContract;
 use StellarWP\Foundation\Database\Contracts\TableNameResolver;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
+use StellarWP\Foundation\Database\Query\Database;
+use StellarWP\Foundation\Database\Query\Query;
 
 /**
  * An application table with ordinary reads and writes on the shared connection.
@@ -23,8 +22,9 @@ abstract readonly class Table implements TableContract
 	 * Receive the application's shared connection and table-name policy.
 	 */
 	public function __construct(
-		private Connection $db,
-		private TableNameResolver $names,
+		private Connection $connection,
+		private TableNameResolver $resolver,
+		private Database $db,
 	) {
 	}
 
@@ -41,7 +41,7 @@ abstract readonly class Table implements TableContract
 	 * @return non-empty-string
 	 */
 	final public function name(): string {
-		return $this->names->tableName($this);
+		return $this->resolver->tableName($this);
 	}
 
 	/**
@@ -51,17 +51,17 @@ abstract readonly class Table implements TableContract
 	 * @throws Exception         When the platform cannot be determined.
 	 */
 	final public function quotedName(): string {
-		return $this->db->getDatabasePlatform()->quoteSingleIdentifier($this->name());
+		return $this->connection->getDatabasePlatform()->quoteSingleIdentifier($this->name());
 	}
 
 	/**
-	 * Start a fresh native query with this table as its source.
+	 * Start a fresh fluent query with this table as its source.
 	 *
 	 * @throws DatabaseException When the physical name is invalid.
 	 * @throws Exception         When the platform cannot be determined.
 	 */
-	final public function query(?string $alias = null): QueryBuilder {
-		return $this->db->createQueryBuilder()->from($this->quotedName(), $alias);
+	final public function query(?string $alias = null): Query {
+		return $this->db->table($this, $alias);
 	}
 
 	/**
@@ -71,72 +71,73 @@ abstract readonly class Table implements TableContract
 	 * @throws Exception         When the count cannot be read.
 	 */
 	final public function count(): int {
-		return (int) $this->query()->select('COUNT(*)')->fetchOne();
+		return $this->query()->count();
 	}
 
 	/**
-	 * Insert a row and return its affected-row count.
+	 * Insert one row or a list of rows and return the total affected-row count.
 	 *
-	 * @param array<string, mixed>                     $data  Application-owned column names and bound values.
-	 * @param array<string, string|ParameterType|Type> $types
+	 * Empty input performs no write. Use a caller-owned transaction when a bulk
+	 * insert must be atomic across multiple statements.
 	 *
-	 * @throws DatabaseException When the physical name is invalid.
-	 * @throws Exception         When insertion fails.
+	 * @param array<string, mixed>|list<array<string, mixed>> $rows
+	 *
+	 * @throws InvalidArgumentException When columns, values, or row shapes are invalid.
+	 * @throws DatabaseException        When the physical name or managed session is invalid.
+	 * @throws Exception                When insertion fails, including in a later chunk.
 	 */
-	final public function insert(array $data, array $types = []): int|string {
-		return $this->db->insert($this->quotedName(), $data, $types);
+	final public function insert(array $rows): int {
+		return $this->query()->insert($rows);
 	}
 
 	/**
-	 * Insert a row and return its generated identifier without truncation.
+	 * Insert exactly one row and return its generated identifier without truncation.
 	 *
-	 * @param array<string, mixed>                     $data
-	 * @param array<string, string|ParameterType|Type> $types
+	 * Empty data inserts one row using the database defaults.
 	 *
-	 * @throws DatabaseException When the physical name is invalid.
-	 * @throws Exception         When insertion fails or no generated identifier is available.
+	 * @param array<string, mixed> $data
+	 *
+	 * @throws InvalidArgumentException When data is a row list or contains invalid columns or values.
+	 * @throws DatabaseException        When the physical name or managed session is invalid.
+	 * @throws Exception                When insertion fails or no generated identifier is available.
 	 */
-	final public function insertGetId(array $data, array $types = []): int|string {
-		$this->insert($data, $types);
-
-		return $this->db->lastInsertId();
+	final public function insertGetId(array $data): int|string {
+		return $this->query()->insertGetId($data);
 	}
 
 	/**
 	 * Update rows matching equality criteria, returning the affected-row count.
 	 *
-	 * @param array<string, mixed>                     $data
-	 * @param array<string, mixed>                     $where
-	 * @param array<string, string|ParameterType|Type> $types
+	 * @param array<string, mixed> $data
+	 * @param array<string, mixed> $where
 	 *
-	 * @throws InvalidArgumentException When criteria are empty.
+	 * @throws InvalidArgumentException When criteria are empty or columns and values are invalid.
 	 * @throws DatabaseException        When the physical name is invalid.
 	 * @throws Exception                When the update fails.
 	 */
-	final public function update(array $data, array $where, array $types = []): int|string {
+	final public function update(array $data, array $where): int|string {
 		if ($where === []) {
 			throw new InvalidArgumentException('Table updates require criteria; use the connection for an intentional whole-table update.');
 		}
 
-		return $this->db->update($this->quotedName(), $data, $where, $types);
+		return $this->query()->where($where)->update($data);
 	}
 
 	/**
 	 * Delete rows matching equality criteria, returning the affected-row count.
 	 *
-	 * @param array<string, mixed>                     $where
-	 * @param array<string, string|ParameterType|Type> $types
+	 * @param array<string, mixed> $where
 	 *
-	 * @throws InvalidArgumentException When criteria are empty.
+	 * @throws InvalidArgumentException When criteria are empty or columns and values are invalid.
 	 * @throws DatabaseException        When the physical name is invalid.
 	 * @throws Exception                When deletion fails.
 	 */
-	final public function delete(array $where, array $types = []): int|string {
+	final public function delete(array $where): int|string {
 		if ($where === []) {
 			throw new InvalidArgumentException('Table deletions require criteria; use deleteAll() for an intentional whole-table delete.');
 		}
 
-		return $this->db->delete($this->quotedName(), $where, $types);
+		return $this->query()->where($where)->delete();
 	}
 
 	/**
@@ -148,7 +149,7 @@ abstract readonly class Table implements TableContract
 	 * @throws Exception         When deletion fails, including a missing table or foreign-key restriction.
 	 */
 	final public function deleteAll(): int|string {
-		return $this->db->executeStatement('DELETE FROM ' . $this->quotedName());
+		return $this->connection->executeStatement('DELETE FROM ' . $this->quotedName());
 	}
 
 	/**
@@ -160,11 +161,11 @@ abstract readonly class Table implements TableContract
 	 * @throws Exception         When truncation fails, including a missing table or foreign-key restriction.
 	 */
 	final public function truncate(): void {
-		if ($this->db->isTransactionActive()) {
+		if ($this->connection->isTransactionActive()) {
 			throw new DatabaseException('Table truncation cannot run inside a transaction; use deleteAll() instead.');
 		}
 
-		$sql = $this->db->getDatabasePlatform()->getTruncateTableSQL($this->quotedName());
-		$this->db->executeStatement($sql);
+		$sql = $this->connection->getDatabasePlatform()->getTruncateTableSQL($this->quotedName());
+		$this->connection->executeStatement($sql);
 	}
 }

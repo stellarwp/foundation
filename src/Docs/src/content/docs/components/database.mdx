@@ -7,7 +7,7 @@ sidebar:
 
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-Foundation Database provides a configured Doctrine DBAL connection, convenient application tables, and reliable WordPress transactions. Use Doctrine directly for expressions, joins, parameter binding, results, and advanced operations.
+Foundation Database provides a configured Doctrine DBAL connection, convenient application tables, and reliable WordPress transactions. Use Foundation's fluent queries for ordinary reads, joins, and writes. Use the shared Doctrine connection directly for transactions, specialized SQL, and native database operations.
 
 ## Get started
 
@@ -81,13 +81,14 @@ final readonly class Reports_Table extends Table {
 Inject `Reports_Table` into your service and call its operations:
 
 ```php
-$id = $this->reports->insertGetId( [ 'title' => 'Weekly report' ] );
+$id = $this->reports->insertGetId( [
+	'title' => 'Weekly report',
+] );
 
 $report = $this->reports->query()
 	->select( 'id', 'title' )
-	->where( 'id = :id' )
-	->setParameter( 'id', $id )
-	->fetchAssociative();
+	->where( 'id', $id )
+	->first();
 ```
 
 [Create the table through a migration](/components/migrations/), then use the [query and transaction guide](/components/database/query-builder/) for results, writes, and failure handling.
@@ -104,7 +105,7 @@ Applications can replace `DatabaseScope` and `TableNameResolver` when they own a
 
 <CardGrid>
   <LinkCard title="Migrations" description="Generate migrations, preview SQL, and manage application schema changes." href="/components/migrations/" />
-  <LinkCard title="Queries and transactions" description="Use application tables and native Doctrine operations." href="/components/database/query-builder/" />
+  <LinkCard title="Queries and transactions" description="Use fluent application queries and shared transactions." href="/components/database/query-builder/" />
   <LinkCard title="Database Lock" description="Choose database-backed coordination for application work." href="/components/lock/database/" />
 </CardGrid>
 

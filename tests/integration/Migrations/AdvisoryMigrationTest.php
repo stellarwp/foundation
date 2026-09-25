@@ -12,6 +12,7 @@ use StellarWP\Foundation\Database\Contracts\AdvisorySession;
 use StellarWP\Foundation\Database\Contracts\DatabaseScope;
 use StellarWP\Foundation\Database\Contracts\TableNameResolver;
 use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\Database\Query\Database;
 use StellarWP\Foundation\Migrations\Contracts\MigratesData;
 use StellarWP\Foundation\Migrations\Contracts\Migration;
 use StellarWP\Foundation\Migrations\DataMigrationContext;
@@ -61,7 +62,7 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 		$scope = $container->get(DatabaseScope::class);
 		$names = $container->get(TableNameResolver::class);
 		$resource ??= $scope->resolveTableName($this->suffix . '_ledger');
-		$table     = new MigrationTable(substr($resource, strlen($scope->resolveTableName(''))), $db, $names);
+		$table     = new MigrationTable(substr($resource, strlen($scope->resolveTableName(''))), $db, $names, $container->get(Database::class));
 		$migration = new class($operation) implements MigratesData, Migration {
 			/** @param Closure(Connection): void $operation */
 			public function __construct(private readonly Closure $operation) {
