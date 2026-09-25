@@ -24,13 +24,12 @@ use Symfony\Component\Console\Tester\CommandTester;
 
 final class CliProviderTest extends TestCase
 {
-	public function test_maintenance_registration_is_idempotent_and_preserves_the_process_runner(): void {
+	public function test_maintenance_registration_preserves_the_process_runner(): void {
 		$container = (new ContainerFactory())->create(new ArrayConfiguration());
 		$container->register(CliProvider::class);
 		$runner = $this->createMock(ProcessRunner::class);
 		$runner->expects($this->never())->method('run');
 		$container->singleton(ProcessRunner::class, $runner);
-		$container->register(MonorepoProvider::class);
 		$container->register(MonorepoProvider::class);
 
 		$command = new CommandTester($container->get(Application::class)->find('package:create'));
@@ -41,7 +40,6 @@ final class CliProviderTest extends TestCase
 
 	public function test_it_registers_cli_services(): void {
 		$container = (new ContainerFactory())->create(new ArrayConfiguration());
-		$container->register(CliProvider::class);
 		$container->register(CliProvider::class);
 
 		$this->assertInstanceOf(Application::class, $container->get(Application::class));

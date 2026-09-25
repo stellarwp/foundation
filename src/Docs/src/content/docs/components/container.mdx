@@ -165,15 +165,8 @@ final class Report_Provider extends Provider {
 
 	public const string EXPORTERS = 'your-plugin.report.exporters';
 
-	private bool $registered = false;
-
 	public function register(): void {
-		if ( $this->registered ) {
-			return;
-		}
-
 		$this->register_exporter_collection();
-		$this->registered = true;
 	}
 
 	private function register_exporter_collection(): void {
@@ -210,15 +203,8 @@ use Plugin\Report\Report_Provider;
  */
 final class Csv_Provider extends Provider {
 
-	private bool $registered = false;
-
 	public function register(): void {
-		if ( $this->registered ) {
-			return;
-		}
-
 		$this->register_csv_exporter();
-		$this->registered = true;
 	}
 
 	private function register_csv_exporter(): void {
@@ -232,7 +218,7 @@ final class Csv_Provider extends Provider {
 }
 ```
 
-The registration guard keeps each provider's contribution unchanged if it is registered again.
+Register each provider once per container, in dependency order, before resolving application services. Repeated registration can duplicate contributions or hooks; it is not a way to reset or reconfigure the container.
 
 :::caution[Complete registration before resolving the collection]
 Register every contributing provider before resolving services that consume the collection. An existing service will not be rebuilt when a later provider adds another contribution.
