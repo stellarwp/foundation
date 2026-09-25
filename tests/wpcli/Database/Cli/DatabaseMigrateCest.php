@@ -3,7 +3,7 @@
 use PHPUnit\Framework\Assert;
 
 /**
- * Exercise the six migration commands through their registered WP-CLI synopses.
+ * Exercise migration commands through their registered WP-CLI synopses.
  */
 final class DatabaseMigrateCest
 {
@@ -103,6 +103,65 @@ final class DatabaseMigrateCest
 	}
 
 	/**
+	 * Reset reverses applied work, preserves WordPress, and never runs pending work.
+	 */
+	public function test_reset_reverses_migrations_without_reapplying_them(WPCLITester $I): void {
+		$I->cli([
+			'foundation',
+			'migrate:reset',
+			'--yes',
+		]);
+		$I->seeResultCodeIs(0);
+		$I->seeInShellOutput('Completed 0 migration steps.');
+		$I->cli([
+			'foundation',
+			'migrate:run',
+		]);
+		$I->seeResultCodeIs(0);
+		$I->cli([
+			'foundation',
+			'migrate:reset',
+			'--yes',
+		]);
+		$I->seeResultCodeIs(0);
+		$I->seeInShellOutput('Down 20260623000001');
+		$I->seeInShellOutput('Completed 1 migration steps.');
+		$I->cli([
+			'foundation',
+			'migrate:status',
+		]);
+		$I->seeResultCodeIs(0);
+		$I->seeInShellOutput('pending');
+		$I->cli([
+			'eval',
+			<<<'PHP'
+			global $wpdb;
+			$table = $wpdb->get_var($wpdb->prepare(
+				'SHOW TABLES LIKE %s',
+				$wpdb->esc_like($wpdb->prefix . 'foundation_cli_example'),
+			));
+			echo $table === null ? 'Application table removed' : 'Unexpected table';
+			echo get_option('siteurl') ? ' WordPress preserved' : ' WordPress missing';
+			PHP,
+		]);
+		$I->seeResultCodeIs(0);
+		$I->seeInShellOutput('Application table removed WordPress preserved');
+		$I->cli([
+			'foundation',
+			'migrate:reset',
+			'--yes',
+		]);
+		$I->seeResultCodeIs(0);
+		$I->seeInShellOutput('Completed 0 migration steps.');
+		$I->cli([
+			'foundation',
+			'migrate:run',
+		]);
+		$I->seeResultCodeIs(0);
+		$I->seeInShellOutput('Completed 1 migration steps.');
+	}
+
+	/**
 	 * A rollback target must not trigger forward execution.
 	 */
 	public function test_target_rollback_does_not_apply_a_pending_target(WPCLITester $I): void {
@@ -187,6 +246,18 @@ final class DatabaseMigrateCest
 			],
 			[
 				'migrate:rollback',
+				'--dry-run',
+			],
+			[
+				'migrate:reset',
+				'--step=1',
+			],
+			[
+				'migrate:reset',
+				'--to=0',
+			],
+			[
+				'migrate:reset',
 				'--dry-run',
 			],
 			[
@@ -462,9 +533,9 @@ final class DatabaseMigrateCest
 	}
 
 	/**
-	 * A declined refresh preserves application rows that its rollback would delete.
+	 * Declined reset and refresh commands preserve application rows and history.
 	 */
-	public function test_declining_refresh_preserves_application_rows(WPCLITester $I): void {
+	public function test_declining_reset_and_refresh_preserves_application_rows(WPCLITester $I): void {
 		$I->cli([
 			'foundation',
 			'migrate:run',
@@ -480,11 +551,18 @@ final class DatabaseMigrateCest
 			PHP,
 		]);
 		$I->seeResultCodeIs(0);
-		$I->cli([
-			'foundation',
-			'migrate:refresh',
-		], null, "n\n");
-		$I->seeInShellOutput('Roll back and rerun all migrations?');
+
+		foreach ([
+			'migrate:reset'   => 'Roll back all migrations?',
+			'migrate:refresh' => 'Roll back and rerun all migrations?',
+		] as $command => $confirmation) {
+			$I->cli([
+				'foundation',
+				$command,
+			], null, "n\n");
+			$I->seeInShellOutput($confirmation);
+		}
+
 		$I->cli([
 			'eval',
 			<<<'PHP'
@@ -515,6 +593,9 @@ final class DatabaseMigrateCest
 			'migrate:rollback'     => [
 				'--step',
 				'--to',
+			],
+			'migrate:reset'        => [
+				'--yes',
 			],
 			'migrate:refresh'      => [
 				'--yes',

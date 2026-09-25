@@ -535,11 +535,13 @@ Programmatic installation or upgrade code injects `Migrator` and calls `$migrato
 | Reverse the highest applied ID | `wp your-plugin migrate:rollback` |
 | Reverse several applied IDs | `wp your-plugin migrate:rollback --step=2` |
 | Reverse applied IDs above a target | `wp your-plugin migrate:rollback --to=<id>` |
-| Reverse all applied migrations | `wp your-plugin migrate:rollback --to=0 --yes` |
+| Reverse all applied migrations | `wp your-plugin migrate:reset` |
 | Reverse and rerun everything | `wp your-plugin migrate:refresh` |
 | Record an already completed migration | `wp your-plugin migrate:mark-applied <id>` |
 | Record all pending migrations as completed | `wp your-plugin migrate:mark-applied --all` |
 | Remove a migration's history entry | `wp your-plugin migrate:mark-pending <id>` |
+
+`migrate:reset` calls every applied migration's `down()` in descending ID order and removes each successfully reversed entry from history. It leaves migrations pending without rerunning them; `migrate:refresh` reverses and then reapplies them. Reset is equivalent to `migrate:rollback --to=0`, or `$migrator->rollbackTo(Migrator::NONE)` in application code. It executes the declared inverses rather than dropping every table in the database. If an inverse fails, execution stops; inspect and repair any partial changes before retrying.
 
 Programmatic equivalents are `Migrator::status()`, `preview($target)`, `migrate($target)`, `rollback($steps)`, `rollbackTo($target)`, and `refresh()`. Preview and execution operations return step objects containing the stable ID, direction, SQL, and whether a forward data callback was involved. To add a readable status description, implement `DescribesMigration` alongside `Migration`:
 
@@ -552,10 +554,10 @@ public function describe(): string {
 }
 ```
 
-`migrate($target)` and `migrate:run --to=<id>` reverse applied IDs above the target in descending order, then apply pending IDs through it in ascending order. `latest` applies all pending migrations. `rollbackTo($target)` and `migrate:rollback --to=<id>` only reverse applied IDs above the target; any pending IDs, including the target itself, remain pending. Rollback counts IDs, not deployment batches. Developers own dependencies and choosing a safe target, especially when a newly enabled package adds an older ID. Missing applied files appear in status but do not block new forward migrations. Before rollback, Foundation checks that every migration selected for reversal is available; unrelated missing files do not block it. Refresh requires every applied declaration because it reverses all migrations. Retain migration files for fresh installations and rollbacks; deleting history is not a supported schema-squashing workflow.
+`migrate($target)` and `migrate:run --to=<id>` reverse applied IDs above the target in descending order, then apply pending IDs through it in ascending order. `latest` applies all pending migrations. `rollbackTo($target)` and `migrate:rollback --to=<id>` only reverse applied IDs above the target; any pending IDs, including the target itself, remain pending. Rollback counts IDs, not deployment batches. Developers own dependencies and choosing a safe target, especially when a newly enabled package adds an older ID. Missing applied files appear in status but do not block new forward migrations. Before rollback, Foundation checks that every migration selected for reversal is available; unrelated missing files do not block it. Reset and refresh require every applied declaration because they reverse all migrations. Retain migration files for fresh installations and rollbacks; deleting history is not a supported schema-squashing workflow.
 
 :::danger[Rollback can delete data]
-`down()` is application code. Reversing an initial migration drops its complete table, including rows and additions made later. Review the inverse and take the application's required backup before rolling back. `migrate:refresh`, `migrate:run --to=0`, and `migrate:rollback --to=0` prompt for confirmation because they reverse every applied migration. Use `--yes` only when that data loss is intended. `migrate:run --to=0 --dry-run` previews the reversal without prompting or executing it.
+`down()` is application code. Reversing an initial migration drops its complete table, including rows and additions made later. Review the inverse and take the application's required backup before rolling back. `migrate:reset`, `migrate:refresh`, `migrate:run --to=0`, and `migrate:rollback --to=0` prompt for confirmation because they reverse every applied migration. Use `--yes` only when that data loss is intended. `migrate:run --to=0 --dry-run` previews the reversal without prompting or executing it.
 :::
 
 ### Adopt an existing installation

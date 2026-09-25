@@ -10,6 +10,7 @@ use StellarWP\Foundation\Migrations\Cli\MarkAppliedCommand;
 use StellarWP\Foundation\Migrations\Cli\MarkPendingCommand;
 use StellarWP\Foundation\Migrations\Cli\MigrationOutput;
 use StellarWP\Foundation\Migrations\Cli\RefreshCommand;
+use StellarWP\Foundation\Migrations\Cli\ResetCommand;
 use StellarWP\Foundation\Migrations\Cli\RollbackCommand;
 use StellarWP\Foundation\Migrations\Cli\RunCommand;
 use StellarWP\Foundation\Migrations\Cli\StatusCommand;
@@ -47,6 +48,7 @@ final class MigrationsProvider extends Provider
 			$c->get(StatusCommand::class),
 			$c->get(RunCommand::class),
 			$c->get(RollbackCommand::class),
+			$c->get(ResetCommand::class),
 			$c->get(RefreshCommand::class),
 			$c->get(MarkAppliedCommand::class),
 			$c->get(MarkPendingCommand::class),
