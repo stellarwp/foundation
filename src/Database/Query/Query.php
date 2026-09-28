@@ -37,10 +37,11 @@ final class Query extends WhereGroup
 	/**
 	 * @var list<Fragment>
 	 */
-	private array $orders  = [];
-	private bool $distinct = false;
-	private ?int $limit    = null;
-	private ?int $offset   = null;
+	private array $orders   = [];
+	private bool $distinct  = false;
+	private bool $forUpdate = false;
+	private ?int $limit     = null;
+	private ?int $offset    = null;
 	private WhereGroup $having;
 
 	/**
@@ -207,6 +208,18 @@ final class Query extends WhereGroup
 		}
 
 		$this->offset = $rows;
+
+		return $this;
+	}
+
+	/**
+	 * Request a FOR UPDATE read on the shared connection.
+	 *
+	 * Execute inside transactional() to retain InnoDB locks until commit or rollback.
+	 * This option does not start a transaction; the database determines which records are locked.
+	 */
+	public function lockForUpdate(): self {
+		$this->forUpdate = true;
 
 		return $this;
 	}
@@ -426,6 +439,7 @@ final class Query extends WhereGroup
 			$this->orders,
 			$this->limit,
 			$this->offset,
+			$this->forUpdate,
 		);
 	}
 

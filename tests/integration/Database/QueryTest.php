@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Tests\Integration\Database;
 
 use DateTimeImmutable;
+use Doctrine\DBAL\Exception\LockWaitTimeoutException;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -955,6 +956,159 @@ final class QueryTest extends DatabaseTestCase
 					...$arguments,
 				];
 			}
+		}
+	}
+
+	/**
+	 * A locking read holds the row after nested success and releases it with the outer transaction.
+	 *
+	 * @dataProvider lockingReads
+	 */
+	#[DataProvider('lockingReads')]
+	public function test_locking_reads_block_another_writer_until_commit_or_rollback(string $method, bool $rollback): void {
+		$this->seedEntries();
+		$this->observer->executeStatement('SET SESSION innodb_lock_wait_timeout = 1');
+		$failure = new RuntimeException('Cancel the locked operation.');
+
+		try {
+			$this->db->transactional(function () use ($method, $rollback, $failure): void {
+				$this->db->transactional(function () use ($method): void {
+					$query = $this->entries->query()->where('id', 1)->lockForUpdate();
+					$rows  = $method === 'pluck' ? $query->pluck('name') : $query->{$method}();
+					$this->assertNotEmpty($rows);
+				});
+
+				$this->assertSame('First', $this->observer->fetchOne('SELECT name
+					FROM ' . $this->entries->quotedName() . '
+					WHERE id = 1'));
+
+				try {
+					$this->observer->executeStatement('UPDATE ' . $this->entries->quotedName() . "
+						SET name = 'Competing write'
+						WHERE id = 1");
+					$this->fail('The locking read must block another writer.');
+				} catch (LockWaitTimeoutException) {
+					$this->assertTrue($this->db->isTransactionActive());
+				}
+
+				if ($rollback) {
+					throw $failure;
+				}
+			});
+		} catch (RuntimeException $caught) {
+			$this->assertSame($failure, $caught);
+		}
+
+		$this->assertSame(1, $this->observer->executeStatement('UPDATE ' . $this->entries->quotedName() . "
+			SET name = 'Released'
+			WHERE id = 1"));
+		$this->assertSame('Released', $this->entries->query()->where('id', 1)->first()['name'] ?? null);
+	}
+
+	/**
+	 * Each row-reading terminal must carry the lock through both outer completion paths.
+	 *
+	 * @return iterable<string, array{string, bool}>
+	 */
+	public static function lockingReads(): iterable {
+		foreach ([
+			'first',
+			'get',
+			'pluck',
+		] as $method) {
+			yield $method . '-commit' => [
+				$method,
+				false,
+			];
+
+			yield $method . '-rollback' => [
+				$method,
+				true,
+			];
+		}
+	}
+
+	/**
+	 * Locking SELECTs keep pagination, parameters, aggregate wrappers and independent clone state.
+	 */
+	public function test_locking_reads_preserve_query_options_and_bindings(): void {
+		$this->seedEntries();
+		$original = $this->entries->query()->where('id', '>', 0)->orderByRaw('id + ?', [
+			0,
+		])->limit(2)->offset(1);
+		$query = clone $original;
+		$query->lockForUpdate()->lockForUpdate();
+		$sql = $query->toSql();
+		$this->assertStringEndsWith("LIMIT 2 OFFSET 1\nFOR UPDATE", $sql);
+		$this->assertStringNotContainsString('FOR UPDATE', $original->toSql());
+		$this->assertSame([
+			0,
+			0,
+		], $query->getBindings());
+		$this->assertFalse($this->db->isTransactionActive());
+		$this->db->transactional(function () use ($query): void {
+			$this->assertSame(2, $query->first()['id'] ?? null);
+			$this->assertSame([
+				2,
+				3,
+			], $query->pluck('id'));
+			$this->assertCount(2, $query->get());
+			$this->assertSame(2, $query->count());
+			$this->assertSame('30.00', $query->max('amount'));
+			$this->assertSame('50.00', $query->sum('amount'));
+			$this->assertTrue($query->exists());
+			$this->assertSame(3, $this->entries->query()->lockForUpdate()->count());
+			$this->assertTrue($this->entries->query()->where('id', 1)->lockForUpdate()->exists());
+			$this->assertFalse($this->entries->query()->lockForUpdate()->limit(0)->exists());
+		});
+		$this->assertSame($sql, $query->toSql());
+	}
+
+	/**
+	 * Write terminals must not silently ignore a requested locking read.
+	 *
+	 * @param 'insert'|'insertGetId'|'upsert'|'update'|'increment'|'decrement'|'delete' $method
+	 *
+	 * @dataProvider lockedWrites
+	 */
+	#[DataProvider('lockedWrites')]
+	public function test_writes_reject_the_read_lock_option(string $method): void {
+		$query = $this->entries->query()->where('id', 1)->lockForUpdate();
+		$this->expectException(InvalidArgumentException::class);
+
+		match ($method) {
+			'insert'      => $this->entries->query()->lockForUpdate()->insert([]),
+			'insertGetId' => $this->entries->query()->lockForUpdate()->insertGetId([]),
+			'upsert'      => $this->entries->query()->lockForUpdate()->upsert([], [
+				'name',
+			]),
+			'update'      => $query->update([
+				'name' => 'Changed',
+			]),
+			'increment'   => $query->increment('amount'),
+			'decrement'   => $query->decrement('amount'),
+			'delete'      => $query->delete(),
+		};
+	}
+
+	/**
+	 * Every write terminal must honor the read-only option boundary.
+	 *
+	 * @return iterable<string, array{string}>
+	 */
+	public static function lockedWrites(): iterable {
+		foreach ([
+			'insert',
+			'insertGetId',
+			'upsert',
+			'update',
+			'increment',
+			'decrement',
+			'delete',
+		] as $method) {
+			yield $method => [
+				$method,
+			];
 		}
 	}
 

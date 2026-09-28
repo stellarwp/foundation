@@ -410,6 +410,33 @@ final readonly class Create_Report {
 
 Nested transactions use savepoints. An inner success is provisional until the outer transaction commits. An inner business exception can be caught after its savepoint is rolled back. A database statement failure prevents further work until Foundation confirms rollback to the original nested savepoint. The application can then catch the failure and decide whether to continue. Foundation does not select recoverable error codes or retry the work.
 
+### Lock rows while making a decision
+
+Use `lockForUpdate()` inside a transaction when you need to read a row before deciding how to change it:
+
+```php
+$this->connection->transactional( function () use ( $id, $amount ): void {
+	$credit = $this->credits->query()
+		->where( 'id', $id )
+		->lockForUpdate()
+		->first();
+
+	if ( $credit === null || $credit['credits_remaining'] < $amount ) {
+		throw new \RuntimeException( 'Insufficient credits.' );
+	}
+
+	$this->credits->query()
+		->where( 'id', $id )
+		->decrement( 'credits_remaining', $amount );
+} );
+```
+
+`lockForUpdate()` adds `FOR UPDATE` to the SELECT and works with `first()`, `get()`, and `pluck()`. For InnoDB tables, conflicting writes and locking reads wait until the owning transaction commits or rolls back. Ordinary nonlocking reads can still read a committed snapshot. Lock scope depends on the query, indexes, and isolation level and may include scanned records or gaps beyond the returned rows.
+
+The method does not begin a transaction. With autocommit enabled and no active transaction, it does not protect a later update. Keep the read and related writes inside the same `transactional()` callback, and perform decisions there before it returns. A nested transaction's successful return does not release the outer transaction's locks.
+
+Queries retain the locking option for subsequent reads and clones. Start a fresh query for writes; insert, update, and delete operations reject this read-only option. Aggregates and `exists()` pass the locking clause to their underlying SELECT; use a row read when the application needs to inspect and lock particular records. Database lock timeouts and deadlocks propagate through the existing transaction failure handling.
+
 ### Recover from an expected duplicate
 
 Wrap an insert that may conflict in a nested `transactional()` call and catch `UniqueConstraintViolationException` outside that call. Foundation attempts to roll back the nested writes before returning control to the catch block. After successful rollback, earlier outer work remains provisional and the outer transaction can continue. If cleanup fails, the original exception still reaches the catch block, but further work and commit are rejected. Savepoint rollback does not necessarily release every lock acquired during the nested work.
@@ -428,21 +455,17 @@ return $this->connection->transactional( function () use ( $slug, $title ): int|
 			] ),
 		);
 	} catch ( UniqueConstraintViolationException $failure ) {
-		$id = $this->connection->fetchOne(
-			"SELECT id
-			FROM {$this->reports->quotedName()}
-			WHERE slug = ?
-			FOR UPDATE",
-			[
-				$slug,
-			],
-		);
+		$report = $this->reports->query()
+			->select( 'id' )
+			->where( 'slug', $slug )
+			->lockForUpdate()
+			->first();
 
-		if ( $id === false ) {
+		if ( $report === null ) {
 			throw $failure;
 		}
 
-		return $id;
+		return $report['id'];
 	}
 } );
 ```

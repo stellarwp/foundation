@@ -28,6 +28,7 @@ final readonly class QueryState
 		public array $orders,
 		public ?int $limit,
 		public ?int $offset,
+		public bool $forUpdate,
 	) {
 	}
 }

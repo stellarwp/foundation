@@ -65,7 +65,13 @@ final readonly class Compiler
 		$limit = $maximum === null ? $state->limit : min($state->limit ?? $maximum, $maximum);
 		$tail  = $this->tail($ordered ? $state->orders : [], $limit, $state->offset);
 
-		return new Fragment($sql . $tail->sql, array_merge($bindings, $tail->bindings));
+		$sql .= $tail->sql;
+
+		if ($state->forUpdate) {
+			$sql .= "\nFOR UPDATE";
+		}
+
+		return new Fragment($sql, array_merge($bindings, $tail->bindings));
 	}
 
 	/**
@@ -231,7 +237,7 @@ final readonly class Compiler
 	 * @throws InvalidArgumentException When query options would be ignored by an insert.
 	 */
 	public function insertable(QueryState $state): void {
-		if ($state->selection !== [] || $state->joins !== [] || $state->where->sql !== '' || $this->shaped($state) || $state->orders !== []) {
+		if ($state->selection !== [] || $state->joins !== [] || $state->where->sql !== '' || $this->shaped($state) || $state->orders !== [] || $state->forUpdate) {
 			throw new InvalidArgumentException('Start a fresh table query before inserting or upserting rows.');
 		}
 	}
@@ -247,6 +253,10 @@ final readonly class Compiler
 	 * Reject writes whose filters or query options cannot be honored.
 	 */
 	private function writable(QueryState $state): void {
+		if ($state->forUpdate) {
+			throw new InvalidArgumentException('lockForUpdate() applies to reads; start a fresh query for writes.');
+		}
+
 		if ($state->where->sql === '') {
 			throw new InvalidArgumentException('Add a condition before updating or deleting; use Table::deleteAll() for an intentional full-table delete.');
 		}
