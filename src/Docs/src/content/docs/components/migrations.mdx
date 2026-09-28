@@ -360,13 +360,27 @@ $table->mediumText( 'content' )->nullable();
 | `date( 'starts_on' )` | Calendar date, such as `2026-09-24` |
 | `time( 'opens_at' )` | Time with whole-second precision, such as `09:30:00` |
 | `dateTime( 'created_at', 6 )` | DATETIME with optional fractional-second precision from 0 to 6 |
-| `binary( 'token', 16 )` | Variable-length binary storage with an explicit byte limit |
+| `binary( 'token', 16 )` | Fixed-length BINARY storage, padded with zero bytes |
+| `varBinary( 'payload', 255 )` | Variable-length VARBINARY storage with a maximum byte length |
 
 Columns are non-nullable unless you call `nullable()`. Existing modifiers such as `default()`, `comment()`, and `change()` apply to the new types too. A `char()` length is a storage choice, not application validation that a supplied code has exactly that many characters. `useCurrent()` and `useCurrentOnUpdate()` are intended for `dateTime()` columns.
 
 [MySQL](https://dev.mysql.com/doc/refman/8.0/en/json.html) stores JSON natively; [MariaDB](https://mariadb.com/docs/server/reference/data-types/string-data-types/json) uses text with JSON validation. Foundation preserves that distinction through alterations and renames. For compatibility with MySQL 5.7, supply a JSON value on insertion or make the column nullable instead of declaring a non-null JSON default.
 
 When writing PHP arrays through a Foundation table or fluent query, encode them with `json_encode( $value, JSON_THROW_ON_ERROR )`. Alternatively, use the shared Doctrine connection and bind the PHP array as `Doctrine\DBAL\Types\Types::JSON` so Doctrine encodes it. Query results are not automatically decoded; see the [JSON write examples](/components/database/query-builder/#write-rows).
+
+### Store binary values
+
+Use `binary()` for fixed-width values such as a UUID encoded into 16 bytes. Use `varBinary()` when values have different byte lengths:
+
+```php
+$table->binary( 'token', 16 );
+$table->varBinary( 'payload', 255 )->nullable();
+```
+
+Lengths are measured in bytes. `BINARY` pads shorter values with zero bytes (`0x00`), which remain present when read back. It does not validate that the application supplied exactly the declared number of bytes. `VARBINARY` stores values without padding. See [MySQL's binary type documentation](https://dev.mysql.com/doc/refman/8.0/en/binary-varbinary.html).
+
+Use `varBinary()` when declaring an existing `VARBINARY` column, including in a reversal that restores that type. To intentionally convert an existing column, add a migration with the desired declaration and `change()`. Converting to `BINARY` can add zero bytes that remain in the data when converted back to `VARBINARY`, so account for padding in the migration's data handling and reversal.
 
 ### Change a column
 
@@ -605,7 +619,8 @@ Omitting both produces a generic migration with an empty `up()` and an irreversi
 | `unsignedInteger('count')`, `unsignedBigInteger('count')` | Unsigned integers |
 | `boolean('active')` | Boolean storage |
 | `decimal('amount', 12, 4)` | Exact decimal precision and scale |
-| `binary('token', 16)` | VARBINARY with an explicit length |
+| `binary('token', 16)` | Fixed-length BINARY, padded with zero bytes |
+| `varBinary('payload', 255)` | VARBINARY with an explicit maximum byte length |
 | `dateTime('updated_at', 6)` | DATETIME with fractional precision from 0 to 6 |
 
 Columns support `nullable()`, `notNull()`, `unsigned()`, `default()`, `comment()`, and `change()`. Date/time declarations additionally support `useCurrent()` and `useCurrentOnUpdate()`. Use strings for exact decimal defaults. Table declarations support `primary(...$columns)` and `comment()`.

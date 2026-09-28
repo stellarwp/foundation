@@ -30,6 +30,8 @@ final class CreateCommonColumns extends Migration
 		$table->smallInteger('attempts')->unsigned()->default(0);
 		$table->char('currency', 3)->default('USD')->comment('Currency code');
 		$table->mediumText('content')->nullable()->comment('Article content');
+		$table->binary('token', 16)->nullable()->comment('Fixed bytes');
+		$table->varBinary('payload', 16)->nullable()->comment('Variable bytes');
 	}
 
 	/**

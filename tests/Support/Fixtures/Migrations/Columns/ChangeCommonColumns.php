@@ -29,6 +29,8 @@ final class ChangeCommonColumns extends Migration
 		$table->smallInteger('attempts')->default(3)->change();
 		$table->char('currency', 4)->default('USDX')->comment('Extended currency')->change();
 		$table->mediumText('content')->comment('Required content')->change();
+		$table->varBinary('token', 16)->nullable()->comment('Variable token')->change();
+		$table->binary('payload', 16)->nullable()->comment('Fixed payload')->change();
 	}
 
 	/**
@@ -42,5 +44,7 @@ final class ChangeCommonColumns extends Migration
 		$table->smallInteger('attempts')->unsigned()->default(0)->change();
 		$table->char('currency', 3)->default('USD')->comment('Currency code')->change();
 		$table->mediumText('content')->nullable()->comment('Article content')->change();
+		$table->binary('token', 16)->nullable()->comment('Fixed bytes')->change();
+		$table->varBinary('payload', 16)->nullable()->comment('Variable bytes')->change();
 	}
 }

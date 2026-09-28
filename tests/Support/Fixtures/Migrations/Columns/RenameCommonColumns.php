@@ -17,6 +17,8 @@ final class RenameCommonColumns extends Migration
 		'attempts',
 		'currency',
 		'content',
+		'token',
+		'payload',
 	];
 
 	/**

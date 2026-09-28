@@ -73,6 +73,41 @@ final class CommonColumnTest extends DatabaseTestCase
 	}
 
 	/**
+	 * Fixed binary values are padded; variable binary values retain every supplied byte.
+	 */
+	public function test_binary_declarations_match_sql_types_and_storage_behavior(): void {
+		$migrator = $this->container->get(Migrator::class);
+		$preview  = implode("\n", $migrator->preview('1')[0]->sql);
+		$this->assertStringContainsString('token BINARY(16)', $preview);
+		$this->assertStringContainsString('payload VARBINARY(16)', $preview);
+		$migrator->migrate('1');
+		$this->observer->insert($this->entries, [
+			'metadata' => '{}',
+			'content'  => 'Example',
+			'token'    => "a\0b",
+			'payload'  => "a\0b",
+		]);
+		$row = $this->observer->fetchAssociative("SELECT
+			token,
+			payload
+		FROM {$this->entries}
+		WHERE id = 1");
+		$this->assertIsArray($row);
+		$this->assertSame("a\0b" . str_repeat("\0", 13), $row['token']);
+		$this->assertSame("a\0b", $row['payload']);
+		$this->assertSame([], $migrator->preview('1'));
+		$migrator->migrate('2');
+		$this->assertSame("a\0b" . str_repeat("\0", 13), $this->observer->fetchOne("SELECT payload
+			FROM {$this->entries}
+			WHERE id = 1"));
+		$migrator->rollback();
+		$this->assertFalse($this->introspect()->getColumn('payload')->getFixed());
+		$this->assertSame("a\0b" . str_repeat("\0", 13), $this->observer->fetchOne("SELECT payload
+			FROM {$this->entries}
+			WHERE id = 1"));
+	}
+
+	/**
 	 * Alter each complete definition, then restore the original attributes.
 	 */
 	public function test_alteration_and_rollback_preserve_values(): void {
@@ -93,6 +128,10 @@ final class CommonColumnTest extends DatabaseTestCase
 		$this->assertSame(4, $table->getColumn('currency')->getLength());
 		$this->assertSame('USDX', $table->getColumn('currency')->getDefault());
 		$this->assertTrue($table->getColumn('content')->getNotnull());
+		$this->assertFalse($table->getColumn('token')->getFixed());
+		$this->assertTrue($table->getColumn('payload')->getFixed());
+		$this->assertSame('Variable token', $table->getColumn('token')->getComment());
+		$this->assertSame('Fixed payload', $table->getColumn('payload')->getComment());
 		$this->assertEntry();
 		$migrator->rollback();
 		$this->assertInitialColumns();
@@ -128,6 +167,8 @@ final class CommonColumnTest extends DatabaseTestCase
 		$migrator->migrate('3');
 		$this->assertSame([], $migrator->migrate('3'));
 		$this->assertSame(Types::JSON, Type::lookupName($this->introspect()->getColumn('metadata_renamed')->getType()));
+		$this->assertFalse($this->introspect()->getColumn('token_renamed')->getFixed());
+		$this->assertTrue($this->introspect()->getColumn('payload_renamed')->getFixed());
 		$migrator->rollbackTo('1');
 		$this->assertInitialColumns();
 		$this->assertEntry();
@@ -144,6 +185,8 @@ final class CommonColumnTest extends DatabaseTestCase
 			'attempts'  => 2,
 			'currency'  => 'CAD',
 			'content'   => str_repeat('a', 70000),
+			'token'     => hex2bin('00112233445566778899aabbccddeeff'),
+			'payload'   => hex2bin('ffeeddccbbaa99887766554433221100'),
 		], [
 			'metadata' => Types::JSON,
 		]);
@@ -156,7 +199,9 @@ final class CommonColumnTest extends DatabaseTestCase
 			opens_at,
 			attempts,
 			currency,
-			content
+			content,
+			token,
+			payload
 		FROM {$this->entries}
 		WHERE id = 1");
 		$this->assertIsArray($row);
@@ -168,6 +213,8 @@ final class CommonColumnTest extends DatabaseTestCase
 		$this->assertSame(2, (int) $row['attempts']);
 		$this->assertSame('CAD', $row['currency']);
 		$this->assertSame(str_repeat('a', 70000), $row['content']);
+		$this->assertSame(hex2bin('00112233445566778899aabbccddeeff'), $row['token']);
+		$this->assertSame(hex2bin('ffeeddccbbaa99887766554433221100'), $row['payload']);
 	}
 
 	private function assertInitialColumns(): void {
@@ -185,6 +232,16 @@ final class CommonColumnTest extends DatabaseTestCase
 		$this->assertSame(0, (int) $table->getColumn('attempts')->getDefault());
 		$this->assertSame(16777215, $table->getColumn('content')->getLength());
 		$this->assertFalse($table->getColumn('content')->getNotnull());
+		$this->assertSame(Types::BINARY, Type::lookupName($table->getColumn('token')->getType()));
+		$this->assertSame(Types::BINARY, Type::lookupName($table->getColumn('payload')->getType()));
+		$this->assertTrue($table->getColumn('token')->getFixed());
+		$this->assertFalse($table->getColumn('payload')->getFixed());
+		$this->assertSame(16, $table->getColumn('token')->getLength());
+		$this->assertSame(16, $table->getColumn('payload')->getLength());
+		$this->assertFalse($table->getColumn('token')->getNotnull());
+		$this->assertFalse($table->getColumn('payload')->getNotnull());
+		$this->assertSame('Fixed bytes', $table->getColumn('token')->getComment());
+		$this->assertSame('Variable bytes', $table->getColumn('payload')->getComment());
 	}
 
 	private function introspect(): Table {

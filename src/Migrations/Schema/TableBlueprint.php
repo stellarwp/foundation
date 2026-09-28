@@ -241,12 +241,26 @@ final class TableBlueprint
 	}
 
 	/**
-	 * VARBINARY of the given length.
+	 * Declare fixed-length BINARY storage, padding shorter values with zero bytes.
 	 *
 	 * @param non-empty-string $name
 	 */
 	public function binary(string $name, int $length): ColumnDefinition {
-		return $this->column($name, Types::BINARY, ['length' => $length]);
+		return $this->column($name, Types::BINARY, [
+			'length' => $length,
+			'fixed'  => true,
+		]);
+	}
+
+	/**
+	 * Declare VARBINARY storage with a maximum byte length and no padding.
+	 *
+	 * @param non-empty-string $name
+	 */
+	public function varBinary(string $name, int $length): ColumnDefinition {
+		return $this->column($name, Types::BINARY, [
+			'length' => $length,
+		]);
 	}
 
 	/**

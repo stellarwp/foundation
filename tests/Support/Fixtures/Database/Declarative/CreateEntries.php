@@ -24,7 +24,7 @@ final readonly class CreateEntries implements Migration
 		$entries->string('name', 50);
 		$entries->string('status', 20)->default('active')->comment('Current processing state');
 		$entries->decimal('amount', 12, 4)->default('0');
-		$entries->binary('token', 16)->nullable();
+		$entries->varBinary('token', 16)->nullable();
 		$entries->dateTime('created_at', 6)->useCurrent();
 		$entries->dateTime('updated_at', 6)->useCurrent()->useCurrentOnUpdate();
 
