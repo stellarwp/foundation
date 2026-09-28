@@ -90,6 +90,19 @@ class WhereGroup
 	}
 
 	/**
+	 * Match a literal substring, escaping SQL wildcard characters in the needle.
+	 *
+	 * An empty needle matches every non-null value.
+	 *
+	 * @throws InvalidArgumentException When the column is invalid.
+	 */
+	public function whereContains(string $column, string $needle): static {
+		return $this->whereContainsAny($column, [
+			$needle,
+		]);
+	}
+
+	/**
 	 * Match any literal substring, escaping SQL wildcard characters in every needle.
 	 *
 	 * @param list<string> $needles An empty list matches no rows.

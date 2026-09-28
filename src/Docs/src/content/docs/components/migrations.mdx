@@ -364,7 +364,9 @@ $table->mediumText( 'content' )->nullable();
 
 Columns are non-nullable unless you call `nullable()`. Existing modifiers such as `default()`, `comment()`, and `change()` apply to the new types too. A `char()` length is a storage choice, not application validation that a supplied code has exactly that many characters. `useCurrent()` and `useCurrentOnUpdate()` are intended for `dateTime()` columns.
 
-[MySQL](https://dev.mysql.com/doc/refman/8.0/en/json.html) stores JSON natively; [MariaDB](https://mariadb.com/docs/server/reference/data-types/string-data-types/json) uses text with JSON validation. Foundation preserves that distinction through alterations and renames. For compatibility with MySQL 5.7, supply a JSON value on insertion or make the column nullable instead of declaring a non-null JSON default. When writing PHP arrays through a table or Doctrine connection, bind the column as `Doctrine\DBAL\Types\Types::JSON` so Doctrine encodes it. Query results are not automatically decoded; see [queries and parameter types](/components/database/query-builder/).
+[MySQL](https://dev.mysql.com/doc/refman/8.0/en/json.html) stores JSON natively; [MariaDB](https://mariadb.com/docs/server/reference/data-types/string-data-types/json) uses text with JSON validation. Foundation preserves that distinction through alterations and renames. For compatibility with MySQL 5.7, supply a JSON value on insertion or make the column nullable instead of declaring a non-null JSON default.
+
+When writing PHP arrays through a Foundation table or fluent query, encode them with `json_encode( $value, JSON_THROW_ON_ERROR )`. Alternatively, use the shared Doctrine connection and bind the PHP array as `Doctrine\DBAL\Types\Types::JSON` so Doctrine encodes it. Query results are not automatically decoded; see the [JSON write examples](/components/database/query-builder/#write-rows).
 
 ### Change a column
 

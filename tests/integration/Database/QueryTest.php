@@ -123,6 +123,34 @@ final class QueryTest extends DatabaseTestCase
 	}
 
 	/**
+	 * Single substring searches bind literal text and retain SQL null semantics.
+	 */
+	public function test_single_substring_search_matches_literal_text_and_empty_strings(): void {
+		$this->entries->insert([
+			[
+				'id'       => 1,
+				'name'     => '100%_! complete',
+				'category' => 'literal',
+			],
+			[
+				'id'       => 2,
+				'name'     => '100xyz complete',
+				'category' => null,
+			],
+			[
+				'id'       => 3,
+				'name'     => "x' OR 1 = 1 --",
+				'category' => '',
+			],
+		]);
+
+		$this->assertSame('100%_! complete', $this->entries->query('e')->whereContains('e.name', '%_!')->first()['name'] ?? null);
+		$this->assertSame(1, $this->entries->query()->whereContains('name', "x' OR 1 = 1 --")->count());
+		$this->assertSame(0, $this->entries->query()->whereContains('name', 'absent')->count());
+		$this->assertSame(2, $this->entries->query()->whereContains('category', '')->count());
+	}
+
+	/**
 	 * A shaped aggregate retains selected aliases and positional binding order.
 	 */
 	public function test_limited_aggregates_preserve_explicit_projections_and_offsets(): void {

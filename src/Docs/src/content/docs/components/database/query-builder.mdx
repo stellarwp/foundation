@@ -82,7 +82,15 @@ $rows = $this->reports->query()
 	->get();
 ```
 
-`whereContainsAny()` matches any literal substring. Percent signs, underscores, and the escape character in search terms are escaped before values are bound. An empty term list matches nothing. Structured column names, aliases, and sort directions are validated; choose an application allowlist when users should be limited to particular columns.
+Use `whereContains()` for one literal substring:
+
+```php
+$rows = $this->reports->query()
+	->whereContains( 'title', $searchTerm )
+	->get();
+```
+
+`whereContainsAny()` matches any of several literal substrings. Both methods escape percent signs, underscores, and the escape character before binding search terms. An empty term list matches nothing; an empty string matches every non-null value. Case sensitivity follows the column's collation. Structured column names, aliases, and sort directions are validated; choose an application allowlist when users should be limited to particular columns.
 
 ### Grouping and aggregates
 
@@ -180,7 +188,17 @@ You can also call `$this->reports->query()->insert( $rows )`; it has the same be
 
 `Table::update( $values, $criteria )` and `delete( $criteria )` delegate to filtered queries and return affected-row counts as `int|string`. Criteria are column-to-value equality comparisons; null matches `IS NULL`. Both methods reject empty criteria. Table and fluent writes share value normalization.
 
-For writes that require explicit Doctrine conversions, such as a JSON type or a custom type, use the shared connection’s `insert()`, `update()`, or `delete()`:
+To write a PHP array to a JSON column through a table or fluent query, encode it first. `JSON_THROW_ON_ERROR` raises `JsonException` if encoding fails:
+
+```php
+$this->reports->insert( [
+	'payload' => json_encode( [
+		'enabled' => true,
+	], JSON_THROW_ON_ERROR ),
+] );
+```
+
+For writes that require explicit Doctrine conversions, such as a JSON type or a custom type, use the shared connection’s `insert()`, `update()`, or `delete()`. For example, pass the PHP array with `Types::JSON` and let Doctrine encode it:
 
 ```php
 use Doctrine\DBAL\Types\Types;

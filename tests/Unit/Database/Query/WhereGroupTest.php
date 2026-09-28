@@ -57,6 +57,22 @@ final class WhereGroupTest extends TestCase
 		$this->assertSame([], $group->condition()->bindings);
 	}
 
+	public function test_single_substring_search_quotes_columns_and_binds_literal_values(): void {
+		$group = new WhereGroup(new IdentifierQuoter());
+		$this->assertSame($group, $group->where('e.active', true)->whereContains('e.name', "!%_' OR 1 = 1 --"));
+		$this->assertSame("`e`.`active` = ? AND (`e`.`name` LIKE ? ESCAPE '!')", $group->condition()->sql);
+		$this->assertSame([
+			true,
+			"%!!!%!_' OR 1 = 1 --%",
+		], $group->condition()->bindings);
+	}
+
+	public function test_single_substring_search_rejects_invalid_columns(): void {
+		$group = new WhereGroup(new IdentifierQuoter());
+		$this->expectException(InvalidArgumentException::class);
+		$group->whereContains('name) OR 1 = 1 --', 'search');
+	}
+
 	public function test_null_equalities_do_not_bind_null_as_an_ordinary_comparison(): void {
 		$group = new WhereGroup(new IdentifierQuoter());
 		$group->where('a', null)->where('b', '!=', null)->where('c', '<>', null);
