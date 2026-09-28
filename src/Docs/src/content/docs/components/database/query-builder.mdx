@@ -291,23 +291,68 @@ final readonly class Create_Report {
 
 `transactional()` returns the callback's value only after commit is acknowledged. `false` and `null` are ordinary callback results, not rollback signals. Throw an exception to cancel work. The original escaping exception is preserved if cleanup also fails.
 
-Nested transactions use savepoints. An inner success is provisional until the outer transaction commits. A database execution failure is terminal for the entire managed transaction, even if application code catches its exception. An inner business exception can be caught after its savepoint is rolled back.
+Nested transactions use savepoints. An inner success is provisional until the outer transaction commits. An inner business exception can be caught after its savepoint is rolled back. A database statement failure prevents further work until Foundation confirms rollback to the original nested savepoint. The application can then catch the failure and decide whether to continue. Foundation does not select recoverable error codes or retry the work.
+
+### Recover from an expected duplicate
+
+Wrap an insert that may conflict in a nested `transactional()` call and catch `UniqueConstraintViolationException` outside that call. Foundation attempts to roll back the nested writes before returning control to the catch block. After successful rollback, earlier outer work remains provisional and the outer transaction can continue. If cleanup fails, the original exception still reaches the catch block, but further work and commit are rejected. Savepoint rollback does not necessarily release every lock acquired during the nested work.
+
+For a reports table with a unique `slug`, this operation creates a report or returns the existing report's ID:
+
+```php
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+
+return $this->connection->transactional( function () use ( $slug, $title ): int|string {
+	try {
+		return $this->connection->transactional(
+			fn (): int|string => $this->reports->insertGetId( [
+				'slug'  => $slug,
+				'title' => $title,
+			] ),
+		);
+	} catch ( UniqueConstraintViolationException $failure ) {
+		$id = $this->connection->fetchOne(
+			"SELECT id
+			FROM {$this->reports->quotedName()}
+			WHERE slug = ?
+			FOR UPDATE",
+			[
+				$slug,
+			],
+		);
+
+		if ( $id === false ) {
+			throw $failure;
+		}
+
+		return $id;
+	}
+} );
+```
+
+Under `REPEATABLE READ`, an ordinary read can retain an earlier snapshot even after another transaction commits the conflicting row; rolling back a savepoint does not refresh that snapshot. `FOR UPDATE` requests a locking read. MariaDB with [`innodb_snapshot_isolation`](https://mariadb.com/docs/server/server-usage/storage-engines/innodb/innodb-system-variables#innodb_snapshot_isolation) enabled can reject an insert or locking read against a row outside that snapshot with error 1020 and roll back the entire transaction. Let that failure escape and handle a fresh operation at the application boundary; it is not a recoverable duplicate.
+
+The same boundary supports other statement failures when the original savepoint survives and rollback succeeds. A lock timeout, for example, can affect only the statement or the entire transaction depending on server configuration. Foundation confirms the rollback rather than assuming the error is recoverable. Catch only failures your application knows how to handle.
+
+Catching a database failure inside the nested callback and returning normally still raises `TransactionFailed`; the nested call cannot report success. Explicit nested `beginTransaction()` / `rollBack()` boundaries support the same recovery, but `transactional()` handles cleanup for you.
+
+Without a nested boundary, a database execution failure prevents the outer transaction from committing. Transaction-wide rollbacks, including InnoDB deadlocks, destroy the savepoints needed for recovery. Connection loss, detected scope changes, transaction-control failures, and failed savepoint cleanup remain terminal. Foundation does not retry statements. Operations running under an advisory lock, including migrations, retain their stricter failure behavior and must abort after an execution failure.
 
 ### Handle failures deliberately
 
 - Ordinary SQL failures use Doctrine exceptions, such as `Doctrine\DBAL\Exception\UniqueConstraintViolationException`.
-- `TransactionFailed` means a caught database failure prevented successful completion. Start fresh work at an application boundary after cleanup.
+- `TransactionFailed` means a caught failure prevented an operation from completing successfully. Let it escape so cleanup rolls back the operation. After an unrecovered or terminal failure, start fresh work at an application boundary.
 - `CommitOutcomeUnknown` means the server did not confirm commit. The data may already be committed. Inspect durable application state or use an idempotency key before retrying.
 - A detected site or connection change interrupts managed work. Foundation never replays failed SQL or reconnects in the middle of a transaction.
 
 The Foundation exceptions above live under `StellarWP\Foundation\Database\Exceptions` and extend `DatabaseException`. Native Doctrine SQL exceptions retain their own hierarchy.
 
 :::caution[Keep managed work on the shared connection]
-Use transactional tables. Do not issue DDL, manual transaction-control SQL, direct WordPress queries, or `switch_to_blog()` inside a managed transaction. DDL can implicitly commit MySQL transactions, and writes through other sessions are outside this transaction. External HTTP calls cannot be rolled back with database writes.
+Use transactional tables. Do not issue DDL, manual transaction-control SQL, direct savepoint commands, direct WordPress queries, or `switch_to_blog()` inside a managed transaction. DDL can implicitly commit MySQL transactions, and writes through other sessions are outside this transaction. External HTTP calls cannot be rolled back with database writes.
 :::
 
 Between completed operations, WordPress may replace its mysqli connection. New queries and transactions use the replacement automatically. Prepared statements from the old connection are rejected; prepare them again for the new operation.
 
 ## Test application behavior
 
-Unit-test application decisions against your own repository contracts when useful. Use integration tests with real InnoDB tables for transaction boundaries, SQL behavior, and recovery. Test that an observer on a second connection cannot see uncommitted rows, that a failed operation leaves prior rows intact, and that caught database failures cannot produce a successful result.
+Unit-test application decisions against your own repository contracts when useful. Use integration tests with real InnoDB tables for transaction boundaries, SQL behavior, and recovery. Test that an observer on a second connection cannot see uncommitted rows, that a failed operation leaves prior rows intact, and that caught database failures cannot produce a successful result without the supported savepoint recovery.

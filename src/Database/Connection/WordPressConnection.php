@@ -35,6 +35,7 @@ final class WordPressConnection extends Connection
 		if ($this->borrowed !== null && $native !== $this->borrowed) {
 			parent::close();
 		}
+
 		$driver         = parent::connect();
 		$this->borrowed = $native;
 
@@ -95,6 +96,8 @@ final class WordPressConnection extends Connection
 		try {
 			parent::beginTransaction();
 		} catch (Throwable $failure) {
+			$session->fail($failure);
+
 			if ($outer) {
 				$session->rollback();
 				parent::close();
@@ -118,6 +121,8 @@ final class WordPressConnection extends Connection
 		try {
 			parent::commit();
 		} catch (Throwable $failure) {
+			$session->fail($failure);
+
 			if ($outer) {
 				throw new CommitOutcomeUnknown('Commit was not confirmed; the operation may have completed. Do not retry blindly.', 0, $failure);
 			}
@@ -141,14 +146,18 @@ final class WordPressConnection extends Connection
 	/**
 	 * Roll back the pinned session even when a terminal failure prevents further SQL.
 	 *
-	 * @throws Throwable When explicit rollback fails without an earlier database failure.
+	 * @throws Throwable When savepoint cleanup fails or explicit rollback cannot be confirmed.
 	 */
 	public function rollBack(): void {
 		$session = $this->session();
 
 		if ($this->getTransactionNestingLevel() > 1 && $session->hasFailed()) {
-			// A terminal SQL failure invalidates the whole transaction. Preserve its
-			// failure latch until the outer operation acknowledges the rollback.
+			if ($session->recover(fn () => parent::rollBack())) {
+				return;
+			}
+
+			// Unrecoverable failures invalidate the whole transaction. Retain the
+			// failure until the outer operation acknowledges the rollback.
 			$session->rollback();
 			parent::close();
 
@@ -156,7 +165,13 @@ final class WordPressConnection extends Connection
 		}
 
 		if ($this->getTransactionNestingLevel() > 1 || ! $session->isActive()) {
-			parent::rollBack();
+			try {
+				parent::rollBack();
+			} catch (Throwable $failure) {
+				$session->fail($failure);
+
+				throw $failure;
+			}
 
 			return;
 		}

@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Database\Connection;
 
 use Closure;
+use Doctrine\DBAL\Driver\Exception;
 use Doctrine\DBAL\Driver\Mysqli\Connection;
 use mysqli;
 use StellarWP\Foundation\Database\Contracts\AdvisorySession;
@@ -209,10 +210,55 @@ final class WordPressSession implements AdvisorySession
 	}
 
 	/**
-	 * Report whether cleanup is following a terminal infrastructure failure.
+	 * Report whether cleanup is following a failed operation.
 	 */
 	public function hasFailed(): bool {
 		return $this->failure !== null;
+	}
+
+	/**
+	 * Recover a statement failure only through a confirmed savepoint rollback.
+	 *
+	 * The connection supplies Doctrine's nested rollback, never application work.
+	 * Ownership and transaction-control failures remain terminal. Cleanup must
+	 * use the same site and session, and the original savepoint must still exist.
+	 *
+	 * @param Closure(): void $rollback
+	 *
+	 * @throws Throwable When ownership changed or savepoint cleanup failed.
+	 */
+	public function recover(Closure $rollback): bool {
+		if (! $this->failure instanceof Exception) {
+			return false;
+		}
+
+		// Permit Doctrine's cleanup through the normal execution and ownership guards.
+		$this->failure = null;
+
+		try {
+			$this->check();
+			$rollback();
+			$this->check();
+		} catch (Throwable $failure) {
+			$this->fail($failure);
+
+			throw $failure;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Retain a transaction-control failure that savepoint rollback cannot clear.
+	 */
+	public function fail(Throwable $failure): void {
+		$this->advisoryLock?->fail($failure);
+
+		if (! $this->isActive()) {
+			return;
+		}
+
+		$this->failure = new TransactionFailed('Transaction control failed; the transaction must be rolled back.', 0, $failure);
 	}
 
 	/**

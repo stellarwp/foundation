@@ -316,6 +316,30 @@ final class AdvisoryMigrationTest extends DatabaseTestCase
 		}
 	}
 
+	public function test_duplicate_savepoint_recovery_cannot_clear_a_migration_failure(): void {
+		try {
+			$this->runner($this->container, function (Connection $db): void {
+				$db->transactional(function (Connection $db): void {
+					try {
+						$db->transactional(function (Connection $db): void {
+							$db->insert($this->table, [
+								'id'   => 1,
+								'name' => 'Duplicate',
+							]);
+						});
+					} catch (Throwable) {
+						// Ordinary transaction recovery must not clear the migration's failure.
+					}
+				});
+			})->migrate();
+			$this->fail('A migration must remain failed after its nested duplicate.');
+		} catch (MigrationInterrupted) {
+			$this->assertSame(0, (int) $this->observer->fetchOne("SELECT COUNT(*) FROM {$this->ledger}"));
+			$this->assertOriginal();
+			$this->assertLockAvailable();
+		}
+	}
+
 	public function test_migration_failure_releases_lock_for_a_fresh_retry(): void {
 		try {
 			$this->runner($this->container, static function (): void {
