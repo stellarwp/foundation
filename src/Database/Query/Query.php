@@ -241,6 +241,18 @@ final class Query extends WhereGroup
 	}
 
 	/**
+	 * Sum column values, or return zero when all values are null or absent.
+	 *
+	 * Preserves the driver's numeric result, including decimal strings without conversion to float.
+	 *
+	 * @throws Exception                When execution fails, including unresolved raw projection columns.
+	 * @throws InvalidArgumentException For invalid or unselected columns, unsupported values, or ambiguous shaped join projections.
+	 */
+	public function sum(string $column): int|float|string {
+		return $this->executor->value($this->compiler->aggregate($this->state(), 'SUM', $column)) ?? 0;
+	}
+
+	/**
 	 * Determine whether this query returns any rows.
 	 *
 	 * @throws Exception                When execution fails.

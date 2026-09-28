@@ -173,6 +173,71 @@ final class QueryTest extends DatabaseTestCase
 	}
 
 	/**
+	 * Sums retain decimal precision and aggregate only the filtered result rows.
+	 */
+	public function test_sum_preserves_exact_decimals_and_query_state(): void {
+		$this->seedEntries();
+		$this->entries->update([
+			'amount' => '9999999999.99',
+		], [
+			'id' => 1,
+		]);
+		$query = $this->entries->query()->where('active', true)->orderBy('id');
+		$sql   = $query->toSql();
+		$rows  = $query->get();
+
+		$this->assertSame('10000000019.99', $query->sum('amount'));
+		$this->assertSame($sql, $query->toSql());
+		$this->assertSame($rows, $query->get());
+		$this->assertSame('9999999999.99', $query->limit(1)->sum('amount'));
+		$this->assertSame('20.00', $query->offset(1)->sum('amount'));
+	}
+
+	/**
+	 * Approximate numeric expressions retain the database's floating-point result.
+	 */
+	public function test_sum_preserves_floating_point_results(): void {
+		$this->seedEntries();
+		$this->assertSame(60.0, $this->entries->query()->selectRaw('amount * 1e0 AS approximate_amount')->sum('approximate_amount'));
+	}
+
+	/**
+	 * Empty and all-null inputs return integer zero; numeric zero keeps its database representation.
+	 */
+	public function test_sum_returns_zero_when_no_non_null_values_remain(): void {
+		$this->assertSame(0, $this->entries->query()->sum('amount'));
+		$this->seedEntries();
+		$this->assertSame(0, $this->entries->query()->where('id', 999)->sum('amount'));
+		$this->assertSame(0, $this->entries->query()->limit(0)->sum('amount'));
+		$this->assertSame(0, $this->entries->query()->offset(10)->sum('amount'));
+		$this->assertSame(0, $this->entries->query()->selectRaw('NULL AS amount')->sum('amount'));
+		$this->assertSame('0.00', $this->entries->query()->selectRaw('amount - amount AS zero')->sum('zero'));
+	}
+
+	/**
+	 * Grouping, distinctness and aliases define the values supplied to a sum.
+	 */
+	public function test_sum_preserves_grouped_distinct_and_aliased_projections(): void {
+		$this->seedEntries();
+		$this->assertSame('40.00', $this->entries->query('e')->select('e.amount AS total')->orderBy('e.id')->limit(2)->sum('total'));
+		$this->assertSame('1', $this->entries->query()->select('active')->distinct()->sum('active'));
+		$this->assertSame('40.00', $this->entries->query()
+			->selectRaw('category, SUM(amount) AS total')
+			->groupBy('category')
+			->having('total', '>', 25)
+			->sum('total'));
+	}
+
+	/**
+	 * Summing must not silently rewrite a limited query's explicit selection.
+	 */
+	public function test_sum_rejects_an_unselected_column_in_a_limited_query(): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('Aggregate column "amount" is not selected.');
+		$this->entries->query()->select('name')->limit(10)->sum('amount');
+	}
+
+	/**
 	 * Grouped and distinct aggregates count the selected rows, not base records.
 	 */
 	public function test_grouped_alias_aggregates_and_distinct_selection(): void {

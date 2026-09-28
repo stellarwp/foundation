@@ -102,6 +102,16 @@ $count = $query->count();
 $rows  = $query->get();
 ```
 
+Use `sum()` to total a numeric column:
+
+```php
+$total = $this->reports->query()
+	->where( 'status', 'ready' )
+	->sum( 'amount' );
+```
+
+`sum()` returns `int|float|string`. It ignores null values and returns integer `0` when no values remain. Otherwise, it preserves the driver's numeric result: exact decimal strings stay strings, and floating-point results stay floats. Like the other terminal reads, it leaves the builder unchanged.
+
 `distinct()`, `groupBy()`, `having()`, `limit()`, and `offset()` shape the rows seen by aggregates. Foundation aggregates a derived table when those operations are present. In particular, `limit( 10 )->count()` counts at most ten rows, and a grouped count counts groups. Explicit projections and their aliases remain intact, including aliases used by ordering.
 
 ```php
@@ -122,7 +132,7 @@ $groups = $this->reports->query()
 	->get();
 ```
 
-Raw projections are opaque: Foundation preserves every `selectRaw()` projection when counting, finding a maximum, or checking existence. For example, `selectRaw( 'COUNT(*) AS total' )->exists()` returns true even when the source table is empty, because that aggregate produces one result row. Calling `select()` replaces the projection and clears this raw-projection behavior.
+Raw projections are opaque: Foundation preserves every `selectRaw()` projection when counting, summing, finding a maximum, or checking existence. For example, `selectRaw( 'COUNT(*) AS total' )->exists()` returns true even when the source table is empty, because that aggregate produces one result row. Calling `select()` replaces the projection and clears this raw-projection behavior.
 
 A shaped column aggregate must name an output column or alias of the inner query. For example, `select( 'name' )->limit( 10 )->max( 'amount' )` throws `InvalidArgumentException` because `amount` is not selected. Include `amount` in the projection, or use its selected alias. Foundation leaves the projection, grouping, and distinctness unchanged. Foundation does not parse raw expressions to discover their outputs; invalid raw output references fail through the database. Shaped joins require an explicit projection to avoid duplicate column names in a derived table.
 
