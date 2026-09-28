@@ -92,6 +92,22 @@ $rows = $this->reports->query()
 
 `whereContainsAny()` matches any of several literal substrings. Both methods escape percent signs, underscores, and the escape character before binding search terms. An empty term list matches nothing; an empty string matches every non-null value. Case sensitivity follows the column's collation. Structured column names, aliases, and sort directions are validated; choose an application allowlist when users should be limited to particular columns.
 
+### Read one column
+
+Use `pluck()` to retrieve a plain list of column values:
+
+```php
+$ids = $this->reports->query()
+	->where( 'status', 'ready' )
+	->orderBy( 'id' )
+	->limit( 50 )
+	->pluck( 'id' );
+```
+
+`pluck()` returns an array with sequential numeric keys, preserving database value types, duplicates, and nulls. No matching rows returns `[]`. Use `distinct()` when you want unique values.
+
+The call selects only the requested column, replacing any existing `select()` or `selectRaw()` projection for that execution. Other clauses remain in place, and the original builder is unchanged. Use a column name or qualified column such as `r.id`. Any ordering, grouping, or `having()` must remain valid with that single-column selection; aliases from replaced projections are unavailable.
+
 ### Grouping and aggregates
 
 `count()` returns an integer, `exists()` returns a boolean, and `max( 'column' )` returns the driver's scalar value or null when no value exists. Terminal reads do not alter the builder, so you can count and then fetch the same query.

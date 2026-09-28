@@ -40,6 +40,20 @@ final readonly class Executor
 	}
 
 	/**
+	 * Fetch the first column of every result row without converting values.
+	 *
+	 * @throws InvalidArgumentException For unsupported bound values.
+	 * @throws Exception                When execution fails.
+	 *
+	 * @return list<mixed>
+	 */
+	public function column(Fragment $statement): array {
+		$parameters = $this->parameters($statement);
+
+		return $this->connection->fetchFirstColumn($statement->sql, $parameters->values, $parameters->types);
+	}
+
+	/**
 	 * Fetch the first row, or false when no row matches.
 	 *
 	 * @throws InvalidArgumentException For unsupported bound values.

@@ -207,6 +207,20 @@ final class Query extends WhereGroup
 	}
 
 	/**
+	 * Read a column's values using a temporary single-column projection.
+	 *
+	 * @throws Exception                When execution fails, including references to replaced projection aliases.
+	 * @throws InvalidArgumentException For invalid columns or unsupported bound values.
+	 *
+	 * @return list<mixed> Values retain their database types, duplicates, and nulls.
+	 */
+	public function pluck(string $column): array {
+		return $this->executor->column($this->compiler->select($this->state(), [
+			new Selection(new Fragment($this->quoter->column($column))),
+		]));
+	}
+
+	/**
 	 * Read the first selected row, or null when the query is empty.
 	 *
 	 * @throws Exception                When execution fails.

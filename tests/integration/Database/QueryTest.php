@@ -70,6 +70,59 @@ final class QueryTest extends DatabaseTestCase
 	}
 
 	/**
+	 * Column reads preserve filters, ordering and paging without changing the original projection.
+	 */
+	public function test_pluck_preserves_query_state_and_reads_a_qualified_column(): void {
+		$this->seedEntries();
+		$query = $this->entries->query('e')
+			->selectRaw('? AS marker', [
+				'original',
+			])
+			->where('e.active', true)
+			->orderBy('e.id', 'desc')
+			->limit(1)
+			->offset(1);
+		$sql  = $query->toSql();
+		$rows = $query->get();
+
+		$this->assertSame([
+			'First',
+		], $query->pluck('e.name'));
+		$this->assertSame([
+			'10.00',
+		], $query->pluck('e.amount'));
+		$this->assertSame($sql, $query->toSql());
+		$this->assertSame($rows, $query->get());
+	}
+
+	/**
+	 * Column lists preserve nulls and duplicates, with empty and distinct results represented directly.
+	 */
+	public function test_pluck_preserves_nulls_duplicates_and_empty_results(): void {
+		$this->assertSame([], $this->entries->query()->pluck('id'));
+		$this->seedEntries();
+		$this->assertSame([
+			'a',
+			'a',
+			null,
+		], $this->entries->query()->orderBy('id')->pluck('category'));
+		$this->assertSame([
+			null,
+			'a',
+		], $this->entries->query()->distinct()->orderBy('category')->pluck('category'));
+		$this->assertSame([], $this->entries->query()->where('id', 999)->pluck('name'));
+		$this->assertSame([], $this->entries->query()->limit(0)->pluck('name'));
+	}
+
+	/**
+	 * Pluck accepts exactly one column, never a wildcard projection.
+	 */
+	public function test_pluck_rejects_a_wildcard(): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->entries->query()->pluck('*');
+	}
+
+	/**
 	 * Raw projections may change cardinality even without explicit grouping.
 	 */
 	public function test_raw_aggregates_preserve_their_result_row_on_an_empty_table(): void {
