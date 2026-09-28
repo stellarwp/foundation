@@ -70,6 +70,63 @@ final class QueryTest extends DatabaseTestCase
 	}
 
 	/**
+	 * Raw conditions compose with normal groups and retain bound numeric comparisons.
+	 */
+	public function test_raw_conditions_preserve_precedence_and_bind_values_by_type(): void {
+		$this->seedEntries();
+		$query = $this->entries->query()
+			->selectRaw('? AS marker, id', [
+				'bound projection',
+			])
+			->where('active', true)
+			->where(static fn (WhereGroup $group) => $group->whereRaw('amount > ?', [
+				15,
+			])->orWhereRaw('name = ?', [
+				'First',
+			]))
+			->whereRaw('? <= ?', [
+				500,
+				2000,
+			])
+			->whereRaw('(created_at IS NULL OR created_at >= NOW())')
+			->orderBy('id');
+		$this->assertSame([
+			[
+				'marker' => 'bound projection',
+				'id'     => 1,
+			],
+			[
+				'marker' => 'bound projection',
+				'id'     => 3,
+			],
+		], $query->get());
+		$this->assertSame([], $this->entries->query()->where('id', 999)->orWhereRaw('name = ?', [
+			"First' OR 1 = 1 --",
+		])->get());
+	}
+
+	/**
+	 * Raw write predicates retain update-value ordering and boolean parameter normalization.
+	 */
+	public function test_raw_conditions_apply_to_updates_and_deletes(): void {
+		$this->seedEntries();
+		$this->assertSame(2, $this->entries->query()->whereRaw('amount >= ?', [
+			20,
+		])->update([
+			'category' => 'updated',
+		]));
+		$this->assertSame(1, $this->entries->query()->whereRaw('category = ?', [
+			'updated',
+		])->whereRaw('active = ?', [
+			false,
+		])->delete());
+		$this->assertSame([
+			1,
+			3,
+		], $this->entries->query()->orderBy('id')->pluck('id'));
+	}
+
+	/**
 	 * Column reads preserve filters, ordering and paging without changing the original projection.
 	 */
 	public function test_pluck_preserves_query_state_and_reads_a_qualified_column(): void {

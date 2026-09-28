@@ -50,6 +50,36 @@ class WhereGroup
 	}
 
 	/**
+	 * Add an application-owned SQL condition with positional bound values.
+	 *
+	 * @param list<mixed> $bindings Values for ? placeholders, in SQL order.
+	 *
+	 * @throws InvalidArgumentException When the SQL condition is blank.
+	 */
+	public function whereRaw(string $sql, array $bindings = []): static {
+		if (trim($sql) === '') {
+			throw new InvalidArgumentException('A raw condition must contain SQL.');
+		}
+
+		return $this->add(new Fragment($sql, $bindings), 'AND');
+	}
+
+	/**
+	 * Add an alternative application-owned SQL condition with positional bound values.
+	 *
+	 * @param list<mixed> $bindings Values for ? placeholders, in SQL order.
+	 *
+	 * @throws InvalidArgumentException When the SQL condition is blank.
+	 */
+	public function orWhereRaw(string $sql, array $bindings = []): static {
+		if (trim($sql) === '') {
+			throw new InvalidArgumentException('A raw condition must contain SQL.');
+		}
+
+		return $this->add(new Fragment($sql, $bindings), 'OR');
+	}
+
+	/**
 	 * Match one of the supplied values; an empty list matches no rows.
 	 *
 	 * @param list<mixed> $values

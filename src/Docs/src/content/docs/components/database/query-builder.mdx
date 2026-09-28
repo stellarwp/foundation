@@ -92,6 +92,36 @@ $rows = $this->reports->query()
 
 `whereContainsAny()` matches any of several literal substrings. Both methods escape percent signs, underscores, and the escape character before binding search terms. An empty term list matches nothing; an empty string matches every non-null value. Case sensitivity follows the column's collation. Structured column names, aliases, and sort directions are validated; choose an application allowlist when users should be limited to particular columns.
 
+### Use a database expression in a condition
+
+Use `whereRaw()` when a condition needs application-owned SQL, such as the database's current time:
+
+```php
+$rows = $this->reports->query()
+	->where( 'status', 'ready' )
+	->whereRaw( '(expires_at IS NULL OR expires_at >= NOW())' )
+	->get();
+```
+
+Pass external values through positional `?` placeholders and the bindings array. They use the same value normalization and parameter types as ordinary conditions:
+
+```php
+use StellarWP\Foundation\Database\Query\WhereGroup;
+
+$rows = $this->reports->query()
+	->where( static fn ( WhereGroup $where ) => $where
+		->whereRaw( 'amount + ? >= ?', [
+			$adjustment,
+			$minimum,
+		] )
+		->orWhereRaw( 'owner_id = ?', [
+			$ownerId,
+		] ) )
+	->get();
+```
+
+`whereRaw()` joins with `AND`; `orWhereRaw()` joins with `OR`. SQL fragments are used as supplied, so include parentheses around alternatives within a fragment or use a grouped callback around multiple conditions. Blank fragments are rejected. Keep SQL text and identifiers application-owned: bindings protect values, not SQL assembled from user input. Raw conditions work with reads, updates, and deletes.
+
 ### Read one column
 
 Use `pluck()` to retrieve a plain list of column values:
@@ -304,7 +334,7 @@ $connection->executeStatement(
 );
 ```
 
-Native Doctrine execution exceptions remain unchanged. Foundation validation failures reject invalid query construction before execution. Keep raw SQL and expressions application-owned; `selectRaw()` does not make untrusted SQL safe.
+Native Doctrine execution exceptions remain unchanged. Foundation validation failures reject invalid query construction before execution. Keep raw SQL and expressions application-owned; `selectRaw()`, `whereRaw()`, and `orWhereRaw()` do not make untrusted SQL safe.
 
 ## Choose a transaction boundary
 

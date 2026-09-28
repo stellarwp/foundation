@@ -50,6 +50,69 @@ final class WhereGroupTest extends TestCase
 		], $group->condition()->bindings);
 	}
 
+	public function test_raw_conditions_preserve_sql_grouping_and_binding_order(): void {
+		$group = new WhereGroup(new IdentifierQuoter());
+		$this->assertSame($group, $group->where('active', true)->where(
+			static fn (WhereGroup $nested) => $nested->whereRaw('amount + ? >= ?', [
+				5,
+				20,
+			])->orWhereRaw('owner_id = ?', [
+				7,
+			]),
+		)->whereRaw('(expires_at IS NULL OR expires_at >= NOW())'));
+		$this->assertSame('`active` = ? AND (amount + ? >= ? OR owner_id = ?) AND (expires_at IS NULL OR expires_at >= NOW())', $group->condition()->sql);
+		$this->assertSame([
+			true,
+			5,
+			20,
+			7,
+		], $group->condition()->bindings);
+	}
+
+	/**
+	 * @return iterable<string, array{string, string}>
+	 */
+	public static function blankRawConditions(): iterable {
+		foreach ([
+			'whereRaw',
+			'orWhereRaw',
+		] as $method) {
+			yield $method . ' empty' => [
+				$method,
+				'',
+			];
+
+			yield $method . ' whitespace' => [
+				$method,
+				" \n\t",
+			];
+		}
+	}
+
+	/**
+	 * Reject blank predicates before adding SQL or bindings to the group.
+	 *
+	 * @dataProvider blankRawConditions
+	 */
+	#[DataProvider('blankRawConditions')]
+	public function test_blank_raw_conditions_do_not_change_existing_conditions(string $method, string $sql): void {
+		$group = new WhereGroup(new IdentifierQuoter());
+		$group->where('id', 1);
+
+		try {
+			$group->$method($sql, [
+				'discarded',
+			]);
+			$this->fail('Blank SQL must be rejected.');
+		} catch (InvalidArgumentException $failure) {
+			$this->assertSame('A raw condition must contain SQL.', $failure->getMessage());
+			$this->assertSame('`id` = ?', $group->condition()->sql);
+			$this->assertSame([
+				1,
+			], $group->condition()->bindings);
+		}
+	}
+
 	public function test_empty_sets_and_empty_needle_sets_have_explicit_semantics(): void {
 		$group = new WhereGroup(new IdentifierQuoter());
 		$group->whereIn('id', [])->whereNotIn('id', [])->whereContainsAny('name', []);
