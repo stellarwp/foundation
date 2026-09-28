@@ -355,6 +355,30 @@ final class Query extends WhereGroup
 	}
 
 	/**
+	 * Add an amount to a column in one update, returning the affected-row count.
+	 *
+	 * @param int|float $amount Integer amounts retain integer binding; floats use approximate arithmetic.
+	 *
+	 * @throws InvalidArgumentException When the column, amount, filtering, or query options are invalid.
+	 * @throws Exception                When execution fails.
+	 */
+	public function increment(string $column, int|float $amount = 1): int|string {
+		return $this->executor->statement($this->compiler->increment($this->state(), $column, $amount));
+	}
+
+	/**
+	 * Subtract an amount from a column in one update, returning the affected-row count.
+	 *
+	 * @param int|float $amount Integer amounts retain integer binding; floats use approximate arithmetic.
+	 *
+	 * @throws InvalidArgumentException When the column, amount, filtering, or query options are invalid.
+	 * @throws Exception                When execution fails.
+	 */
+	public function decrement(string $column, int|float $amount = 1): int|string {
+		return $this->executor->statement($this->compiler->decrement($this->state(), $column, $amount));
+	}
+
+	/**
 	 * Delete rows matching this query's conditions.
 	 *
 	 * @throws InvalidArgumentException When filtering is omitted or query options cannot be honored.

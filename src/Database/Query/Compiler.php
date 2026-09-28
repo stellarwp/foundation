@@ -141,8 +141,6 @@ final readonly class Compiler
 	 * @throws InvalidArgumentException When values are empty or the query cannot be used for an update.
 	 */
 	public function update(QueryState $state, array $values): Fragment {
-		$this->writable($state);
-
 		if ($values === []) {
 			throw new InvalidArgumentException('An update requires at least one column value.');
 		}
@@ -153,14 +151,55 @@ final readonly class Compiler
 			$columns[] = $this->quoter->quote($column) . ' = ?';
 		}
 
+		return $this->updateStatement($state, new Fragment(implode(', ', $columns), array_values($values)));
+	}
+
+	/**
+	 * Compile an atomic addition to a column.
+	 *
+	 * @throws InvalidArgumentException When the column, amount, or update options are invalid.
+	 */
+	public function increment(QueryState $state, string $column, int|float $amount): Fragment {
+		return $this->arithmetic($state, $column, '+', $amount);
+	}
+
+	/**
+	 * Compile an atomic subtraction from a column.
+	 *
+	 * @throws InvalidArgumentException When the column, amount, or update options are invalid.
+	 */
+	public function decrement(QueryState $state, string $column, int|float $amount): Fragment {
+		return $this->arithmetic($state, $column, '-', $amount);
+	}
+
+	/**
+	 * Bind the amount without performing arithmetic or decimal conversion in PHP.
+	 */
+	private function arithmetic(QueryState $state, string $column, string $operator, int|float $amount): Fragment {
+		if (is_float($amount) && ! is_finite($amount)) {
+			throw new InvalidArgumentException('An increment or decrement amount must be a finite number.');
+		}
+
+		$quoted = $this->quoter->quote($column);
+
+		return $this->updateStatement($state, new Fragment($quoted . ' = ' . $quoted . ' ' . $operator . ' ?', [
+			$amount,
+		]));
+	}
+
+	/**
+	 * Apply shared update restrictions and keep assignment, filter and ordering bindings in SQL order.
+	 */
+	private function updateStatement(QueryState $state, Fragment $assignments): Fragment {
+		$this->writable($state);
 		$tail = $this->tail($state->orders, $state->limit, null);
 
 		return new Fragment(
 			'UPDATE ' . $this->resolver->sql($state->table)
-				. "\nSET " . implode(', ', $columns)
+				. "\nSET " . $assignments->sql
 				. "\nWHERE " . $state->where->sql
 				. $tail->sql,
-			array_merge(array_values($values), $state->where->bindings, $tail->bindings),
+			array_merge($assignments->bindings, $state->where->bindings, $tail->bindings),
 		);
 	}
 

@@ -303,6 +303,24 @@ Large writes split into multiple statements within the parameter limit. Each sta
 
 `update()` and `delete()` require conditions, retain supported ordering and limits, and reject joins, projections, distinct, grouping, having, or offsets. `insert()`, `insertGetId()`, and `upsert()` reject previously accumulated query conditions, projections, ordering, limits, and other shaping state, even for empty input. Start from a fresh query for those operations.
 
+### Increment or decrement a column
+
+Use `increment()` and `decrement()` to change a numeric column in one database statement:
+
+```php
+$affected = $this->reports->query()
+	->where( 'id', $id )
+	->increment( 'views' );
+
+$affected = $this->credits->query()
+	->where( 'id', $id )
+	->decrement( 'credits_remaining', 5 );
+```
+
+The amount defaults to `1`. Both methods return affected-row counts as `int|string`, require conditions, and support the same ordering and limits as `update()`. The database applies the arithmetic to the current column value, avoiding a separate read and write in PHP. They participate in an existing transaction without starting one themselves.
+
+Amounts accept integers and finite floats. Negative amounts reverse the direction; zero leaves values unchanged. SQL arithmetic leaves a `NULL` column as `NULL`. The column's type and database SQL mode govern rounding and overflow. Integer amounts retain integer binding; floating-point amounts use approximate arithmetic. For exact decimal arithmetic, use the native connection with an explicit SQL decimal cast appropriate to your column instead of converting a decimal string to a PHP float.
+
 ### Upsert using existing keys
 
 `upsert( $rows, $update )` uses the table's existing primary and unique keys. The required update list names the columns to change on conflict. There is no conflict-target argument: MySQL and MariaDB choose conflicts from all existing primary and unique keys.

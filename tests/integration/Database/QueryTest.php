@@ -5,6 +5,8 @@ namespace StellarWP\Foundation\Tests\Integration\Database;
 use DateTimeImmutable;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
 use StellarWP\Foundation\Database\Exceptions\TransactionFailed;
 use StellarWP\Foundation\Database\Query\Database;
 use StellarWP\Foundation\Database\Query\Executor;
@@ -804,6 +806,155 @@ final class QueryTest extends DatabaseTestCase
 			$this->fail('An insert cannot honor a condition.');
 		} catch (InvalidArgumentException) {
 			$this->assertSame(3, $this->entries->query()->count());
+		}
+	}
+
+	/**
+	 * Arithmetic updates support defaults, signed amounts and fractions without mutating the query.
+	 */
+	public function test_increment_and_decrement_change_only_matching_rows(): void {
+		$this->seedEntries();
+		$query = $this->entries->query()->where('id', 1);
+		$sql   = $query->toSql();
+		$this->assertSame(1, $query->increment('amount'));
+		$this->assertSame('11.00', $query->first()['amount'] ?? null);
+		$this->assertSame(1, $query->decrement('amount'));
+		$this->assertSame('10.00', $query->first()['amount']);
+		$this->assertSame(1, $query->increment('amount', 2.5));
+		$this->assertSame(1, $query->decrement('amount', 0.25));
+		$this->assertSame('12.25', $query->first()['amount']);
+		$this->assertSame(1, $query->increment('amount', -2));
+		$this->assertSame(1, $query->decrement('amount', -3));
+		$query->increment('amount', 0);
+		$this->assertSame('13.25', $query->first()['amount']);
+		$this->assertSame($sql, $query->toSql());
+		$this->assertSame('30.00', $this->entries->query()->where('id', 2)->first()['amount'] ?? null);
+		$this->assertSame(0, $this->entries->query()->where('id', 999)->decrement('amount'));
+	}
+
+	/**
+	 * The arithmetic operand precedes WHERE and ORDER BY bindings in limited updates.
+	 */
+	public function test_arithmetic_updates_honor_ordering_and_limits(): void {
+		$this->seedEntries();
+		$query = $this->entries->query()->where('active', true)
+			->orderByRaw('id = ? DESC', [
+				3,
+			])->limit(1);
+		$this->assertSame(1, $query->increment('amount', 5));
+		$this->assertSame('25.00', $this->entries->query()->where('id', 3)->first()['amount'] ?? null);
+		$this->assertSame(1, $query->decrement('amount', 2));
+		$this->assertSame('23.00', $this->entries->query()->where('id', 3)->first()['amount'] ?? null);
+		$this->assertSame('10.00', $this->entries->query()->where('id', 1)->first()['amount'] ?? null);
+	}
+
+	/**
+	 * Integer parameters preserve large integer values and SQL leaves null operands null.
+	 */
+	public function test_arithmetic_preserves_large_integers_and_nulls(): void {
+		$this->observer->executeStatement('ALTER TABLE ' . $this->entries->quotedName() . ' ADD counter BIGINT NULL');
+		$this->seedEntries();
+		$query = $this->entries->query()->where('id', 1);
+		$query->update([
+			'counter' => '9007199254740992',
+		]);
+		$query->increment('counter');
+		$this->assertSame('9007199254740993', (string) ($query->first()['counter'] ?? ''));
+		$query->decrement('counter');
+		$this->assertSame('9007199254740992', (string) ($query->first()['counter'] ?? ''));
+		$this->entries->query()->where('id', 2)->increment('counter');
+		$this->assertSame([
+			null,
+		], $this->entries->query()->where('id', 2)->pluck('counter'));
+	}
+
+	/**
+	 * Arithmetic uses the caller's transaction and preserves its escaping business failure.
+	 */
+	public function test_arithmetic_updates_participate_in_managed_transactions(): void {
+		$this->seedEntries();
+		$failure = new RuntimeException('Cancel the operation.');
+
+		try {
+			$this->db->transactional(function () use ($failure): void {
+				$this->entries->query()->where('id', 1)->increment('amount', 5);
+				$this->entries->query()->where('id', 2)->decrement('amount', 3);
+
+				throw $failure;
+			});
+		} catch (RuntimeException $caught) {
+			$this->assertSame($failure, $caught);
+		}
+
+		$this->assertSame('10.00', $this->entries->query()->where('id', 1)->first()['amount'] ?? null);
+		$this->assertSame('30.00', $this->entries->query()->where('id', 2)->first()['amount'] ?? null);
+		$this->db->transactional(fn () => $this->entries->query()->where('id', 1)->increment('amount', 5));
+		$this->assertSame('15.00', $this->observer->fetchOne('SELECT amount FROM ' . $this->entries->quotedName() . ' WHERE id = 1'));
+	}
+
+	/**
+	 * Arithmetic shares ordinary update restrictions and rejects invalid operands before execution.
+	 *
+	 * @dataProvider invalidArithmetic
+	 */
+	#[DataProvider('invalidArithmetic')]
+	public function test_arithmetic_rejects_invalid_requests(string $method, string $option, string $column, int|float $amount): void {
+		$query = $this->entries->query();
+
+		if ($option !== 'unfiltered') {
+			$query->where('id', 1);
+		}
+
+		if ($option === 'projection') {
+			$query->select('amount');
+		}
+
+		$this->expectException(InvalidArgumentException::class);
+		$query->{$method}($column, $amount);
+	}
+
+	/**
+	 * Invalid requests must fail equally for both arithmetic operations.
+	 *
+	 * @return iterable<string, array{string, string, string, int|float}>
+	 */
+	public static function invalidArithmetic(): iterable {
+		foreach ([
+			'increment',
+			'decrement',
+		] as $method) {
+			foreach ([
+				'unfiltered'   => [
+					'unfiltered',
+					'amount',
+					1,
+				],
+				'projection'   => [
+					'projection',
+					'amount',
+					1,
+				],
+				'column'       => [
+					'filtered',
+					'amount + 1',
+					1,
+				],
+				'infinity'     => [
+					'filtered',
+					'amount',
+					INF,
+				],
+				'not-a-number' => [
+					'filtered',
+					'amount',
+					NAN,
+				],
+			] as $name => $arguments) {
+				yield $method . '-' . $name => [
+					$method,
+					...$arguments,
+				];
+			}
 		}
 	}
 
