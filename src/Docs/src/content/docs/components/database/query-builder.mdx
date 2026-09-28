@@ -122,6 +122,31 @@ $rows = $this->reports->query()
 
 `whereRaw()` joins with `AND`; `orWhereRaw()` joins with `OR`. SQL fragments are used as supplied, so include parentheses around alternatives within a fragment or use a grouped callback around multiple conditions. Blank fragments are rejected. Keep SQL text and identifiers application-owned: bindings protect values, not SQL assembled from user input. Raw conditions work with reads, updates, and deletes.
 
+### Order by a database expression
+
+Use `orderBy()` for ordinary columns and `orderByRaw()` when ordering requires an application-owned SQL expression. For example, sort by priority, then put reports with an expiration date before those without one within each priority:
+
+```php
+$rows = $this->reports->query()
+	->orderBy( 'priority' )
+	->orderByRaw( 'IF(expires_at IS NULL, 1, 0) ASC' )
+	->orderBy( 'expires_at' )
+	->get();
+```
+
+Bind external values using the optional second argument. This example puts reports in a preferred category first, ordered by ID, followed by all remaining reports ordered by ID:
+
+```php
+$rows = $this->reports->query()
+	->orderByRaw( 'IF(category = ?, 0, 1) ASC', [
+		$preferredCategory,
+	] )
+	->orderBy( 'id' )
+	->get();
+```
+
+Ordering calls append in declaration order and work with reads and supported single-table updates and deletes. Include `ASC` or `DESC` in the raw SQL when needed. Bindings use the same normalization as ordinary query values; they protect values, not SQL text or identifiers. Blank expressions are rejected. Simple aggregates omit ordering and its bindings. Aggregates over paginated, grouped, distinct, or raw selections retain them in the inner query.
+
 ### Read one column
 
 Use `pluck()` to retrieve a plain list of column values:
@@ -334,7 +359,7 @@ $connection->executeStatement(
 );
 ```
 
-Native Doctrine execution exceptions remain unchanged. Foundation validation failures reject invalid query construction before execution. Keep raw SQL and expressions application-owned; `selectRaw()`, `whereRaw()`, and `orWhereRaw()` do not make untrusted SQL safe.
+Native Doctrine execution exceptions remain unchanged. Foundation validation failures reject invalid query construction before execution. Keep raw SQL and expressions application-owned; raw query methods do not make untrusted SQL safe.
 
 ## Choose a transaction boundary
 

@@ -63,9 +63,9 @@ final readonly class Compiler
 		}
 
 		$limit = $maximum === null ? $state->limit : min($state->limit ?? $maximum, $maximum);
-		$sql .= $this->tail($ordered ? $state->orders : [], $limit, $state->offset);
+		$tail  = $this->tail($ordered ? $state->orders : [], $limit, $state->offset);
 
-		return new Fragment($sql, $bindings);
+		return new Fragment($sql . $tail->sql, array_merge($bindings, $tail->bindings));
 	}
 
 	/**
@@ -153,12 +153,14 @@ final readonly class Compiler
 			$columns[] = $this->quoter->quote($column) . ' = ?';
 		}
 
+		$tail = $this->tail($state->orders, $state->limit, null);
+
 		return new Fragment(
 			'UPDATE ' . $this->resolver->sql($state->table)
 				. "\nSET " . implode(', ', $columns)
 				. "\nWHERE " . $state->where->sql
-				. $this->tail($state->orders, $state->limit, null),
-			array_merge(array_values($values), $state->where->bindings),
+				. $tail->sql,
+			array_merge(array_values($values), $state->where->bindings, $tail->bindings),
 		);
 	}
 
@@ -174,11 +176,13 @@ final readonly class Compiler
 			throw new InvalidArgumentException('Delete from an unaliased table for compatibility with supported MySQL and MariaDB versions.');
 		}
 
+		$tail = $this->tail($state->orders, $state->limit, null);
+
 		return new Fragment(
 			'DELETE FROM ' . $this->resolver->sql($state->table)
 				. "\nWHERE " . $state->where->sql
-				. $this->tail($state->orders, $state->limit, null),
-			$state->where->bindings,
+				. $tail->sql,
+			array_merge($state->where->bindings, $tail->bindings),
 		);
 	}
 
@@ -216,10 +220,18 @@ final readonly class Compiler
 	/**
 	 * Append ordering and pagination supported by MySQL and MariaDB.
 	 *
-	 * @param list<string> $orders
+	 * @param list<Fragment> $orders
 	 */
-	private function tail(array $orders, ?int $limit, ?int $offset): string {
-		$sql = $orders === [] ? '' : "\nORDER BY " . implode(', ', $orders);
+	private function tail(array $orders, ?int $limit, ?int $offset): Fragment {
+		$expressions = [];
+		$bindings    = [];
+
+		foreach ($orders as $order) {
+			$expressions[] = $order->sql;
+			array_push($bindings, ...$order->bindings);
+		}
+
+		$sql = $expressions === [] ? '' : "\nORDER BY " . implode(', ', $expressions);
 
 		if ($limit !== null || $offset !== null) {
 			$sql .= "\nLIMIT " . ($limit ?? '18446744073709551615');
@@ -229,6 +241,6 @@ final readonly class Compiler
 			$sql .= ' OFFSET ' . $offset;
 		}
 
-		return $sql;
+		return new Fragment($sql, $bindings);
 	}
 }

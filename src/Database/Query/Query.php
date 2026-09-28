@@ -35,7 +35,7 @@ final class Query extends WhereGroup
 	private array $groups = [];
 
 	/**
-	 * @var list<string>
+	 * @var list<Fragment>
 	 */
 	private array $orders  = [];
 	private bool $distinct = false;
@@ -159,7 +159,24 @@ final class Query extends WhereGroup
 			throw new InvalidArgumentException('Order direction must be asc or desc.');
 		}
 
-		$this->orders[] = $this->quoter->column($column) . ' ' . $direction;
+		$this->orders[] = new Fragment($this->quoter->column($column) . ' ' . $direction);
+
+		return $this;
+	}
+
+	/**
+	 * Append an application-owned ordering expression with positional bound values.
+	 *
+	 * @param list<mixed> $bindings Values for ? placeholders, in SQL order.
+	 *
+	 * @throws InvalidArgumentException When the ordering expression is blank.
+	 */
+	public function orderByRaw(string $sql, array $bindings = []): self {
+		if (trim($sql) === '') {
+			throw new InvalidArgumentException('A raw ordering expression must contain SQL.');
+		}
+
+		$this->orders[] = new Fragment($sql, $bindings);
 
 		return $this;
 	}

@@ -127,6 +127,122 @@ final class QueryTest extends DatabaseTestCase
 	}
 
 	/**
+	 * Raw ordering composes with column ordering and survives repeated terminal reads.
+	 */
+	public function test_raw_ordering_preserves_order_bindings_and_query_state(): void {
+		$this->seedEntries();
+		$query = $this->entries->query()->where('id', '>', 0)
+			->orderByRaw('active = ? DESC', [
+				true,
+			])
+			->orderByRaw('id = ? DESC', [
+				3,
+			])
+			->orderBy('id');
+		$sql = $query->toSql();
+		$this->assertSame([
+			3,
+			1,
+			2,
+		], $query->pluck('id'));
+		$this->assertSame(3, $query->first()['id'] ?? null);
+		$this->assertSame(3, $query->count());
+		$this->assertSame('60.00', $query->sum('amount'));
+		$this->assertSame('30.00', $query->max('amount'));
+		$this->assertTrue($query->exists());
+		$this->assertSame(3, $query->get()[0]['id']);
+		$this->assertSame($sql, $query->toSql());
+
+		$query->limit(1);
+		$this->assertSame(1, $query->count());
+		$this->assertSame('20.00', $query->sum('amount'));
+		$this->assertSame('20.00', $query->max('amount'));
+		$this->assertTrue($query->exists());
+		$query->offset(1);
+		$this->assertSame('10.00', $query->sum('amount'));
+	}
+
+	/**
+	 * Ordering parameters follow projection, join, filter and HAVING parameters.
+	 */
+	public function test_raw_ordering_follows_all_other_read_bindings(): void {
+		$this->seedEntries();
+		$query = $this->entries->query('e')
+			->selectRaw('? AS marker, e.category, SUM(e.amount) AS total', [
+				'bound projection',
+			])
+			->join('foundation_consumer_entries as other', static fn (JoinClause $join) => $join
+				->on('e.id', '=', 'other.id')->where('other.id', '>', 0))
+			->where('e.amount', '>=', 10)
+			->groupBy('e.category')
+			->having('total', '>', 15)
+			->orderByRaw('e.category <=> ? DESC', [
+				null,
+			]);
+		$this->assertSame([
+			[
+				'marker'   => 'bound projection',
+				'category' => null,
+				'total'    => '20.00',
+			],
+			[
+				'marker'   => 'bound projection',
+				'category' => 'a',
+				'total'    => '40.00',
+			],
+		], $query->get());
+		$this->assertSame(2, $query->count());
+		$this->assertSame('60.00', $query->sum('total'));
+	}
+
+	/**
+	 * Ordered writes bind SET and WHERE values before ordering parameters.
+	 */
+	public function test_raw_ordering_selects_rows_for_limited_writes(): void {
+		$this->seedEntries();
+		$this->assertSame(1, $this->entries->query()->where('id', '>', 0)
+			->orderByRaw('id = ? DESC', [
+				2,
+			])->limit(1)->update([
+				'category' => 'chosen',
+			]));
+		$this->assertSame(2, $this->entries->query()->where('category', 'chosen')->first()['id'] ?? null);
+		$this->assertSame(1, $this->entries->query()->where('active', true)
+			->orderByRaw('id = ? DESC', [
+				3,
+			])->limit(1)->delete());
+		$this->assertSame([
+			1,
+			2,
+		], $this->entries->query()->orderBy('id')->pluck('id'));
+	}
+
+	/**
+	 * Reject blank ordering without retaining its unused bindings or changing the query.
+	 */
+	public function test_blank_raw_ordering_leaves_existing_order_unchanged(): void {
+		$this->seedEntries();
+		$query = $this->entries->query()->orderBy('id', 'desc');
+		$sql   = $query->toSql();
+
+		try {
+			$query->orderByRaw(" \t\n", [
+				'unused',
+			]);
+			$this->fail('Blank raw ordering must be rejected.');
+		} catch (InvalidArgumentException $failure) {
+			$this->assertSame('A raw ordering expression must contain SQL.', $failure->getMessage());
+		}
+
+		$this->assertSame($sql, $query->toSql());
+		$this->assertSame([
+			3,
+			2,
+			1,
+		], $query->pluck('id'));
+	}
+
+	/**
 	 * Column reads preserve filters, ordering and paging without changing the original projection.
 	 */
 	public function test_pluck_preserves_query_state_and_reads_a_qualified_column(): void {

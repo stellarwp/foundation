@@ -15,7 +15,7 @@ final readonly class QueryState
 	 * @param list<Selection> $selection
 	 * @param list<Fragment>  $joins
 	 * @param list<string>    $groups
-	 * @param list<string>    $orders
+	 * @param list<Fragment>  $orders
 	 */
 	public function __construct(
 		public TableReference $table,
