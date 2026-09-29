@@ -74,6 +74,189 @@ final class QueryTest extends DatabaseTestCase
 	}
 
 	/**
+	 * Pagination counts the full filter and leaves an existing page selection unchanged.
+	 */
+	public function test_pagination_returns_metadata_and_preserves_the_original_query(): void {
+		$this->seedEntries();
+		$query    = $this->entries->query()->where('id', '>', 0)->orderBy('id')->limit(1)->offset(1);
+		$sql      = $query->toSql();
+		$bindings = $query->getBindings();
+		$page     = $query->paginate(perPage: 1, page: 3);
+		$this->assertSame(3, $page->total);
+		$this->assertSame(1, $page->perPage);
+		$this->assertSame(3, $page->currentPage);
+		$this->assertSame(3, $page->lastPage());
+		$this->assertFalse($page->hasMorePages());
+		$this->assertSame([
+			3,
+		], array_column($page->items, 'id'));
+		$this->assertSame($sql, $query->toSql());
+		$this->assertSame($bindings, $query->getBindings());
+		$this->assertSame([
+			2,
+		], $query->pluck('id'));
+
+		$first = $query->paginate(perPage: 2);
+		$this->assertSame([
+			1,
+			2,
+		], array_column($first->items, 'id'));
+		$this->assertSame(1, $first->currentPage);
+		$this->assertSame(2, $first->lastPage());
+		$this->assertTrue($first->hasMorePages());
+		$this->assertSame(25, $query->paginate()->perPage);
+	}
+
+	/**
+	 * Grouped joins retain projection and HAVING bindings while counting without ordering bindings.
+	 */
+	public function test_pagination_counts_grouped_results_and_preserves_bound_row_ordering(): void {
+		$this->seedEntries();
+		$query = $this->entries->query('e')
+			->selectRaw('? AS marker, e.category, SUM(e.amount) AS total', [
+				'bound projection',
+			])
+			->join('foundation_consumer_entries as other', static fn (JoinClause $join) => $join
+				->on('e.id', '=', 'other.id')->where('other.id', '>', 0))
+			->where('e.amount', '>=', 10)
+			->groupBy('e.category')
+			->having('total', '>', 15)
+			->orderByRaw('e.category <=> ? DESC', [
+				null,
+			]);
+		$page = $query->paginate(perPage: 1);
+		$this->assertSame(2, $page->total);
+		$this->assertSame([
+			[
+				'marker'   => 'bound projection',
+				'category' => null,
+				'total'    => '20.00',
+			],
+		], $page->items);
+		$this->assertSame('a', $query->paginate(perPage: 1, page: 2)->items[0]['category']);
+	}
+
+	/**
+	 * Distinct pagination counts projected values rather than underlying rows.
+	 */
+	public function test_pagination_counts_distinct_values(): void {
+		$this->seedEntries();
+		$page = $this->entries->query()->select('category')->distinct()->orderBy('category')->paginate(perPage: 1, page: 2);
+		$this->assertSame(2, $page->total);
+		$this->assertSame([
+			[
+				'category' => 'a',
+			],
+		], $page->items);
+	}
+
+	/**
+	 * Explicit joined projections remain available on each page.
+	 */
+	public function test_pagination_supports_explicit_joined_projections(): void {
+		$this->seedEntries();
+		$page = $this->entries->query('e')->select('e.id', 'other.name as related_name')
+			->join('foundation_consumer_entries as other', 'e.id', '=', 'other.id')
+			->orderBy('e.id')->paginate(perPage: 2, page: 2);
+		$this->assertSame(3, $page->total);
+		$this->assertSame([
+			[
+				'id'           => 3,
+				'related_name' => 'Third',
+			],
+		], $page->items);
+	}
+
+	/**
+	 * Empty filters and pages past the end retain the requested page number.
+	 */
+	public function test_pagination_handles_empty_and_out_of_range_pages(): void {
+		$this->seedEntries();
+		$empty = $this->entries->query()->where('id', 999)->paginate(perPage: 2, page: 5);
+		$this->assertSame([], $empty->items);
+		$this->assertSame(0, $empty->total);
+		$this->assertSame(5, $empty->currentPage);
+		$this->assertSame(1, $empty->lastPage());
+		$this->assertFalse($empty->hasMorePages());
+
+		$beyond = $this->entries->query()->orderBy('id')->paginate(perPage: 2, page: 5);
+		$this->assertSame([], $beyond->items);
+		$this->assertSame(3, $beyond->total);
+		$this->assertSame(5, $beyond->currentPage);
+		$this->assertSame(2, $beyond->lastPage());
+		$this->assertFalse($beyond->hasMorePages());
+	}
+
+	/**
+	 * Invalid page settings fail before querying an otherwise missing table.
+	 *
+	 * @dataProvider invalidPagination
+	 */
+	#[DataProvider('invalidPagination')]
+	public function test_pagination_rejects_invalid_arguments(int $perPage, int $page): void {
+		$query = $this->queries->table('missing_pagination_table');
+		$this->expectException(InvalidArgumentException::class);
+		$query->paginate($perPage, $page);
+	}
+
+	/**
+	 * Page sizes and page numbers must be positive and yield a representable offset.
+	 *
+	 * @return iterable<string, array{int, int}>
+	 */
+	public static function invalidPagination(): iterable {
+		yield 'zero size' => [
+			0,
+			1,
+		];
+
+		yield 'negative size' => [
+			-1,
+			1,
+		];
+
+		yield 'zero page' => [
+			25,
+			0,
+		];
+
+		yield 'negative page' => [
+			25,
+			-1,
+		];
+
+		yield 'overflow' => [
+			2,
+			PHP_INT_MAX,
+		];
+	}
+
+	/**
+	 * Pagination locks the selected page without locking rows merely counted for the total.
+	 */
+	public function test_pagination_locks_only_the_page_read(): void {
+		$this->seedEntries();
+		$this->observer->executeStatement('SET SESSION innodb_lock_wait_timeout = 1');
+		$this->db->transactional(function (): void {
+			$page = $this->entries->query()->orderBy('id')->lockForUpdate()->paginate(perPage: 1);
+			$this->assertSame(3, $page->total);
+			$this->assertSame(1, $page->items[0]['id']);
+			$this->assertSame(1, (new ErrorReporter())->run(fn () => $this->observer->executeStatement('UPDATE ' . $this->entries->quotedName() . "
+				SET name = 'Outside the page'
+				WHERE id = 3")));
+
+			try {
+				(new ErrorReporter())->run(fn () => $this->observer->executeStatement('UPDATE ' . $this->entries->quotedName() . "
+					SET name = 'Inside the page'
+					WHERE id = 1"));
+				$this->fail('The page read must lock its selected row.');
+			} catch (LockWaitTimeoutException) {
+				$this->assertTrue($this->db->isTransactionActive());
+			}
+		});
+	}
+
+	/**
 	 * Raw conditions compose with normal groups and retain bound numeric comparisons.
 	 */
 	public function test_raw_conditions_preserve_precedence_and_bind_values_by_type(): void {

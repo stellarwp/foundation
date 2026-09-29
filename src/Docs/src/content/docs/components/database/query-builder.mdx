@@ -163,6 +163,32 @@ $ids = $this->reports->query()
 
 The call selects only the requested column, replacing any existing `select()` or `selectRaw()` projection for that execution. Other clauses remain in place, and the original builder is unchanged. Use a column name or qualified column such as `r.id`. Any ordering, grouping, or `having()` must remain valid with that single-column selection; aliases from replaced projections are unavailable.
 
+### Paginate results
+
+Use `paginate()` to retrieve a page of rows together with the total number of matching results:
+
+```php
+$page = $this->reports->query()
+	->where( 'status', 'ready' )
+	->orderBy( 'id' )
+	->paginate( perPage: 25, page: 3 );
+
+$rows        = $page->items;
+$total       = $page->total;
+$currentPage = $page->currentPage;
+$perPage     = $page->perPage;
+$lastPage    = $page->lastPage();
+$hasMore     = $page->hasMorePages();
+```
+
+The default is 25 rows on page one. Supply positive integers for `perPage` and `page`; the application reads and validates its request parameters and builds any navigation links. Order by a unique column, or add a unique column as the final ordering criterion, so page boundaries have a consistent order.
+
+The returned `Page` contains readonly metadata and rows as associative arrays. An empty result has `total` zero, empty `items`, and `lastPage()` one. A page beyond the last page returns empty `items` and preserves the requested `currentPage`.
+
+Pagination replaces any existing `limit()` and `offset()` for this operation and leaves the original builder unchanged. The total excludes paging and ordering but preserves filters, joins, distinctness, grouping, and `having()`. For grouped queries, it counts matching groups. The aggregate projection restrictions described below also apply to pagination totals.
+
+Foundation runs a count query, then fetches the requested rows when the total is nonzero. These are separate reads: concurrent writes can change the data between them, and pagination does not start a transaction. With `lockForUpdate()`, only the page query requests locks; run it inside a managed transaction when those locks must remain held.
+
 ### Grouping and aggregates
 
 `count()` returns an integer, `exists()` returns a boolean, and `max( 'column' )` returns the driver's scalar value or null when no value exists. Terminal reads do not alter the builder, so you can count and then fetch the same query.

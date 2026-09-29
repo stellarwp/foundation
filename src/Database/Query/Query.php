@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Query\ValueObjects\Fragment;
+use StellarWP\Foundation\Database\Query\ValueObjects\Page;
 use StellarWP\Foundation\Database\Query\ValueObjects\QueryState;
 use StellarWP\Foundation\Database\Query\ValueObjects\Selection;
 use StellarWP\Foundation\Database\Query\ValueObjects\TableReference;
@@ -248,6 +249,45 @@ final class Query extends WhereGroup
 	 */
 	public function get(): array {
 		return $this->executor->rows($this->compiler->select($this->state()));
+	}
+
+	/**
+	 * Read one page and count all matching results without changing this builder.
+	 *
+	 * Existing limit and offset settings are replaced for pagination.
+	 * Grouping, distinctness, and HAVING remain part of the total.
+	 * The count does not request row locks.
+	 *
+	 * @throws InvalidArgumentException When pagination arguments or query options are invalid.
+	 * @throws Exception                When database execution fails.
+	 */
+	public function paginate(int $perPage = 25, int $page = 1): Page {
+		if ($perPage < 1 || $page < 1) {
+			throw new InvalidArgumentException('Page size and page number must be greater than zero.');
+		}
+
+		if ($page - 1 > intdiv(PHP_INT_MAX, $perPage)) {
+			throw new InvalidArgumentException('The requested page exceeds the supported row offset.');
+		}
+
+		$count            = clone $this;
+		$count->limit     = null;
+		$count->offset    = null;
+		$count->orders    = [];
+		$count->forUpdate = false;
+
+		$total = $count->count();
+
+		$query = clone $this;
+		$query->limit($perPage);
+		$query->offset(($page - 1) * $perPage);
+
+		return new Page(
+			items: $total === 0 ? [] : $query->get(),
+			total: $total,
+			perPage: $perPage,
+			currentPage: $page,
+		);
 	}
 
 	/**
