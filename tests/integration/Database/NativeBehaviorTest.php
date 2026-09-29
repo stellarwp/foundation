@@ -4,6 +4,7 @@ namespace StellarWP\Foundation\Tests\Integration\Database;
 
 use Doctrine\DBAL\Exception\ConnectionLost;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+use mysqli_driver;
 use RuntimeException;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\DatabaseTestCase;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\NativeConnectionFactory;
@@ -11,6 +12,22 @@ use Throwable;
 
 final class NativeBehaviorTest extends DatabaseTestCase
 {
+	private int $reportMode;
+
+	protected function setUp(): void {
+		parent::setUp();
+		$driver           = new mysqli_driver();
+		$this->reportMode = $driver->report_mode;
+		// These probes exercise native DBAL with its required PHP-default error reporting.
+		$driver->report_mode = MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT;
+	}
+
+	protected function tearDown(): void {
+		$driver              = new mysqli_driver();
+		$driver->report_mode = $this->reportMode;
+		parent::tearDown();
+	}
+
 	public function test_native_dbal_commits_after_a_caught_statement_failure(): void {
 		$db = (new NativeConnectionFactory())->create($this->native($this->source), constant('DB_NAME'));
 		$db->transactional(function () use ($db): void {

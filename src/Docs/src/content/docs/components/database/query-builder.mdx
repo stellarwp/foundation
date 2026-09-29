@@ -209,19 +209,51 @@ A shaped column aggregate must name an output column or alias of the inner query
 
 ## Join application and WordPress tables
 
+Pass injected application tables to `join()` or `leftJoin()`. Use `alias:` to give the joined table a query-local name:
+
+```php
+$rows = $this->reports->query( 'r' )
+	->join(
+		$this->categories,
+		'c.id',
+		'=',
+		'r.category_id',
+		alias: 'c',
+	)
+	->select( 'r.id', 'r.title', 'c.name as category' )
+	->get();
+```
+
+For grouped ON conditions or bound values, pass a callback receiving `JoinClause`. An unmatched `leftJoin()` preserves the source row:
+
+```php
+use StellarWP\Foundation\Database\Query\JoinClause;
+
+$rows = $this->reports->query( 'r' )
+	->leftJoin(
+		$this->categories,
+		static fn ( JoinClause $join ) => $join
+			->on( 'c.id', '=', 'r.category_id' )
+			->where( 'c.active', true ),
+		alias: 'c',
+	)
+	->select( 'r.id', 'r.title', 'c.name as category' )
+	->get();
+```
+
+`join()` and `leftJoin()` also accept unprefixed application names and resolved table references. The optional `alias:` argument replaces any alias already supplied with the table; omitting it preserves that alias. Pass application table objects directly rather than their physical `name()`, which would be treated as an unprefixed string and prefixed again.
+
 Inject `StellarWP\Foundation\Database\Query\Database` when a query needs a table entry point independent of a concrete application table. `DatabaseProvider` supplies its dependencies automatically.
 
 `table()` accepts a `Table`, an unprefixed application name, or a `Query\ValueObjects\TableReference`, with an optional alias argument. `wordpress()` returns a resolved reference to a known WordPress core table. It honors WordPress's site and network table properties, including custom users tables. References are resolved when created; build a fresh query after switching sites between operations.
 
 ```php
 $rows = $this->db->table( $this->reports, 'r' )
-	->join( $this->db->wordpress( 'users' )->as( 'u' ), 'u.ID', '=', 'r.owner_id' )
+	->join( $this->db->wordpress( 'users' ), 'u.ID', '=', 'r.owner_id', alias: 'u' )
 	->select( 'r.id', 'r.title', 'u.user_email' )
 	->where( 'r.status', 'ready' )
 	->get();
 ```
-
-`join()` and `leftJoin()` accept the same table kinds. A callback receives `JoinClause` for grouped ON conditions and bound value predicates. Pass application table objects directly; passing their physical `name()` as an unprefixed string would prefix the name again.
 
 ## Write rows
 

@@ -8,8 +8,10 @@ and managed transactions for WordPress applications.
 
 ## Installation
 
+Requires PHP 8.3, mysqli, and Doctrine DBAL **4.5.x** (`~4.5.0`).
+
 Requires MySQL **5.7.9+** or MariaDB **10.4.3+**, matching
-[Doctrine DBAL 4.4 platform support](https://www.doctrine-project.org/projects/doctrine-dbal/en/4.4/reference/platforms.html).
+[Doctrine DBAL 4.5 platform support](https://www.doctrine-project.org/projects/doctrine-dbal/en/4.5/reference/platforms.html).
 
 ```shell
 composer require stellarwp/foundation-database

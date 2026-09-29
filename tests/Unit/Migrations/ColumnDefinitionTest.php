@@ -4,7 +4,6 @@ namespace StellarWP\Foundation\Tests\Unit\Migrations;
 
 use Doctrine\DBAL\Schema\Exception\InvalidTableModification;
 use Doctrine\DBAL\Schema\Table;
-use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -50,7 +49,7 @@ final class ColumnDefinitionTest extends TestCase
 		(new ColumnDefinition('value', Types::INTEGER))->change()->applyTo($table);
 
 		$column = $table->create()->getColumn('value');
-		$this->assertSame(Types::INTEGER, Type::lookupName($column->getType()));
+		$this->assertSame(Types::INTEGER, $column->getTypeName());
 		$this->assertNull($column->getDefault());
 		$this->assertSame('', $column->getComment());
 		$this->assertTrue($column->getNotnull());
@@ -71,6 +70,6 @@ final class ColumnDefinitionTest extends TestCase
 		(new ColumnDefinition('created_at', Types::DATETIME_MUTABLE))->useCurrent()->applyTo($omitted);
 
 		$this->assertSame('CURRENT_TIMESTAMP', $explicit->create()->getColumn('created_at')->getDefault());
-		$this->assertSame($omitted->create()->getColumn('created_at')->toArray(), $explicit->create()->getColumn('created_at')->toArray());
+		$this->assertSame($omitted->create()->getColumn('created_at')->toArray(true), $explicit->create()->getColumn('created_at')->toArray(true));
 	}
 }

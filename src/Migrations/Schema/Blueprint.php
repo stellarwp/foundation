@@ -110,7 +110,7 @@ final class Blueprint
 	public function drop(Table|string $table): void {
 		$name               = $this->resolve($table);
 		$this->operations[] = function () use ($name): void {
-			$this->state->schema->dropTable($name);
+			$this->state->schema = $this->state->schema->edit()->dropTableByUnquotedName($name)->create();
 
 			foreach (array_keys($this->state->timestamps) as $key) {
 				if (str_starts_with($key, strtolower($name) . '.')) {

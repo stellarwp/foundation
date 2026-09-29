@@ -99,24 +99,38 @@ final class Query extends WhereGroup
 	 * Require a matching row using column relationships or a join closure.
 	 *
 	 * @param string|Closure(JoinClause): mixed $first
+	 * @param string|null                       $alias Replaces any alias already supplied with the table.
 	 *
-	 * @throws InvalidArgumentException When a table, column, or join condition is invalid.
+	 * @throws InvalidArgumentException When a table, alias, column, or join condition is invalid.
 	 * @throws DatabaseException        When the application table name is invalid.
 	 */
-	public function join(Table|string|TableReference $table, string|Closure $first, ?string $operator = null, ?string $second = null): self {
-		return $this->addJoin('INNER', $table, $first, $operator, $second);
+	public function join(
+		Table|string|TableReference $table,
+		string|Closure $first,
+		?string $operator = null,
+		?string $second = null,
+		?string $alias = null,
+	): self {
+		return $this->addJoin('INNER', $table, $first, $operator, $second, $alias);
 	}
 
 	/**
 	 * Include the source row even when no joined row matches.
 	 *
 	 * @param string|Closure(JoinClause): mixed $first
+	 * @param string|null                       $alias Replaces any alias already supplied with the table.
 	 *
-	 * @throws InvalidArgumentException When a table, column, or join condition is invalid.
+	 * @throws InvalidArgumentException When a table, alias, column, or join condition is invalid.
 	 * @throws DatabaseException        When the application table name is invalid.
 	 */
-	public function leftJoin(Table|string|TableReference $table, string|Closure $first, ?string $operator = null, ?string $second = null): self {
-		return $this->addJoin('LEFT', $table, $first, $operator, $second);
+	public function leftJoin(
+		Table|string|TableReference $table,
+		string|Closure $first,
+		?string $operator = null,
+		?string $second = null,
+		?string $alias = null,
+	): self {
+		return $this->addJoin('LEFT', $table, $first, $operator, $second, $alias);
 	}
 
 	/**
@@ -448,7 +462,14 @@ final class Query extends WhereGroup
 	 *
 	 * @param string|Closure(JoinClause): mixed $first
 	 */
-	private function addJoin(string $type, Table|string|TableReference $table, string|Closure $first, ?string $operator, ?string $second): self {
+	private function addJoin(
+		string $type,
+		Table|string|TableReference $table,
+		string|Closure $first,
+		?string $operator,
+		?string $second,
+		?string $alias,
+	): self {
 		$clause = new JoinClause($this->quoter);
 
 		if ($first instanceof Closure) {
@@ -467,8 +488,14 @@ final class Query extends WhereGroup
 			throw new InvalidArgumentException('A join requires at least one ON condition.');
 		}
 
+		$reference = $this->resolver->resolve($table);
+
+		if ($alias !== null) {
+			$reference = $reference->as($alias);
+		}
+
 		$this->joins[] = new Fragment(
-			$type . ' JOIN ' . $this->resolver->sql($this->resolver->resolve($table)) . ' ON ' . $condition->sql,
+			$type . ' JOIN ' . $this->resolver->sql($reference) . ' ON ' . $condition->sql,
 			$condition->bindings,
 		);
 

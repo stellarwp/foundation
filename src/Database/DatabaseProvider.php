@@ -8,6 +8,7 @@ use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Schema\DefaultSchemaManagerFactory;
 use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use StellarWP\Foundation\Database\Connection\ErrorReporter;
 use StellarWP\Foundation\Database\Connection\WordPressConnection;
 use StellarWP\Foundation\Database\Connection\WordPressMiddleware;
 use StellarWP\Foundation\Database\Connection\WordPressSession;
@@ -43,11 +44,14 @@ final class DatabaseProvider extends Provider
 		$this->container->singleton(Builder::class, ServerBuilder::class);
 		$this->container->singleton(Query\Database::class);
 		$this->container->singleton(WordPressSession::class);
+		$this->container->singleton(ErrorReporter::class);
 		$this->container->singleton(AdvisorySession::class, static fn (C $c): WordPressSession => $c->get(WordPressSession::class));
 		$this->container->singleton(Connection::class, static function (C $c): Connection {
 			$config = new Configuration();
 			$config->setSchemaManagerFactory(new DefaultSchemaManagerFactory());
-			$config->setMiddlewares([new WordPressMiddleware($c->get(WordPressSession::class))]);
+			$config->setMiddlewares([
+				new WordPressMiddleware($c->get(WordPressSession::class)),
+			]);
 
 			return DriverManager::getConnection([
 				'driver'       => 'mysqli',

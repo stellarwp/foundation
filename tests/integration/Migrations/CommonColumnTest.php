@@ -3,8 +3,8 @@
 namespace StellarWP\Foundation\Tests\Integration\Migrations;
 
 use Doctrine\DBAL\Schema\Table;
-use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
+use Doctrine\Deprecations\Deprecation;
 use PHPUnit\Framework\Attributes\DataProvider;
 use StellarWP\Foundation\Migrations\MigrationsProvider;
 use StellarWP\Foundation\Migrations\Migrator;
@@ -162,16 +162,26 @@ final class CommonColumnTest extends DatabaseTestCase
 	public function test_column_types_survive_rename(string $strategy): void {
 		$this->container->singleton(ColumnRename::class, $strategy);
 		$migrator = $this->container->get(Migrator::class);
-		$migrator->migrate('2');
-		$this->insertEntry();
-		$migrator->migrate('3');
-		$this->assertSame([], $migrator->migrate('3'));
-		$this->assertSame(Types::JSON, Type::lookupName($this->introspect()->getColumn('metadata_renamed')->getType()));
-		$this->assertFalse($this->introspect()->getColumn('token_renamed')->getFixed());
-		$this->assertTrue($this->introspect()->getColumn('payload_renamed')->getFixed());
-		$migrator->rollbackTo('1');
-		$this->assertInitialColumns();
-		$this->assertEntry();
+		// Select platforms before tracking so older supported servers do not obscure API deprecations.
+		$this->db->getDatabasePlatform();
+		$this->observer->getDatabasePlatform();
+		Deprecation::enableTrackingDeprecations();
+
+		try {
+			$migrator->migrate('2');
+			$this->insertEntry();
+			$migrator->migrate('3');
+			$this->assertSame([], $migrator->migrate('3'));
+			$this->assertSame(Types::JSON, $this->introspect()->getColumn('metadata_renamed')->getTypeName());
+			$this->assertFalse($this->introspect()->getColumn('token_renamed')->getFixed());
+			$this->assertTrue($this->introspect()->getColumn('payload_renamed')->getFixed());
+			$migrator->rollbackTo('1');
+			$this->assertInitialColumns();
+			$this->assertEntry();
+			$this->assertSame([], Deprecation::getTriggeredDeprecations());
+		} finally {
+			Deprecation::disable();
+		}
 	}
 
 	private function insertEntry(): void {
@@ -219,10 +229,10 @@ final class CommonColumnTest extends DatabaseTestCase
 
 	private function assertInitialColumns(): void {
 		$table = $this->introspect();
-		$this->assertSame(Types::JSON, Type::lookupName($table->getColumn('metadata')->getType()));
-		$this->assertSame(Types::DATE_MUTABLE, Type::lookupName($table->getColumn('starts_on')->getType()));
-		$this->assertSame(Types::TIME_MUTABLE, Type::lookupName($table->getColumn('opens_at')->getType()));
-		$this->assertSame(Types::SMALLINT, Type::lookupName($table->getColumn('attempts')->getType()));
+		$this->assertSame(Types::JSON, $table->getColumn('metadata')->getTypeName());
+		$this->assertSame(Types::DATE_MUTABLE, $table->getColumn('starts_on')->getTypeName());
+		$this->assertSame(Types::TIME_MUTABLE, $table->getColumn('opens_at')->getTypeName());
+		$this->assertSame(Types::SMALLINT, $table->getColumn('attempts')->getTypeName());
 		$this->assertFalse($table->getColumn('metadata')->getNotnull());
 		$this->assertSame('External metadata', $table->getColumn('metadata')->getComment());
 		$this->assertTrue($table->getColumn('currency')->getFixed());
@@ -232,8 +242,8 @@ final class CommonColumnTest extends DatabaseTestCase
 		$this->assertSame(0, (int) $table->getColumn('attempts')->getDefault());
 		$this->assertSame(16777215, $table->getColumn('content')->getLength());
 		$this->assertFalse($table->getColumn('content')->getNotnull());
-		$this->assertSame(Types::BINARY, Type::lookupName($table->getColumn('token')->getType()));
-		$this->assertSame(Types::BINARY, Type::lookupName($table->getColumn('payload')->getType()));
+		$this->assertSame(Types::BINARY, $table->getColumn('token')->getTypeName());
+		$this->assertSame(Types::BINARY, $table->getColumn('payload')->getTypeName());
 		$this->assertTrue($table->getColumn('token')->getFixed());
 		$this->assertFalse($table->getColumn('payload')->getFixed());
 		$this->assertSame(16, $table->getColumn('token')->getLength());

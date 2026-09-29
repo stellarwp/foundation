@@ -6,6 +6,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use PHPUnit\Framework\Attributes\DataProvider;
+use StellarWP\Foundation\Database\Connection\ErrorReporter;
 use StellarWP\Foundation\Migrations\Contracts\Migration;
 use StellarWP\Foundation\Migrations\Exceptions\MigrationInterrupted;
 use StellarWP\Foundation\Migrations\MigrationsProvider;
@@ -75,7 +76,9 @@ final class ForeignKeyMigrationTest extends DatabaseTestCase
 		$migrator = $this->migrations(new CreateOrders($this->suffix), new CreateReferencedItems($this->suffix));
 		$migrator->migrate();
 		$this->rows();
-		$this->observer->delete($this->orders, ['id' => 1]);
+		(new ErrorReporter())->run(fn () => $this->observer->delete($this->orders, [
+			'id' => 1,
+		]));
 		$this->assertSame([], $this->observer->fetchAllAssociative('SELECT * FROM ' . $this->items));
 		$this->assertCount(1, $this->constraints());
 		$this->assertSame([], $migrator->preview());
@@ -89,7 +92,9 @@ final class ForeignKeyMigrationTest extends DatabaseTestCase
 		$this->rows();
 
 		try {
-			$this->observer->delete($this->orders, ['id' => 1]);
+			(new ErrorReporter())->run(fn () => $this->observer->delete($this->orders, [
+				'id' => 1,
+			]));
 			$this->fail('Referenced rows must be protected by default.');
 		} catch (ForeignKeyConstraintViolationException) {
 			$this->assertCount(1, $this->constraints());
@@ -98,7 +103,9 @@ final class ForeignKeyMigrationTest extends DatabaseTestCase
 		$migrator->rollback();
 		$constraints = $this->constraints();
 		$this->assertSame([], $constraints);
-		$this->observer->delete($this->orders, ['id' => 1]);
+		(new ErrorReporter())->run(fn () => $this->observer->delete($this->orders, [
+			'id' => 1,
+		]));
 		$this->assertSame(1, (int) $this->observer->fetchOne('SELECT order_id FROM ' . $this->items));
 		$this->assertTrue($this->observer->createSchemaManager()->introspectTable($this->source->prefix . $this->suffix . '_items')->hasIndex('order_lookup'));
 	}
@@ -115,7 +122,9 @@ final class ForeignKeyMigrationTest extends DatabaseTestCase
 		$migrator->rollback();
 		$this->rows();
 		$this->expectException(ForeignKeyConstraintViolationException::class);
-		$this->observer->delete($this->orders, ['id' => 1]);
+		(new ErrorReporter())->run(fn () => $this->observer->delete($this->orders, [
+			'id' => 1,
+		]));
 	}
 
 	public function test_composite_reference_clears_all_columns_on_update_and_delete(): void {
@@ -126,7 +135,9 @@ final class ForeignKeyMigrationTest extends DatabaseTestCase
 		$this->observer->update($this->orders, ['account_id' => 20], ['id' => 1]);
 		$this->assertSame(['order_id' => null, 'account_id' => null], $this->observer->fetchAssociative('SELECT order_id, account_id FROM ' . $this->items));
 		$this->observer->update($this->items, ['account_id' => 20, 'order_id' => 1], ['id' => 2]);
-		$this->observer->delete($this->orders, ['id' => 1]);
+		(new ErrorReporter())->run(fn () => $this->observer->delete($this->orders, [
+			'id' => 1,
+		]));
 		$row = $this->observer->fetchAssociative('SELECT order_id, account_id FROM ' . $this->items);
 		$this->assertSame(['order_id' => null, 'account_id' => null], $row);
 	}

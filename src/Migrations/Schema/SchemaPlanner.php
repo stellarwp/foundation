@@ -117,7 +117,7 @@ final readonly class SchemaPlanner
 				}
 
 				$quotedTable = $platform->quoteSingleIdentifier($table->getObjectName()->toString());
-				$declaration = $platform->getColumnDeclarationSQL($platform->quoteSingleIdentifier($column->getObjectName()->toString()), $column->toArray());
+				$declaration = $platform->getColumnDeclarationSQL($platform->quoteSingleIdentifier($column->getObjectName()->toString()), $column->toArray(true));
 				$sql[]       = "ALTER TABLE {$quotedTable}
 					MODIFY {$declaration}";
 			}

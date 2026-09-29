@@ -14,7 +14,9 @@ Unlike WordPress’s [`dbDelta()`](https://developer.wordpress.org/reference/fun
 ### Set up migrations
 
 :::caution[Database requirements]
-Use MySQL **5.7.9+** or MariaDB **10.4.3+**, matching [Doctrine DBAL 4.4’s supported platforms](https://www.doctrine-project.org/projects/doctrine-dbal/en/4.4/reference/platforms.html). Check the database version on every deployment target before adopting Foundation.
+Foundation Database requires Doctrine DBAL **4.5.x** (`~4.5.0`).
+
+Use MySQL **5.7.9+** or MariaDB **10.4.3+**, matching [Doctrine DBAL 4.5’s supported platforms](https://www.doctrine-project.org/projects/doctrine-dbal/en/4.5/reference/platforms.html). Check the database version on every deployment target before adopting Foundation.
 :::
 
 Install the migrations runtime and development CLI. The runtime includes Foundation Database and the WP-CLI integration:

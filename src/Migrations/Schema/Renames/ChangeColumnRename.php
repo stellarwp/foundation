@@ -10,6 +10,7 @@ use Doctrine\DBAL\Schema\ColumnEditor;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Schema\TableDiff;
 use Doctrine\DBAL\Types\JsonType;
+use Doctrine\DBAL\Types\Type;
 use StellarWP\Foundation\Migrations\Schema\Renames\Contracts\ColumnRename;
 
 /**
@@ -87,9 +88,9 @@ final readonly class ChangeColumnRename implements ColumnRename
 	 */
 	private function definition(array $row, Column $column): string {
 		$platform = $this->db->getDatabasePlatform();
-		$json     = $column->getType() instanceof JsonType;
+		$json     = Type::getType($column->getTypeName()) instanceof JsonType;
 		// MariaDB reports JSON as LONGTEXT; restating JSON preserves its validation constraint.
-		$sql = $json ? $platform->getJsonTypeDeclarationSQL($column->toArray()) : (string) $row['COLUMN_TYPE'];
+		$sql = $json ? $platform->getJsonTypeDeclarationSQL($column->toArray(true)) : (string) $row['COLUMN_TYPE'];
 
 		if (! $json && $row['CHARACTER_SET_NAME'] !== null) {
 			$sql .= ' CHARACTER SET ' . $platform->quoteSingleIdentifier((string) $row['CHARACTER_SET_NAME']);

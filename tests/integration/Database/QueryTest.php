@@ -8,6 +8,7 @@ use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
+use StellarWP\Foundation\Database\Connection\ErrorReporter;
 use StellarWP\Foundation\Database\Exceptions\TransactionFailed;
 use StellarWP\Foundation\Database\Query\Database;
 use StellarWP\Foundation\Database\Query\Executor;
@@ -520,6 +521,136 @@ final class QueryTest extends DatabaseTestCase
 	}
 
 	/**
+	 * A concrete table can be joined repeatedly under independent aliases.
+	 */
+	public function test_table_objects_accept_aliases_in_column_joins(): void {
+		$this->seedEntries();
+		$name  = $this->entries->name();
+		$query = $this->entries->query('e')
+			->join($this->entries, 'matching.id', '=', 'e.id', alias: 'matching')
+			->leftJoin($this->entries, 'missing.id', '=', 'e.amount', alias: 'missing')
+			->select('e.id', 'matching.name', 'missing.name as absent')
+			->orderBy('e.id');
+		$this->assertSame([
+			[
+				'id'     => 1,
+				'name'   => 'First',
+				'absent' => null,
+			],
+			[
+				'id'     => 2,
+				'name'   => 'Second',
+				'absent' => null,
+			],
+			[
+				'id'     => 3,
+				'name'   => 'Third',
+				'absent' => null,
+			],
+		], $query->get());
+		$this->assertSame($name, $this->entries->name());
+		$this->assertSame(3, $this->entries->query()->count());
+	}
+
+	/**
+	 * Callback joins accept aliases without changing nested ON conditions or binding order.
+	 */
+	public function test_table_aliases_work_in_inner_and_left_join_callbacks(): void {
+		$this->seedEntries();
+		$query = $this->entries->query('e')
+			->join(
+				$this->entries,
+				static fn (JoinClause $join) => $join->on('matching.id', '=', 'e.id'),
+				alias: 'matching',
+			)
+			->leftJoin(
+				$this->entries,
+				static fn (JoinClause $join) => $join->where(static fn (JoinClause $group) => $group
+					->on('active.id', '=', 'matching.id')->where('active.active', true)),
+				alias: 'active',
+			)
+			->select('e.id', 'active.name as matched')
+			->selectRaw('? AS marker', [
+				'bound marker',
+			])
+			->where('e.id', '>', 0)
+			->orderBy('e.id');
+		$this->assertSame([
+			'bound marker',
+			true,
+			0,
+		], $query->getBindings());
+		$rows = $query->get();
+		$this->assertCount(3, $rows);
+		$this->assertSame('bound marker', $rows[0]['marker']);
+		$this->assertSame('First', $rows[0]['matched']);
+		$this->assertNull($rows[1]['matched']);
+		$this->assertSame('Third', $rows[2]['matched']);
+	}
+
+	/**
+	 * An explicit alias replaces an existing name without changing a resolved reference.
+	 */
+	public function test_join_aliases_override_string_and_reference_aliases(): void {
+		$this->seedEntries();
+		$reference = new TableReference($this->entries->name(), 'original');
+		$query     = $this->entries->query('e')
+			->join($this->entries->unprefixedName() . ' as original', 'matching.id', '=', 'e.id', alias: 'matching')
+			->leftJoin($reference, 'other.id', '=', 'e.id', alias: 'other')
+			->select('e.id')->orderBy('e.id');
+		$this->assertSame([
+			1,
+			2,
+			3,
+		], $query->pluck('e.id'));
+		$this->assertSame('original', $reference->alias);
+		$this->assertSame(3, $this->entries->query('e')->join($reference, 'original.id', '=', 'e.id')->count());
+	}
+
+	/**
+	 * Invalid aliases fail before a join is appended to the original query.
+	 *
+	 * @dataProvider invalidJoinAliases
+	 */
+	#[DataProvider('invalidJoinAliases')]
+	public function test_invalid_join_aliases_preserve_query_state(string $method, string $alias): void {
+		$query = $this->entries->query('e');
+		$sql   = $query->toSql();
+
+		try {
+			$query->{$method}($this->entries, 'matching.id', '=', 'e.id', alias: $alias);
+			$this->fail('An invalid alias must be rejected.');
+		} catch (InvalidArgumentException $failure) {
+			$this->assertStringContainsString('Invalid table alias:', $failure->getMessage());
+		}
+
+		$this->assertSame($sql, $query->toSql());
+		$this->assertSame([], $query->getBindings());
+	}
+
+	/**
+	 * Both join methods use the existing table-reference alias validation.
+	 *
+	 * @return iterable<string, array{string, string}>
+	 */
+	public static function invalidJoinAliases(): iterable {
+		foreach ([
+			'join',
+			'leftJoin',
+		] as $method) {
+			yield $method . '-empty' => [
+				$method,
+				'',
+			];
+
+			yield $method . '-sql' => [
+				$method,
+				'matching ON 1 = 1',
+			];
+		}
+	}
+
+	/**
 	 * Supported scalar conversions work under strict SQL mode.
 	 */
 	public function test_bulk_values_normalize_columns_booleans_and_fractional_dates(): void {
@@ -983,9 +1114,10 @@ final class QueryTest extends DatabaseTestCase
 					WHERE id = 1'));
 
 				try {
-					$this->observer->executeStatement('UPDATE ' . $this->entries->quotedName() . "
+					// The independent native DBAL observer requires strict mysqli reporting too.
+					(new ErrorReporter())->run(fn () => $this->observer->executeStatement('UPDATE ' . $this->entries->quotedName() . "
 						SET name = 'Competing write'
-						WHERE id = 1");
+						WHERE id = 1"));
 					$this->fail('The locking read must block another writer.');
 				} catch (LockWaitTimeoutException) {
 					$this->assertTrue($this->db->isTransactionActive());

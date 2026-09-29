@@ -7,6 +7,7 @@ use Doctrine\DBAL\Driver\Middleware\AbstractConnectionMiddleware;
 use Doctrine\DBAL\Driver\Result;
 use Doctrine\DBAL\Driver\Statement;
 use mysqli;
+use mysqli_sql_exception;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 
 /**
@@ -64,8 +65,12 @@ final class BorrowedConnection extends AbstractConnectionMiddleware
 	 */
 	public function beginTransaction(): void {
 		$this->session->execute($this->native, function (): void {
-			if (! $this->native->begin_transaction()) {
-				throw new DatabaseException('Unable to start the transaction: ' . $this->native->error);
+			try {
+				if (! $this->native->begin_transaction()) {
+					throw new DatabaseException('Unable to start the transaction: ' . $this->native->error);
+				}
+			} catch (mysqli_sql_exception $failure) {
+				throw new DatabaseException('Unable to start the transaction: ' . $failure->getMessage(), 0, $failure);
 			}
 		});
 	}

@@ -32,6 +32,7 @@ final class WordPressSession implements AdvisorySession
 	public function __construct(
 		private readonly wpdb $wpdb,
 		private readonly DatabaseScope $scope,
+		private readonly ErrorReporter $reporter,
 	) {
 	}
 
@@ -74,7 +75,8 @@ final class WordPressSession implements AdvisorySession
 		if ($this->advisoryLock !== null || $this->isActive()) {
 			throw new DatabaseException('Start advisory-locked work outside an existing transaction or locked operation.');
 		}
-		$lock = new AdvisoryLock($this->native(), $this->scope, $resource);
+
+		$lock = new AdvisoryLock($this->native(), $this->scope, $this->reporter, $resource);
 		$lock->acquire();
 		$this->advisoryLock = $lock;
 
@@ -106,12 +108,13 @@ final class WordPressSession implements AdvisorySession
 		$native = $this->native();
 		$driver = new Connection($native);
 
-		if ((int) $driver->query('SELECT @@session.autocommit')->fetchOne() !== 1) {
+		if ((int) $this->reporter->run(static fn () => $driver->query('SELECT @@session.autocommit')->fetchOne()) !== 1) {
 			throw new DatabaseException('Managed transactions require autocommit to be enabled.');
 		}
+
 		// Both MySQL and MariaDB reject this inside an existing transaction.
 		// Unlike START TRANSACTION, it cannot implicitly commit the caller's work.
-		$driver->exec('SET TRANSACTION READ WRITE');
+		$this->reporter->run(static fn () => $driver->exec('SET TRANSACTION READ WRITE'));
 		$this->site   = $this->scope->capture();
 		$this->prefix = $this->scope->resolveTableName('');
 		$this->owned  = $native;
@@ -136,7 +139,7 @@ final class WordPressSession implements AdvisorySession
 				throw new DatabaseException('The WordPress connection changed; start a fresh operation.');
 			}
 
-			return $operation();
+			return $this->reporter->run($operation);
 		} catch (Throwable $failure) {
 			$this->advisoryLock?->fail($failure);
 
@@ -193,7 +196,7 @@ final class WordPressSession implements AdvisorySession
 		}
 
 		try {
-			if ($this->owned->rollback()) {
+			if ($this->reporter->run(fn (): bool => $this->owned->rollback())) {
 				return true;
 			}
 		} catch (Throwable) {

@@ -31,13 +31,14 @@ final class AdvisoryLock
 	public function __construct(
 		private readonly mysqli $native,
 		private readonly DatabaseScope $scope,
+		private readonly ErrorReporter $reporter,
 		string $resource,
 	) {
 		$this->driver       = new Connection($native);
 		$this->connectionId = $native->thread_id;
 		$this->site         = $scope->capture();
 		$this->prefix       = $scope->resolveTableName('');
-		$this->name         = hash('sha256', $this->driver->query('SELECT DATABASE()')->fetchOne() . "\0" . $resource);
+		$this->name         = hash('sha256', $this->reporter->run(fn () => $this->driver->query('SELECT DATABASE()')->fetchOne()) . "\0" . $resource);
 	}
 
 	/**
@@ -47,14 +48,15 @@ final class AdvisoryLock
 	 * @throws Throwable             When ambient transaction state or the database prevents acquisition.
 	 */
 	public function acquire(): void {
-		if ((int) $this->driver->query('SELECT @@session.autocommit')->fetchOne() !== 1) {
+		if ((int) $this->reporter->run(fn () => $this->driver->query('SELECT @@session.autocommit')->fetchOne()) !== 1) {
 			throw new AdvisoryLockInterrupted('Locked database operations require autocommit to be enabled.');
 		}
+
 		// Reject an ambient transaction without implicitly committing it.
-		$this->driver->exec('SET TRANSACTION READ WRITE');
+		$this->reporter->run(fn () => $this->driver->exec('SET TRANSACTION READ WRITE'));
 
 		try {
-			$result = $this->driver->query("SELECT GET_LOCK('{$this->name}', 0)")->fetchOne();
+			$result = $this->reporter->run(fn () => $this->driver->query("SELECT GET_LOCK('{$this->name}', 0)")->fetchOne());
 		} catch (Throwable $failure) {
 			// The server may have acquired the lock before its acknowledgement was lost.
 			try {
@@ -92,7 +94,7 @@ final class AdvisoryLock
 				throw new AdvisoryLockInterrupted('The locked connection or table prefix changed.');
 			}
 
-			if ((int) $this->driver->query("SELECT IS_USED_LOCK('{$this->name}')")->fetchOne() !== $this->connectionId) {
+			if ((int) $this->reporter->run(fn () => $this->driver->query("SELECT IS_USED_LOCK('{$this->name}')")->fetchOne()) !== $this->connectionId) {
 				throw new AdvisoryLockInterrupted('The session no longer owns its advisory lock.');
 			}
 		} catch (Throwable $failure) {
@@ -120,7 +122,7 @@ final class AdvisoryLock
 				throw new AdvisoryLockInterrupted('The original locked connection was lost.');
 			}
 
-			if ((int) $this->driver->query("SELECT RELEASE_LOCK('{$this->name}')")->fetchOne() !== 1) {
+			if ((int) $this->reporter->run(fn () => $this->driver->query("SELECT RELEASE_LOCK('{$this->name}')")->fetchOne()) !== 1) {
 				throw new AdvisoryLockInterrupted('The database did not confirm advisory lock release.');
 			}
 		} catch (Throwable $failure) {
