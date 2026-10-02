@@ -109,9 +109,25 @@ jobs:
           path: slic
           fetch-depth: 1
 
+      - name: Show preinstalled Composer version
+        env:
+          COMPOSER_AUTH: '{}'
+        run: |
+          command -v composer
+          composer --no-ansi --version
+
+      - name: Set up host PHP and Composer
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: composer:v2
+
       - name: Get Composer cache directory
         id: composer-cache-directory
-        run: echo "path=$(composer config cache-dir --absolute)" >> "$GITHUB_OUTPUT"
+        run: |
+          cache_directory=$(composer config cache-dir --absolute)
+          echo "path=$cache_directory" >> "$GITHUB_OUTPUT"
 
       - name: Restore Composer cache
         uses: actions/cache@v6
