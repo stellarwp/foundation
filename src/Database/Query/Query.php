@@ -375,6 +375,23 @@ final class Query extends WhereGroup
 	}
 
 	/**
+	 * Insert one row or a list using INSERT IGNORE, returning the number actually inserted.
+	 *
+	 * Duplicate keys skip rows. Other ignorable database errors may adjust invalid
+	 * values with warnings, even in strict mode. Empty input returns zero.
+	 *
+	 * @param array<string, mixed>|list<array<string, mixed>> $rows
+	 *
+	 * @throws InvalidArgumentException When rows or accumulated query options are invalid.
+	 * @throws Exception                When an unignored statement fails; use transactional() for atomic multi-chunk writes.
+	 */
+	public function insertOrIgnore(array $rows): int {
+		$this->compiler->insertable($this->state());
+
+		return $this->writer->insertOrIgnore($this->table, $rows);
+	}
+
+	/**
 	 * Insert exactly one row and return its generated identifier without truncation.
 	 *
 	 * Empty data inserts one row using the database defaults.

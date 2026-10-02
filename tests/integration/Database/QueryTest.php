@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Tests\Integration\Database;
 
 use DateTimeImmutable;
+use Doctrine\DBAL\Exception\InvalidFieldNameException;
 use Doctrine\DBAL\Exception\LockWaitTimeoutException;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use InvalidArgumentException;
@@ -43,6 +44,93 @@ final class QueryTest extends DatabaseTestCase
 			active BOOLEAN NOT NULL DEFAULT 0,
 			created_at DATETIME(6) NULL
 		) ENGINE=InnoDB');
+	}
+
+	/**
+	 * Duplicate keys skip rows without changing existing values or poisoning the transaction.
+	 */
+	public function test_insert_or_ignore_counts_new_rows_and_preserves_duplicates(): void {
+		$this->entries->insert([
+			'id'    => 1,
+			'name'  => 'Original',
+			'email' => 'original@example.test',
+		]);
+		$count = $this->db->transactional(fn (): int => $this->entries->query()->insertOrIgnore([
+			[
+				'id'    => 1,
+				'name'  => 'Primary key conflict',
+				'email' => 'other@example.test',
+			],
+			[
+				'id'    => 2,
+				'name'  => 'Unique key conflict',
+				'email' => 'original@example.test',
+			],
+			[
+				'id'    => 3,
+				'name'  => "O'Reilly",
+				'email' => 'new@example.test',
+			],
+		]));
+		$this->assertSame(1, $count);
+		$this->assertSame([
+			'Original',
+			"O'Reilly",
+		], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->entries->quotedName() . ' ORDER BY id'));
+		$this->assertSame(0, $this->entries->query()->insertOrIgnore([
+			'id'   => 1,
+			'name' => 'Still original',
+		]));
+		$this->assertSame(1, $this->entries->query()->insertOrIgnore([
+			'id'   => 4,
+			'name' => 'Single row',
+		]));
+		$this->assertSame(0, $this->entries->query()->insertOrIgnore([]));
+	}
+
+	/**
+	 * IGNORE also permits database coercion even when strict SQL mode is enabled.
+	 */
+	public function test_insert_or_ignore_can_truncate_invalid_values_in_strict_mode(): void {
+		$this->db->executeStatement("SET SESSION sql_mode = 'STRICT_ALL_TABLES'");
+		$this->assertSame(1, $this->entries->query()->insertOrIgnore([
+			'id'   => 1,
+			'name' => str_repeat('x', 192),
+		]));
+		$this->assertSame(str_repeat('x', 191), $this->entries->query()->where('id', 1)->first()['name'] ?? null);
+	}
+
+	/**
+	 * Ignored inserts remain inside the caller's transaction and roll back with its work.
+	 */
+	public function test_insert_or_ignore_rolls_back_with_the_callers_transaction(): void {
+		$failure = new RuntimeException('Cancel import');
+
+		try {
+			$this->db->transactional(function () use ($failure): void {
+				$this->assertSame(1, $this->entries->query()->insertOrIgnore([
+					'id'   => 1,
+					'name' => 'Provisional',
+				]));
+
+				throw $failure;
+			});
+		} catch (RuntimeException $caught) {
+			$this->assertSame($failure, $caught);
+		}
+
+		$this->assertSame(0, (int) $this->observer->fetchOne('SELECT COUNT(*) FROM ' . $this->entries->quotedName()));
+	}
+
+	/**
+	 * IGNORE does not swallow SQL errors such as a nonexistent column.
+	 */
+	public function test_insert_or_ignore_propagates_unignored_database_errors(): void {
+		$this->expectException(InvalidFieldNameException::class);
+		$this->entries->query()->insertOrIgnore([
+			'id'             => 1,
+			'missing_column' => 'Invalid',
+		]);
 	}
 
 	/**
@@ -1382,7 +1470,7 @@ final class QueryTest extends DatabaseTestCase
 	/**
 	 * Write terminals must not silently ignore a requested locking read.
 	 *
-	 * @param 'insert'|'insertGetId'|'upsert'|'update'|'increment'|'decrement'|'delete' $method
+	 * @param 'insert'|'insertOrIgnore'|'insertGetId'|'upsert'|'update'|'increment'|'decrement'|'delete' $method
 	 *
 	 * @dataProvider lockedWrites
 	 */
@@ -1392,17 +1480,18 @@ final class QueryTest extends DatabaseTestCase
 		$this->expectException(InvalidArgumentException::class);
 
 		match ($method) {
-			'insert'      => $this->entries->query()->lockForUpdate()->insert([]),
-			'insertGetId' => $this->entries->query()->lockForUpdate()->insertGetId([]),
-			'upsert'      => $this->entries->query()->lockForUpdate()->upsert([], [
+			'insert'         => $this->entries->query()->lockForUpdate()->insert([]),
+			'insertOrIgnore' => $this->entries->query()->lockForUpdate()->insertOrIgnore([]),
+			'insertGetId'    => $this->entries->query()->lockForUpdate()->insertGetId([]),
+			'upsert'         => $this->entries->query()->lockForUpdate()->upsert([], [
 				'name',
 			]),
-			'update'      => $query->update([
+			'update'         => $query->update([
 				'name' => 'Changed',
 			]),
-			'increment'   => $query->increment('amount'),
-			'decrement'   => $query->decrement('amount'),
-			'delete'      => $query->delete(),
+			'increment'      => $query->increment('amount'),
+			'decrement'      => $query->decrement('amount'),
+			'delete'         => $query->delete(),
 		};
 	}
 
@@ -1414,6 +1503,7 @@ final class QueryTest extends DatabaseTestCase
 	public static function lockedWrites(): iterable {
 		foreach ([
 			'insert',
+			'insertOrIgnore',
 			'insertGetId',
 			'upsert',
 			'update',

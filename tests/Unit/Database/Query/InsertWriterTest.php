@@ -16,6 +16,73 @@ use StellarWP\Foundation\Database\Query\ValueObjects\TableReference;
 
 final class InsertWriterTest extends TestCase
 {
+	public function test_ignored_inserts_bind_and_reorder_rows_across_chunks(): void {
+		$connection = $this->createMock(Connection::class);
+		$calls      = [];
+		$connection->expects($this->exactly(2))->method('executeStatement')->willReturnCallback(
+			static function (string $sql, array $bindings) use (&$calls): string {
+				$calls[] = [
+					$sql,
+					$bindings,
+				];
+
+				return count($calls) === 1 ? '1' : '0';
+			},
+		);
+		$count = $this->writer($connection, 4)->insertOrIgnore(new TableReference('wp_entries'), [
+			[
+				'id'   => 1,
+				'name' => "O'Reilly",
+			],
+			[
+				'name' => 'duplicate',
+				'id'   => 1,
+			],
+			[
+				'id'   => 1,
+				'name' => 'another duplicate',
+			],
+		]);
+		$this->assertSame(1, $count);
+		$this->assertSame([
+			[
+				'INSERT IGNORE INTO `wp_entries` (`id`, `name`) VALUES (?, ?), (?, ?)',
+				[
+					1,
+					"O'Reilly",
+					1,
+					'duplicate',
+				],
+			],
+			[
+				'INSERT IGNORE INTO `wp_entries` (`id`, `name`) VALUES (?, ?)',
+				[
+					1,
+					'another duplicate',
+				],
+			],
+		], $calls);
+	}
+
+	public function test_empty_ignored_insert_performs_no_database_work(): void {
+		$connection = $this->createMock(Connection::class);
+		$connection->expects($this->never())->method('executeStatement');
+		$this->assertSame(0, $this->writer($connection)->insertOrIgnore(new TableReference('wp_entries'), []));
+	}
+
+	/**
+	 * @return iterable<string, array{string}>
+	 */
+	public static function insertMethods(): iterable {
+		yield 'insert' => [
+			'insert',
+		];
+
+		yield 'insertOrIgnore' => [
+			'insertOrIgnore',
+		];
+	}
+
 	public function test_rows_reorder_columns_and_split_at_parameter_limit(): void {
 		$connection = $this->createMock(Connection::class);
 		$calls      = [];
@@ -59,12 +126,16 @@ final class InsertWriterTest extends TestCase
 		], $calls[1][1]);
 	}
 
-	public function test_later_invalid_row_is_rejected_before_any_write(): void {
+	/**
+	 * @dataProvider insertMethods
+	 */
+	#[DataProvider('insertMethods')]
+	public function test_later_invalid_row_is_rejected_before_any_write(string $method): void {
 		$connection = $this->createMock(Connection::class);
 		$connection->expects($this->never())->method('executeStatement');
 		$writer = $this->writer($connection, 1);
 		$this->expectException(InvalidArgumentException::class);
-		$writer->insert(new TableReference('wp_entries'), [
+		$writer->$method(new TableReference('wp_entries'), [
 			[
 				'id' => 1,
 			],
@@ -74,12 +145,16 @@ final class InsertWriterTest extends TestCase
 		]);
 	}
 
-	public function test_mismatched_columns_are_rejected_before_any_write(): void {
+	/**
+	 * @dataProvider insertMethods
+	 */
+	#[DataProvider('insertMethods')]
+	public function test_mismatched_columns_are_rejected_before_any_write(string $method): void {
 		$connection = $this->createMock(Connection::class);
 		$connection->expects($this->never())->method('executeStatement');
 		$writer = $this->writer($connection, 1);
 		$this->expectException(InvalidArgumentException::class);
-		$writer->insert(new TableReference('wp_entries'), [
+		$writer->$method(new TableReference('wp_entries'), [
 			[
 				'id' => 1,
 			],
@@ -89,7 +164,11 @@ final class InsertWriterTest extends TestCase
 		]);
 	}
 
-	public function test_a_later_chunk_failure_escapes_without_owning_transactions(): void {
+	/**
+	 * @dataProvider insertMethods
+	 */
+	#[DataProvider('insertMethods')]
+	public function test_a_later_chunk_failure_escapes_without_owning_transactions(string $method): void {
 		$connection = $this->createMock(Connection::class);
 		$connection->expects($this->never())->method('beginTransaction');
 		$connection->expects($this->never())->method('commit');
@@ -105,7 +184,7 @@ final class InsertWriterTest extends TestCase
 		);
 		$writer = $this->writer($connection, 1);
 		$this->expectExceptionMessage('second chunk failed');
-		$writer->insert(new TableReference('wp_entries'), [
+		$writer->$method(new TableReference('wp_entries'), [
 			[
 				'id' => 1,
 			],

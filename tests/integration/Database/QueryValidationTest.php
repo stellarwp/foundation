@@ -67,6 +67,10 @@ final class QueryValidationTest extends DatabaseTestCase
 			'filtered empty insert'    => fn () => $queries->table($this->suffix)->where('id', 1)->insert([]),
 			'ordered empty insert'     => fn () => $queries->table($this->suffix)->orderBy('id')->insert([]),
 			'aliased empty insert'     => fn () => $queries->table($this->suffix, 'e')->insert([]),
+			'filtered ignored insert'  => fn () => $queries->table($this->suffix)->where('id', 1)->insertOrIgnore([]),
+			'ordered ignored insert'   => fn () => $queries->table($this->suffix)->orderBy('id')->insertOrIgnore([]),
+			'projected ignored insert' => fn () => $queries->table($this->suffix)->select('name')->insertOrIgnore([]),
+			'aliased ignored insert'   => fn () => $queries->table($this->suffix, 'e')->insertOrIgnore([]),
 			'aliased empty upsert'     => fn () => $queries->table($this->suffix, 'e')->upsert([], [
 				'name',
 			]),

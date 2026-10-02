@@ -351,7 +351,7 @@ $this->connection->insert( $this->reports->quotedName(), [
 ] );
 ```
 
-Insert, upsert, and delete queries use an unaliased target table. Start them with `$table->query()` without an alias.
+Insert, insert-or-ignore, upsert, and delete queries use an unaliased target table. Start them with `$table->query()` without an alias.
 
 Query `insert()` and `upsert()` return total affected rows as `int`; `update()` and `delete()` preserve Doctrine’s `int|string` affected-row counts. Rows in a multi-row write must have identical column sets, although their key order may differ. Empty insert and upsert inputs return zero. Boolean values are bound as integers; use decimal strings for exact amounts. Date/time values are formatted with microseconds, and the target column and database determine retained precision.
 
@@ -359,7 +359,34 @@ MySQL normally rounds fractional seconds when writing to a lower-precision colum
 
 Large writes split into multiple statements within the parameter limit. Each statement is atomic, but the complete write needs a caller-owned transaction to roll back earlier chunks if a later chunk fails.
 
-`update()` and `delete()` require conditions, retain supported ordering and limits, and reject joins, projections, distinct, grouping, having, or offsets. `insert()`, `insertGetId()`, and `upsert()` reject previously accumulated query conditions, projections, ordering, limits, and other shaping state, even for empty input. Start from a fresh query for those operations.
+`update()` and `delete()` require conditions, retain supported ordering and limits, and reject joins, projections, distinct, grouping, having, or offsets. `insert()`, `insertOrIgnore()`, `insertGetId()`, and `upsert()` reject previously accumulated query conditions, projections, ordering, limits, and other shaping state, even for empty input. Start from a fresh query for those operations.
+
+### Insert rows and skip duplicates
+
+Use `insertOrIgnore()` when existing rows should remain unchanged on a primary or unique-key conflict:
+
+```php
+$inserted = $this->reports->query()->insertOrIgnore( [
+	[
+		'id' => 10,
+		'title' => 'Weekly',
+		'status' => 'draft',
+	],
+	[
+		'id' => 11,
+		'title' => 'Monthly',
+		'status' => 'draft',
+	],
+] );
+```
+
+The method accepts one associative row or a list of rows and returns the number actually inserted as `int`. If report `10` already exists and `11` is new, `$inserted` is `1`. Empty input or a write in which every row is skipped returns `0`.
+
+:::caution[IGNORE also changes data-error handling]
+This uses MySQL/MariaDB `INSERT IGNORE`, not a duplicate-only exception handler. The server can truncate oversized strings, adjust invalid values, or skip rows with other ignorable constraint errors, even in strict mode. The returned count does not tell you whether inserted values were adjusted. Use ordinary `insert()` to retain the server's normal error handling, or `upsert()` when conflicting rows should be updated. See the [MySQL IGNORE rules](https://dev.mysql.com/doc/refman/8.0/en/sql-mode.html#ignore-effect-on-execution) and [MariaDB INSERT IGNORE documentation](https://mariadb.com/docs/server/reference/sql-statements/data-manipulation/inserting-loading-data/insert-ignore).
+:::
+
+Foundation still rejects invalid row shapes, unsupported PHP values, and accumulated query options. Unignored database failures throw. The method shares `insert()`'s binding and chunking behavior and participates in the caller's transaction; wrap multi-chunk writes in `transactional()` when they must roll back together.
 
 ### Increment or decrement a column
 

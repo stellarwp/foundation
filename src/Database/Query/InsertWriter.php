@@ -46,49 +46,22 @@ final readonly class InsertWriter
 	 * @throws Exception                When execution fails, including in a later chunk.
 	 */
 	public function insert(TableReference $table, array $rows, array $update = []): int {
-		if ($table->alias !== null) {
-			throw new InvalidArgumentException('Insert targets cannot have an alias.');
-		}
+		return $this->write($table, $rows, 'INSERT', $update);
+	}
 
-		if ($rows === []) {
-			return 0;
-		}
-
-		$rows = array_is_list($rows) ? $rows : [
-			$rows,
-		];
-		$normalized = $this->normalizeRows($rows);
-		$columns    = array_keys($normalized[0]);
-
-		if (count($columns) > $this->parameterLimit) {
-			throw new InvalidArgumentException('One insert row exceeds the statement parameter limit.');
-		}
-
-		foreach ($update as $column) {
-			if (! in_array($column, $columns, true)) {
-				throw new InvalidArgumentException('Upsert update columns must occur in the inserted rows.');
-			}
-		}
-
-		$suffix      = $update === [] ? '' : $this->builder->build($update, $table->name);
-		$prefix      = 'INSERT INTO ' . $this->quoter->quote($table->name) . ' (' . implode(', ', array_map($this->quoter->quote(...), $columns)) . ') VALUES ';
-		$placeholder = '(' . implode(', ', array_fill(0, count($columns), '?')) . ')';
-		$chunkSize   = intdiv($this->parameterLimit, count($columns));
-		$total       = 0;
-
-		for ($offset = 0, $rowCount = count($normalized); $offset < $rowCount; $offset += $chunkSize) {
-			$chunk    = array_slice($normalized, $offset, $chunkSize);
-			$bindings = [];
-
-			foreach ($chunk as $row) {
-				array_push($bindings, ...array_values($row));
-			}
-
-			$sql = $prefix . implode(', ', array_fill(0, count($chunk), $placeholder)) . $suffix;
-			$total += (int) $this->executor->statement(new Fragment($sql, $bindings));
-		}
-
-		return $total;
+	/**
+	 * Insert rows using the server's IGNORE behavior and return the inserted-row count.
+	 *
+	 * Duplicate keys skip rows; other ignorable errors may coerce values with warnings.
+	 * Validation and chunking match insert(), without opening a transaction.
+	 *
+	 * @param array<string, mixed>|list<array<string, mixed>> $rows
+	 *
+	 * @throws InvalidArgumentException For invalid columns, values, or mismatched rows.
+	 * @throws Exception                When an unignored execution failure occurs.
+	 */
+	public function insertOrIgnore(TableReference $table, array $rows): int {
+		return $this->write($table, $rows, 'INSERT IGNORE');
 	}
 
 	/**
@@ -115,6 +88,59 @@ final readonly class InsertWriter
 		}
 
 		return $this->executor->lastInsertId();
+	}
+
+	/**
+	 * Validate the complete input and execute each parameter-bounded statement.
+	 *
+	 * @param array<string, mixed>|list<array<string, mixed>> $rows
+	 * @param 'INSERT'|'INSERT IGNORE'                        $command
+	 * @param list<string>                                    $update
+	 */
+	private function write(TableReference $table, array $rows, string $command, array $update = []): int {
+		if ($table->alias !== null) {
+			throw new InvalidArgumentException('Insert targets cannot have an alias.');
+		}
+
+		if ($rows === []) {
+			return 0;
+		}
+
+		$rows = array_is_list($rows) ? $rows : [
+			$rows,
+		];
+		$normalized = $this->normalizeRows($rows);
+		$columns    = array_keys($normalized[0]);
+
+		if (count($columns) > $this->parameterLimit) {
+			throw new InvalidArgumentException('One insert row exceeds the statement parameter limit.');
+		}
+
+		foreach ($update as $column) {
+			if (! in_array($column, $columns, true)) {
+				throw new InvalidArgumentException('Upsert update columns must occur in the inserted rows.');
+			}
+		}
+
+		$suffix      = $update === [] ? '' : $this->builder->build($update, $table->name);
+		$prefix      = $command . ' INTO ' . $this->quoter->quote($table->name) . ' (' . implode(', ', array_map($this->quoter->quote(...), $columns)) . ') VALUES ';
+		$placeholder = '(' . implode(', ', array_fill(0, count($columns), '?')) . ')';
+		$chunkSize   = intdiv($this->parameterLimit, count($columns));
+		$total       = 0;
+
+		for ($offset = 0, $rowCount = count($normalized); $offset < $rowCount; $offset += $chunkSize) {
+			$chunk    = array_slice($normalized, $offset, $chunkSize);
+			$bindings = [];
+
+			foreach ($chunk as $row) {
+				array_push($bindings, ...array_values($row));
+			}
+
+			$sql = $prefix . implode(', ', array_fill(0, count($chunk), $placeholder)) . $suffix;
+			$total += (int) $this->executor->statement(new Fragment($sql, $bindings));
+		}
+
+		return $total;
 	}
 
 	/**
