@@ -436,6 +436,61 @@ final class DatabaseMigrateCest
 	}
 
 	/**
+	 * Target adoption previews its selection, requires confirmation, and executes no schema work.
+	 */
+	public function test_mark_through_requires_confirmation_and_skips_application_schema(WPCLITester $I): void {
+		$later = [
+			'FOUNDATION_TEST_LATER_MIGRATION' => '1',
+		];
+		$I->cli([
+			'foundation',
+			'migrate:mark-applied',
+			'--to=20260623000001',
+		], $later, "n\n");
+		$I->seeInShellOutput('20260623000001 (pending)');
+		$I->dontSeeInShellOutput('20260623000002');
+		$I->seeInShellOutput('Record pending migrations through 20260623000001 as applied?');
+		$I->cli([
+			'foundation',
+			'migrate:status',
+		], $later);
+		$I->seeInShellOutput('pending');
+
+		for ($attempt = 0; $attempt < 2; $attempt++) {
+			$I->cli([
+				'foundation',
+				'migrate:mark-applied',
+				'--to=20260623000001',
+				'--yes',
+			], $later);
+			$I->seeResultCodeIs(0);
+			$I->seeInShellOutput('Registered migrations through 20260623000001 are recorded as applied.');
+			$I->seeInShellOutput('No migration work was executed.');
+			$I->dontSeeInShellOutput('20260623000002');
+		}
+
+		$I->cli([
+			'foundation',
+			'migrate:status',
+		], $later);
+		$I->seeInShellOutput('applied');
+		$I->seeInShellOutput("20260623000002\t20260623000002\tpending");
+		$I->cli([
+			'eval',
+			<<<'PHP'
+			global $wpdb;
+			$table = $wpdb->get_var($wpdb->prepare(
+				'SHOW TABLES LIKE %s',
+				$wpdb->esc_like($wpdb->prefix . 'foundation_cli_example'),
+			));
+			echo $table === null ? 'No application table created' : 'Unexpected table';
+			PHP,
+		]);
+		$I->seeResultCodeIs(0);
+		$I->seeInShellOutput('No application table created');
+	}
+
+	/**
 	 * Invalid history requests must leave the migration pending.
 	 */
 	public function test_history_marking_rejects_ambiguous_or_unknown_requests(WPCLITester $I): void {
@@ -450,6 +505,34 @@ final class DatabaseMigrateCest
 			[
 				'migrate:mark-applied',
 				'unknown',
+			],
+			[
+				'migrate:mark-applied',
+				'--to=unknown',
+			],
+			[
+				'migrate:mark-applied',
+				'--to=0',
+			],
+			[
+				'migrate:mark-applied',
+				'--to=latest',
+			],
+			[
+				'migrate:mark-applied',
+				'20260623000001',
+				'--to=20260623000001',
+			],
+			[
+				'migrate:mark-applied',
+				'--all',
+				'--to=20260623000001',
+			],
+			[
+				'migrate:mark-applied',
+				'20260623000001',
+				'--all',
+				'--to=20260623000001',
 			],
 			[
 				'migrate:mark-applied',
@@ -603,6 +686,7 @@ final class DatabaseMigrateCest
 			'migrate:mark-applied' => [
 				'<id>',
 				'--all',
+				'--to',
 			],
 			'migrate:mark-pending' => [
 				'<id>',

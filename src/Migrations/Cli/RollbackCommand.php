@@ -28,7 +28,9 @@ final class RollbackCommand extends Command
 	 * @throws \Throwable When migration validation, execution, or history storage fails.
 	 */
 	public function runCommand(array $args = [], array $assocArgs = []): int {
-		if (isset($assocArgs['step'], $assocArgs['to'])) {
+		$target = $assocArgs['to'] ?? null;
+
+		if (isset($assocArgs['step']) && $target !== null) {
 			WP_CLI::error('--step cannot be combined with --to.');
 		}
 
@@ -44,13 +46,11 @@ final class RollbackCommand extends Command
 			return self::ERROR;
 		}
 
-		$target = (string) ($assocArgs['to'] ?? Migrator::LATEST);
-
 		if ($target === Migrator::NONE) {
 			WP_CLI::confirm('Roll back all migrations? This can permanently delete application data.', $assocArgs);
 		}
 
-		$result = isset($assocArgs['to']) ? $this->migrator->rollbackTo($target) : $this->migrator->rollback($steps);
+		$result = $target !== null ? $this->migrator->rollbackTo($target) : $this->migrator->rollback($steps);
 		$this->output->showSteps($result);
 
 		return self::SUCCESS;

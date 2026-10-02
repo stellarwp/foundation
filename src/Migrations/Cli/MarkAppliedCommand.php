@@ -3,10 +3,9 @@
 namespace StellarWP\Foundation\Migrations\Cli;
 
 use StellarWP\Foundation\Migrations\Migrator;
+use StellarWP\Foundation\Migrations\ValueObjects\MigrationStatus;
 use StellarWP\Foundation\WPCli\Command;
 use WP_CLI;
-
-use function WP_CLI\Utils\get_flag_value;
 
 /**
  * Record completed work without executing migration declarations.
@@ -29,24 +28,43 @@ final class MarkAppliedCommand extends Command
 	 * @throws \Throwable When identity validation, history storage, or lock ownership fails.
 	 */
 	public function runCommand(array $args = [], array $assocArgs = []): int {
-		$id  = isset($args[0]) ? (string) $args[0] : null;
-		$all = (bool) get_flag_value($assocArgs, 'all', false);
+		$id     = $args[0] ?? null;
+		$all    = (bool) ($assocArgs['all'] ?? false);
+		$target = $assocArgs['to'] ?? null;
 
-		if (($id === null && ! $all) || ($id !== null && $all)) {
-			WP_CLI::error('Specify one migration ID or --all.');
+		if ((int) ($id !== null) + (int) $all + (int) ($target !== null) !== 1) {
+			WP_CLI::error('Specify exactly one migration ID, --all, or --to=<id>.');
 		}
 
-		if ($all) {
-			WP_CLI::line('Registered migrations covered by --all (existing records keep their timestamps):');
+		if ($id !== null) {
+			WP_CLI::confirm('Record ' . $id . ' as applied? Confirm that its complete schema and data work already exists.', $assocArgs);
+			$this->migrator->markApplied($id);
+			WP_CLI::success('Recorded ' . $id . ' as applied. No migration work was executed.');
 
-			foreach ($this->migrator->status() as $status) {
-				if ($status->migration === null) {
-					continue;
-				}
+			return self::SUCCESS;
+		}
 
-				WP_CLI::line($status->id . ' (' . $status->state() . ')');
+		$registered = array_filter(
+			$this->migrator->status(),
+			static fn (MigrationStatus $status): bool => $status->migration !== null,
+		);
+
+		if ($target !== null && ! in_array($target, array_column($registered, 'id'), true)) {
+			WP_CLI::error('Unknown registered migration target: ' . $target);
+		}
+
+		$selection = $target === null ? '--all' : '--to=' . $target;
+		WP_CLI::line('Registered migrations covered by ' . $selection . ' (existing records keep their timestamps):');
+
+		foreach ($registered as $status) {
+			if ($target !== null && strcmp($status->id, $target) > 0) {
+				continue;
 			}
 
+			WP_CLI::line($status->id . ' (' . $status->state() . ')');
+		}
+
+		if ($target === null) {
 			WP_CLI::confirm('Record all pending migrations as applied? Confirm that their complete schema and data work already exists.', $assocArgs);
 			$this->migrator->markAllApplied();
 			WP_CLI::success('All registered migrations are recorded as applied. No migration work was executed.');
@@ -54,9 +72,9 @@ final class MarkAppliedCommand extends Command
 			return self::SUCCESS;
 		}
 
-		WP_CLI::confirm('Record ' . $id . ' as applied? Confirm that its complete schema and data work already exists.', $assocArgs);
-		$this->migrator->markApplied((string) $id);
-		WP_CLI::success('Recorded ' . $id . ' as applied. No migration work was executed.');
+		WP_CLI::confirm('Record pending migrations through ' . $target . ' as applied? Confirm that their complete schema and data work already exists.', $assocArgs);
+		$this->migrator->markAppliedThrough($target);
+		WP_CLI::success('Registered migrations through ' . $target . ' are recorded as applied. No migration work was executed.');
 
 		return self::SUCCESS;
 	}
@@ -72,7 +90,7 @@ final class MarkAppliedCommand extends Command
 	 * {@inheritDoc}
 	 */
 	protected function description(): string {
-		return 'Record one migration or all pending migrations as already applied.';
+		return 'Record one migration, all pending migrations, or pending migrations through a target as already applied.';
 	}
 
 	/**
@@ -83,13 +101,19 @@ final class MarkAppliedCommand extends Command
 			[
 				'type'        => self::POSITIONAL,
 				'name'        => 'id',
-				'description' => 'Exact migration ID to mark; omit only with --all.',
+				'description' => 'Exact migration ID to mark; omit with --all or --to.',
 				'optional'    => true,
 			],
 			[
 				'type'        => self::FLAG,
 				'name'        => 'all',
 				'description' => 'Mark every registered pending migration applied without executing its work.',
+				'optional'    => true,
+			],
+			[
+				'type'        => self::ASSOCIATIVE,
+				'name'        => 'to',
+				'description' => 'Mark pending migrations through this registered ID, inclusively, without executing their work.',
 				'optional'    => true,
 			],
 			[

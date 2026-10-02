@@ -60,6 +60,14 @@ WP_CLI::add_hook('after_wp_load', static function (): void {
 	$container->mergeArrayVar(MigrationsProvider::MIGRATIONS, [
 		new MigrationRegistration('20260623000001', $migration),
 	]);
+
+	// Targeted adoption needs a later declaration that remains outside its selection.
+	if (getenv('FOUNDATION_TEST_LATER_MIGRATION') === '1') {
+		$container->mergeArrayVar(MigrationsProvider::MIGRATIONS, [
+			new MigrationRegistration('20260623000002', $migration),
+		]);
+	}
+
 	$context = new CommandContext(new CommandPrefix('foundation'));
 
 	// WP-CLI is already loaded; consume the real provider contributions at this hook.

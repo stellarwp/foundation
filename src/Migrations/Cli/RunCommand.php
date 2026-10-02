@@ -6,8 +6,6 @@ use StellarWP\Foundation\Migrations\Migrator;
 use StellarWP\Foundation\WPCli\Command;
 use WP_CLI;
 
-use function WP_CLI\Utils\get_flag_value;
-
 /**
  * Apply pending changes or preview their SQL.
  *
@@ -30,8 +28,8 @@ final class RunCommand extends Command
 	 * @throws \Throwable When migration validation, execution, or history storage fails.
 	 */
 	public function runCommand(array $args = [], array $assocArgs = []): int {
-		$target = (string) ($assocArgs['to'] ?? Migrator::LATEST);
-		$dryRun = (bool) get_flag_value($assocArgs, 'dry-run', false);
+		$target = $assocArgs['to'] ?? Migrator::LATEST;
+		$dryRun = (bool) ($assocArgs['dry-run'] ?? false);
 
 		if (! $dryRun && $target === Migrator::NONE) {
 			WP_CLI::confirm('Roll back all migrations? This can permanently delete application data.', $assocArgs);

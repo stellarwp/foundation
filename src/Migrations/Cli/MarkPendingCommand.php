@@ -27,7 +27,7 @@ final class MarkPendingCommand extends Command
 	 * @throws \Throwable When identity validation, history storage, or lock ownership fails.
 	 */
 	public function runCommand(array $args = [], array $assocArgs = []): int {
-		$id = (string) $args[0];
+		$id = $args[0];
 		WP_CLI::confirm('Remove the applied record for ' . $id . '? Its work must already be undone; a registered migration can run again.', $assocArgs);
 		$this->migrator->markPending($id);
 		WP_CLI::success('Removed the applied record for ' . $id . '. No migration work was executed.');

@@ -138,6 +138,27 @@ final class Migrator
 	}
 
 	/**
+	 * Record pending migrations through a registered target in inclusive ID order.
+	 *
+	 * Does not execute or verify migration work. Records the selection in one transaction
+	 * under the migration lock, preserving existing timestamps and all later history.
+	 * Marked migrations remain eligible for ordinary rollback through their down() declarations.
+	 *
+	 * @throws InvalidArgumentException When the target is not registered.
+	 * @throws Throwable                When history storage, transaction completion, or lock ownership fails.
+	 */
+	public function markAppliedThrough(string $target): void {
+		$this->migrations->get($target);
+		$this->locked(function () use ($target): void {
+			$ids = array_filter(
+				$this->migrations->ids(),
+				static fn (string $id): bool => strcmp($id, $target) <= 0,
+			);
+			$this->recordApplied(array_values($ids));
+		});
+	}
+
+	/**
 	 * Remove an applied record after its work has been deliberately undone outside the runner.
 	 *
 	 * Does not execute down(). An absent record is a no-op. IDs without a declaration can

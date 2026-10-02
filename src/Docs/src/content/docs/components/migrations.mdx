@@ -699,6 +699,26 @@ wp your-plugin migrate:mark-applied 20260923000001_create_reports_table
 
 Marking changes history under the same database advisory lock used for migration execution. It may create the ledger, but does not invoke `up()`, `down()`, or data callbacks, plan schema changes, or verify the live database. You own verification of the recorded effects. Each marking command prompts for confirmation; use `--yes` for an already reviewed operation.
 
+#### Mark migrations through an existing version
+
+When an installation already contains the work of the older migrations but still needs newer ones, mark through the last migration whose complete schema and data effects are present:
+
+```shell
+wp your-plugin migrate:mark-applied --to=20260923000001_create_reports_table
+```
+
+The command lists registered migrations through that ID, inclusively, before asking for confirmation. It records pending migrations in ascending ID order and preserves existing history timestamps, including records above the target. Later pending migrations remain available for `migrate:run`.
+
+The target must exactly match a registered migration ID. A history record whose declaration is missing cannot be used as the target. Choose exactly one selection: a positional ID, `--to=<id>`, or `--all`.
+
+Check the result and preview the remaining work before running newer migrations:
+
+```shell
+wp your-plugin migrate:status
+wp your-plugin migrate:run --dry-run
+wp your-plugin migrate:run
+```
+
 #### Mark all pending migrations as applied
 
 When adopting a complete existing schema, verify that **every currently pending migration's schema and data effects** are fulfilled, then record them together:
@@ -716,7 +736,7 @@ wp your-plugin migrate:run --dry-run
 
 Later migrations continue through the normal `migrate:run` workflow.
 
-Programmatic callers inject `Migrator` and use `markApplied(string $id): void`, `markAllApplied(): void`, or `markPending(string $id): void`. `markApplied()` requires a registered ID. Repeating it preserves the existing history entry and its timestamp. `markAllApplied()` records all currently registered pending IDs atomically in one transaction, preserving existing entries. A marked migration participates in normal rollback: reversing it invokes its `down()` declaration, with the same potential for data loss as an executed migration.
+Programmatic callers inject `Migrator` and use `markApplied(string $id): void`, `markAppliedThrough(string $target): void`, `markAllApplied(): void`, or `markPending(string $id): void`. The single-ID and through-target methods require a registered ID. Repeating a marking operation preserves existing entries and timestamps. The through-target and all-pending methods record their selected pending IDs atomically in one transaction under the migration lock. A marked migration participates in normal rollback: reversing it invokes its `down()` declaration, with the same potential for data loss as an executed migration.
 
 ### Interrupted schema changes
 

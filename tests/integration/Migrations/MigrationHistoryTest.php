@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Tests\Integration\Migrations;
 
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use StellarWP\Foundation\Migrations\Contracts\DescribesMigration;
 use StellarWP\Foundation\Migrations\Contracts\MigratesData;
@@ -59,7 +60,7 @@ final class MigrationHistoryTest extends DatabaseTestCase
 			new MigrationRegistration(AddEntryNote::ID, new AddEntryNote($table)),
 		);
 
-		$runner->markApplied(CreateEntries::ID);
+		$runner->markAppliedThrough(CreateEntries::ID);
 		$this->assertOriginal();
 		$steps = $runner->migrate();
 		$this->assertCount(1, $steps);
@@ -141,9 +142,74 @@ final class MigrationHistoryTest extends DatabaseTestCase
 	}
 
 	/**
-	 * A failure after the first batch insert cannot leave a partially adopted history.
+	 * Inclusive selection uses bytewise ordering and leaves existing history untouched.
 	 */
-	public function test_mark_all_rolls_back_earlier_inserts_when_a_later_insert_fails(): void {
+	public function test_mark_through_selects_pending_ids_inclusively_and_preserves_history(): void {
+		$migration = $this->unexecutableMigration();
+		$runner    = $this->runner(
+			new MigrationRegistration('case', $migration),
+			new MigrationRegistration('cAse', $migration),
+			new MigrationRegistration('11', $migration),
+			new MigrationRegistration('2', $migration),
+			new MigrationRegistration('Case', $migration),
+			new MigrationRegistration('10', $migration),
+			new MigrationRegistration('3', $migration),
+		);
+		$runner->markApplied('10');
+		$runner->markApplied('case');
+
+		foreach ([
+			'10',
+			'case',
+		] as $id) {
+			$this->observer->update($this->quotedHistory, [
+				'applied_at' => '2001-02-03 04:05:06.123456',
+			], [
+				'version' => $id,
+			]);
+		}
+
+		$this->observer->insert($this->quotedHistory, [
+			'version'    => 'missing',
+			'applied_at' => '2001-02-03 04:05:06.123456',
+		]);
+		$existing = $this->history();
+		$runner->markAppliedThrough('2');
+		$applied = $this->history();
+		$this->assertSame([
+			'10',
+			'11',
+			'2',
+			'case',
+			'missing',
+		], array_map('strval', array_keys($applied)));
+
+		foreach ($existing as $id => $timestamp) {
+			$this->assertSame($timestamp, $applied[$id]);
+		}
+
+		$runner->markAppliedThrough('2');
+		$this->assertSame($applied, $this->history());
+		$runner->markAppliedThrough('Case');
+		$this->assertSame([
+			'10',
+			'11',
+			'2',
+			'3',
+			'Case',
+			'case',
+			'missing',
+		], array_map('strval', array_keys($this->history())));
+		$this->assertOriginal();
+	}
+
+	/**
+	 * A failure after the first batch insert cannot leave a partially adopted history.
+	 *
+	 * @dataProvider markingSelections
+	 */
+	#[DataProvider('markingSelections')]
+	public function test_batch_marking_rolls_back_earlier_inserts_when_a_later_insert_fails(bool $through): void {
 		$migration = $this->unexecutableMigration();
 		$runner    = $this->runner(
 			new MigrationRegistration('first', $migration),
@@ -163,7 +229,7 @@ final class MigrationHistoryTest extends DatabaseTestCase
 			END");
 
 		try {
-			$runner->markAllApplied();
+			$through ? $runner->markAppliedThrough('second') : $runner->markAllApplied();
 			$this->fail('The second insert must fail.');
 		} catch (Throwable $failure) {
 			$this->assertStringContainsString('Second history insert rejected', $failure->getMessage());
@@ -173,8 +239,24 @@ final class MigrationHistoryTest extends DatabaseTestCase
 
 		$this->assertSame($existing, $this->history());
 		$this->assertFalse($this->db->isTransactionActive());
-		$runner->markAllApplied();
+		$through ? $runner->markAppliedThrough('second') : $runner->markAllApplied();
 		$this->assertCount(3, $this->history());
+	}
+
+	/**
+	 * Exercise both supported bulk history selections.
+	 *
+	 * @return array<string, array{bool}>
+	 */
+	public static function markingSelections(): array {
+		return [
+			'all'            => [
+				false,
+			],
+			'through target' => [
+				true,
+			],
+		];
 	}
 
 	/**
@@ -277,6 +359,49 @@ final class MigrationHistoryTest extends DatabaseTestCase
 	}
 
 	/**
+	 * Unknown targets and execution aliases fail before creating history storage.
+	 */
+	public function test_mark_through_rejects_unknown_targets_without_creating_history(): void {
+		$runner = $this->runner(new MigrationRegistration('Case', $this->unexecutableMigration()));
+
+		foreach ([
+			'missing',
+			'case',
+			'0',
+			'latest',
+		] as $target) {
+			try {
+				$runner->markAppliedThrough($target);
+				$this->fail('A target must exactly identify a registered migration.');
+			} catch (InvalidArgumentException) {
+				$this->assertHistoryAbsent();
+			}
+		}
+	}
+
+	/**
+	 * A recorded target without a declaration cannot authorize adopting other work.
+	 */
+	public function test_mark_through_rejects_history_only_targets_without_changing_history(): void {
+		$runner = $this->runner(
+			new MigrationRegistration('first', $this->unexecutableMigration()),
+			new MigrationRegistration('last', $this->unexecutableMigration()),
+		);
+		$runner->markApplied('last');
+		$this->observer->insert($this->quotedHistory, [
+			'version' => 'missing',
+		]);
+		$existing = $this->history();
+
+		try {
+			$runner->markAppliedThrough('missing');
+			$this->fail('Ledger-only targets must be rejected.');
+		} catch (InvalidArgumentException) {
+			$this->assertSame($existing, $this->history());
+		}
+	}
+
+	/**
 	 * The removal boundary rejects invalid ledger identities and target aliases.
 	 */
 	public function test_mark_pending_rejects_invalid_ids_without_creating_history(): void {
@@ -329,6 +454,7 @@ final class MigrationHistoryTest extends DatabaseTestCase
 			foreach ([
 				static fn () => $runner->markApplied('one'),
 				static fn () => $runner->markAllApplied(),
+				static fn () => $runner->markAppliedThrough('one'),
 				static fn () => $runner->markPending('one'),
 			] as $operation) {
 				try {
