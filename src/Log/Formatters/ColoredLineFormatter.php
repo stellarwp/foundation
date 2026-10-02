@@ -68,11 +68,13 @@ class ColoredLineFormatter extends LineFormatter
 	/**
 	 * Formats a log record, with color.
 	 *
-	 * @param mixed[] $record A log record to format.
+	 * Accept the installed Monolog version's record and preserve it for the parent formatter.
+	 *
+	 * @param mixed $record Monolog 2's record array or Monolog 3's LogRecord, supplied by the installed logger.
 	 *
 	 * @return string The formatted and colored record
 	 */
-	public function format(array $record): string {
+	public function format($record): string {
 		$formatted = parent::format($record);
 		$formatted = str_replace('%color_start%', $this->colorScheme[\StellarWP\Foundation\Log\LogLevel::toPsrLogLevel($record['level'])], $formatted);
 

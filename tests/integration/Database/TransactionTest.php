@@ -12,6 +12,7 @@ use StellarWP\Foundation\Database\Exceptions\CommitOutcomeUnknown;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\TransactionFailed;
 use StellarWP\Foundation\Tests\Support\Fixtures\Database\DatabaseTestCase;
+use StellarWP\Foundation\Tests\Support\Fixtures\Log\CallbackLogger;
 use Throwable;
 
 final class TransactionTest extends DatabaseTestCase
@@ -564,14 +565,10 @@ final class TransactionTest extends DatabaseTestCase
 	}
 
 	public function test_failed_savepoint_recovery_preserves_duplicate_and_prevents_outer_commit(): void {
-		$logger = new \Monolog\Logger('doctrine-evaluation');
-		$logger->pushHandler(new \Monolog\Handler\TestHandler());
-		$logger->pushProcessor(function (array $record): array {
-			if (str_starts_with($record['context']['sql'] ?? '', 'ROLLBACK TO SAVEPOINT')) {
+		$logger = new CallbackLogger(function (string $message, array $context): void {
+			if (str_starts_with($context['sql'] ?? '', 'ROLLBACK TO SAVEPOINT')) {
 				$this->killConnection();
 			}
-
-			return $record;
 		});
 		$db = $this->withLogging($logger);
 
@@ -880,14 +877,10 @@ final class TransactionTest extends DatabaseTestCase
 	}
 
 	public function test_connection_loss_before_begin_rejects_the_callback(): void {
-		$logger = new \Monolog\Logger('doctrine-evaluation');
-		$logger->pushHandler(new \Monolog\Handler\TestHandler());
-		$logger->pushProcessor(function (array $record): array {
-			if ($record['message'] === 'Beginning transaction') {
+		$logger = new CallbackLogger(function (string $message, array $context): void {
+			if ($message === 'Beginning transaction') {
 				$this->killConnection();
 			}
-
-			return $record;
 		});
 		$db     = $this->withLogging($logger);
 		$called = false;
@@ -905,14 +898,10 @@ final class TransactionTest extends DatabaseTestCase
 	}
 
 	public function test_caught_savepoint_release_failure_remains_terminal(): void {
-		$logger = new \Monolog\Logger('doctrine-evaluation');
-		$logger->pushHandler(new \Monolog\Handler\TestHandler());
-		$logger->pushProcessor(function (array $record): array {
-			if (str_starts_with($record['context']['sql'] ?? '', 'RELEASE SAVEPOINT')) {
+		$logger = new CallbackLogger(function (string $message, array $context): void {
+			if (str_starts_with($context['sql'] ?? '', 'RELEASE SAVEPOINT')) {
 				$this->killConnection();
 			}
-
-			return $record;
 		});
 		$db = $this->withLogging($logger);
 

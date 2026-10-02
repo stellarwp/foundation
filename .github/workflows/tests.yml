@@ -37,6 +37,41 @@ jobs:
       - name: Run Feature Tests
         run: vendor/bin/phpunit --configuration ./phpunit.xml.dist --colors=always --testsuite Feature
 
+  monolog:
+    runs-on: ubuntu-latest
+    name: Monolog ${{ matrix.monolog }} compatibility
+    strategy:
+      fail-fast: false
+      matrix:
+        monolog: [ '2.11.0', '3.10.0' ]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          extensions: redis, mysqli
+
+      - name: Install Composer dependencies
+        uses: ramsey/composer-install@v4
+        with:
+          dependency-versions: highest
+
+      - name: Install supported Monolog floor
+        run: composer update monolog/monolog:${{ matrix.monolog }} --with-all-dependencies --no-interaction --prefer-dist
+
+      - name: Analyze supported Monolog APIs
+        run: composer analyze
+
+      - name: Test logging behavior
+        run: |
+          vendor/bin/phpunit --configuration phpunit.xml.dist tests/Unit/Log
+          vendor/bin/phpunit --configuration phpunit.xml.dist tests/Feature/Log
+
   slic:
     runs-on: ubuntu-latest
     name: SLIC Tests (${{ matrix.database.name }})
