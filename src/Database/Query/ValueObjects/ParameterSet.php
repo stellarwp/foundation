@@ -2,20 +2,22 @@
 
 namespace StellarWP\Foundation\Database\Query\ValueObjects;
 
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\ParameterType;
+use Doctrine\DBAL\Types\Type;
 
 /**
- * Normalized values and their matching DBAL parameter types.
+ * Values and their matching DBAL parameter types, including explicit conversions.
  *
  * @internal
  */
 final readonly class ParameterSet
 {
 	/**
-	 * Keep values and types in the same placeholder order.
+	 * Associate values and types by placeholder position or name.
 	 *
-	 * @param list<int|string|null> $values
-	 * @param list<ParameterType>   $types
+	 * @param array<int<0, max>|string, mixed>                                        $values
+	 * @param array<int<0, max>|string, string|Type|ParameterType|ArrayParameterType> $types
 	 */
 	public function __construct(
 		public array $values,

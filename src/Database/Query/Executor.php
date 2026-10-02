@@ -3,15 +3,17 @@
 namespace StellarWP\Foundation\Database\Query;
 
 use DateTimeInterface;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception;
 use Doctrine\DBAL\ParameterType;
+use Doctrine\DBAL\Types\Type;
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Query\ValueObjects\Fragment;
 use StellarWP\Foundation\Database\Query\ValueObjects\ParameterSet;
 
 /**
- * Executes compiled statements through the application's shared connection.
+ * Executes compiled and application-owned SQL through the shared connection.
  *
  * @internal
  */
@@ -34,9 +36,7 @@ final readonly class Executor
 	 * @return list<array<string, mixed>>
 	 */
 	public function rows(Fragment $statement): array {
-		$parameters = $this->parameters($statement);
-
-		return $this->connection->fetchAllAssociative($statement->sql, $parameters->values, $parameters->types);
+		return $this->fetchAllAssociative($statement->sql, $statement->bindings);
 	}
 
 	/**
@@ -48,7 +48,7 @@ final readonly class Executor
 	 * @return list<mixed>
 	 */
 	public function column(Fragment $statement): array {
-		$parameters = $this->parameters($statement);
+		$parameters = $this->parameters($statement->bindings);
 
 		return $this->connection->fetchFirstColumn($statement->sql, $parameters->values, $parameters->types);
 	}
@@ -62,7 +62,7 @@ final readonly class Executor
 	 * @return array<string, mixed>|false
 	 */
 	public function first(Fragment $statement): array|false {
-		$parameters = $this->parameters($statement);
+		$parameters = $this->parameters($statement->bindings);
 
 		return $this->connection->fetchAssociative($statement->sql, $parameters->values, $parameters->types);
 	}
@@ -74,7 +74,7 @@ final readonly class Executor
 	 * @throws Exception                When execution fails.
 	 */
 	public function value(Fragment $statement): mixed {
-		$parameters = $this->parameters($statement);
+		$parameters = $this->parameters($statement->bindings);
 
 		return $this->connection->fetchOne($statement->sql, $parameters->values, $parameters->types);
 	}
@@ -86,9 +86,39 @@ final readonly class Executor
 	 * @throws Exception                When execution fails.
 	 */
 	public function statement(Fragment $statement): int|string {
-		$parameters = $this->parameters($statement);
+		return $this->executeStatement($statement->sql, $statement->bindings);
+	}
 
-		return $this->connection->executeStatement($statement->sql, $parameters->values, $parameters->types);
+	/**
+	 * Fetch associative rows with inferred types and optional explicit conversions.
+	 *
+	 * @param list<mixed>|array<string, mixed>                                        $bindings
+	 * @param array<int<0, max>|string, string|Type|ParameterType|ArrayParameterType> $types
+	 *
+	 * @throws InvalidArgumentException For unsupported values without an explicit type.
+	 * @throws Exception                When execution, type conversion, or fetching fails.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	public function fetchAllAssociative(string $sql, array $bindings = [], array $types = []): array {
+		$parameters = $this->parameters($bindings, $types);
+
+		return $this->connection->fetchAllAssociative($sql, $parameters->values, $parameters->types);
+	}
+
+	/**
+	 * Execute SQL with inferred types unless the caller supplies an explicit type.
+	 *
+	 * @param list<mixed>|array<string, mixed>                                        $bindings
+	 * @param array<int<0, max>|string, string|Type|ParameterType|ArrayParameterType> $types
+	 *
+	 * @throws InvalidArgumentException For unsupported values without an explicit type.
+	 * @throws Exception                When execution or type conversion fails.
+	 */
+	public function executeStatement(string $sql, array $bindings = [], array $types = []): int|string {
+		$parameters = $this->parameters($bindings, $types);
+
+		return $this->connection->executeStatement($sql, $parameters->values, $parameters->types);
 	}
 
 	/**
@@ -130,15 +160,19 @@ final readonly class Executor
 
 	/**
 	 * Prepare values and explicit binding types for one execution.
+	 *
+	 * @param list<mixed>|array<string, mixed>                                        $bindings
+	 * @param array<int<0, max>|string, string|Type|ParameterType|ArrayParameterType> $types
 	 */
-	private function parameters(Fragment $statement): ParameterSet {
-		$bindings = [];
-		$types    = [];
+	private function parameters(array $bindings, array $types = []): ParameterSet {
+		foreach ($bindings as $key => $value) {
+			if (array_key_exists($key, $types)) {
+				continue;
+			}
 
-		foreach ($statement->bindings as $value) {
-			$value      = $this->normalize($value);
-			$bindings[] = $value;
-			$types[]    = match (true) {
+			$value          = $this->normalize($value);
+			$bindings[$key] = $value;
+			$types[$key]    = match (true) {
 				$value === null => ParameterType::NULL,
 				is_int($value)  => ParameterType::INTEGER,
 				default         => ParameterType::STRING,

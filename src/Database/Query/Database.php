@@ -2,13 +2,17 @@
 
 namespace StellarWP\Foundation\Database\Query;
 
+use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\DBAL\Exception;
+use Doctrine\DBAL\ParameterType;
+use Doctrine\DBAL\Types\Type;
 use InvalidArgumentException;
 use StellarWP\Foundation\Database\Contracts\Table;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Query\ValueObjects\TableReference;
 
 /**
- * Start fresh application queries and resolve WordPress-owned tables.
+ * Query application tables and execute SQL with inferred parameter types.
  */
 final readonly class Database
 {
@@ -56,5 +60,75 @@ final readonly class Database
 	 */
 	public function wordpress(string $name): TableReference {
 		return $this->resolver->wordpress($name);
+	}
+
+	/**
+	 * Execute application-owned SQL and return associative rows, or an empty list.
+	 *
+	 * Omitted types use the fluent builder's value normalization and type inference.
+	 * Explicit types pass the original values to Doctrine for conversion.
+	 *
+	 * @param list<mixed>|array<string, mixed>                                        $bindings A zero-based positional list or named values, without mixing styles.
+	 * @param array<int<0, max>|string, string|Type|ParameterType|ArrayParameterType> $types    Types keyed by zero-based position or parameter name.
+	 *
+	 * @throws InvalidArgumentException For unsupported values without an explicit type.
+	 * @throws DatabaseException        When the managed session or transaction is invalid.
+	 * @throws Exception                When execution or type conversion fails.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	public function select(string $sql, array $bindings = [], array $types = []): array {
+		return $this->executor->fetchAllAssociative($sql, $bindings, $types);
+	}
+
+	/**
+	 * Execute an application-owned SQL insert and return its affected-row count.
+	 *
+	 * Omitted types use the fluent builder's value normalization and type inference.
+	 * Explicit types pass the original values to Doctrine for conversion.
+	 *
+	 * @param list<mixed>|array<string, mixed>                                        $bindings A zero-based positional list or named values, without mixing styles.
+	 * @param array<int<0, max>|string, string|Type|ParameterType|ArrayParameterType> $types    Types keyed by zero-based position or parameter name.
+	 *
+	 * @throws InvalidArgumentException For unsupported values without an explicit type.
+	 * @throws DatabaseException        When the managed session or transaction is invalid.
+	 * @throws Exception                When execution or type conversion fails.
+	 */
+	public function insert(string $sql, array $bindings = [], array $types = []): int|string {
+		return $this->executor->executeStatement($sql, $bindings, $types);
+	}
+
+	/**
+	 * Execute an application-owned SQL update and return its affected-row count.
+	 *
+	 * Omitted types use the fluent builder's value normalization and type inference.
+	 * Explicit types pass the original values to Doctrine for conversion.
+	 *
+	 * @param list<mixed>|array<string, mixed>                                        $bindings A zero-based positional list or named values, without mixing styles.
+	 * @param array<int<0, max>|string, string|Type|ParameterType|ArrayParameterType> $types    Types keyed by zero-based position or parameter name.
+	 *
+	 * @throws InvalidArgumentException For unsupported values without an explicit type.
+	 * @throws DatabaseException        When the managed session or transaction is invalid.
+	 * @throws Exception                When execution or type conversion fails.
+	 */
+	public function update(string $sql, array $bindings = [], array $types = []): int|string {
+		return $this->executor->executeStatement($sql, $bindings, $types);
+	}
+
+	/**
+	 * Execute an application-owned SQL delete and return its affected-row count.
+	 *
+	 * Omitted types use the fluent builder's value normalization and type inference.
+	 * Explicit types pass the original values to Doctrine for conversion.
+	 *
+	 * @param list<mixed>|array<string, mixed>                                        $bindings A zero-based positional list or named values, without mixing styles.
+	 * @param array<int<0, max>|string, string|Type|ParameterType|ArrayParameterType> $types    Types keyed by zero-based position or parameter name.
+	 *
+	 * @throws InvalidArgumentException For unsupported values without an explicit type.
+	 * @throws DatabaseException        When the managed session or transaction is invalid.
+	 * @throws Exception                When execution or type conversion fails.
+	 */
+	public function delete(string $sql, array $bindings = [], array $types = []): int|string {
+		return $this->executor->executeStatement($sql, $bindings, $types);
 	}
 }

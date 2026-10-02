@@ -448,19 +448,130 @@ An insertion failure rolls back the deletion and preserves the previous rows.
 
 `toSql()` and `getBindings()` inspect the compiled read query without executing it. Bindings remain separate from SQL.
 
-Inject `Doctrine\DBAL\Connection` for specialized SQL or native Doctrine builders and results. Resolve application table names through `quotedName()` and bind external values:
+### Run SQL with bound values
+
+Inject `StellarWP\Foundation\Database\Query\Database` when an operation needs application-written SQL. Each method accepts `( $sql, $bindings = [], $types = [] )`, uses the shared managed connection, and infers binding types from PHP values using the same rules as the fluent builder.
+
+| Method | Result |
+| --- | --- |
+| `insert()` | Affected-row count (`int|string`), not the generated ID |
+| `update()` | Affected-row count (`int|string`) |
+| `delete()` | Affected-row count (`int|string`), including zero when no rows match |
+| `select()` | List of associative rows, or `[]` when no rows match |
+
+Failures throw exceptions. `select()` fetches all rows and preserves Doctrine's returned values; it does not hydrate objects or convert columns through Doctrine types. Use a native Doctrine result when you need to stream a large result set.
+
+The following examples assume an injected `Database $db` and your application's `Reports_Table $reports`:
 
 ```php
-$connection->executeStatement(
-	'UPDATE ' . $reports->quotedName() . '
-	SET status = ?
-	WHERE id = ?',
+$table = $this->reports->quotedName();
+
+$inserted = $this->db->insert(
+	"INSERT INTO {$table} (
+		title,
+		status
+	)
+	VALUES (?, ?)",
 	[
-		'ready',
-		$id,
+		'Quarterly report',
+		'draft',
+	],
+);
+
+$rows = $this->db->select(
+	"SELECT id,
+		title
+	FROM {$table}
+	WHERE status = :status
+	ORDER BY id",
+	[
+		'status' => 'draft',
+	],
+);
+
+$deleted = $this->db->delete(
+	"DELETE FROM {$table}
+	WHERE status = ?",
+	[
+		'archived',
 	],
 );
 ```
+
+### Apply a conditional SQL update
+
+For example, this repository increments credits within the current period, resets them for a new period, and enforces the quota in one update. MySQL's `<=>` compares periods with null-safe equality. Place the repository in `src/Usage/Usage_Repository.php`.
+
+```php title="Usage_Repository.php"
+use Plugin\Database\Tables\Usage_Table;
+use StellarWP\Foundation\Database\Query\Database;
+
+final readonly class Usage_Repository {
+
+	public function __construct(
+		private Usage_Table $usage,
+		private Database $db,
+	) {
+	}
+
+	/**
+	 * Apply a credit claim when the resulting usage fits within the quota.
+	 */
+	public function claim( int $id, int $amount, ?string $period, int $quota ): bool {
+		$table = $this->usage->quotedName();
+
+		return $this->db->update(
+			"UPDATE {$table}
+			SET credits_used = IF(period_start <=> ?, credits_used + ?, ?),
+				period_start = ?
+			WHERE id = ?
+				AND IF(period_start <=> ?, credits_used + ?, ?) <= ?",
+			[
+				$period,
+				$amount,
+				$amount,
+				$period,
+				$id,
+				$period,
+				$amount,
+				$amount,
+				$quota,
+			],
+		) > 0;
+	}
+}
+```
+
+Integers bind as integers, booleans become `0` or `1`, and null binds as SQL `NULL`. Strings remain strings, including numeric strings such as `'00500'`. Dates retain the fluent builder's microsecond formatting, and floats use its string conversion. All four SQL methods infer types from the values, not the table schema.
+
+### Override parameter types
+
+Use either a zero-based list for positional `?` bindings or an associative array for named `:name` bindings in one statement. Supply optional Doctrine types by zero-based position or parameter name when you need explicit conversion. Explicitly typed values reach Doctrine unchanged; other values still use inference:
+
+```php
+use Doctrine\DBAL\Types\Types;
+
+$db->update(
+	'UPDATE ' . $reports->quotedName() . '
+	SET metadata = :metadata
+	WHERE id = :id',
+	[
+		'metadata' => [
+			'source' => 'portal',
+		],
+		'id' => $id,
+	],
+	[
+		'metadata' => Types::JSON,
+	],
+);
+```
+
+`$db->update()` accepts complete SQL, while `$table->query()->update()` accepts column values and builds the SQL. Resolve table names through `quotedName()` and bind external values. With complete SQL, you own the `WHERE` clause and any intended whole-table update or deletion. Raw SQL insert statements execute as supplied; use the fluent builder for automatic bulk-insert chunking.
+
+### Use native Doctrine operations
+
+Inject `Doctrine\DBAL\Connection` for transactions, native builders, results, and other advanced operations. Native execution keeps Doctrine's parameter behavior: supply explicit types when the default string binding would change the query's meaning.
 
 Native Doctrine execution exceptions remain unchanged. Foundation validation failures reject invalid query construction before execution. Keep raw SQL and expressions application-owned; raw query methods do not make untrusted SQL safe.
 
