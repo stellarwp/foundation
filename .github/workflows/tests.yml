@@ -25,6 +25,7 @@ jobs:
           php-version: ${{ matrix.php }}
           coverage: none
           extensions: redis, mysqli
+          tools: composer:v2
 
       - name: Install Composer dependencies
         uses: ramsey/composer-install@v4
@@ -55,6 +56,7 @@ jobs:
           php-version: '8.3'
           coverage: none
           extensions: redis, mysqli
+          tools: composer:v2
 
       - name: Install Composer dependencies
         uses: ramsey/composer-install@v4
@@ -108,13 +110,6 @@ jobs:
           ref: main
           path: slic
           fetch-depth: 1
-
-      - name: Show preinstalled Composer version
-        env:
-          COMPOSER_AUTH: '{}'
-        run: |
-          command -v composer
-          composer --no-ansi --version
 
       - name: Set up host PHP and Composer
         uses: shivammathur/setup-php@v2
