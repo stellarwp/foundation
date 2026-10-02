@@ -7,13 +7,13 @@ on:
 
 jobs:
   ci:
-    runs-on: ${{ matrix.os }}
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     strategy:
       fail-fast: true
       matrix:
-        os: [ ubuntu-latest ]
         php: [ '8.3', '8.4', '8.5' ]
-    name: Tests PHP${{ matrix.php }} - ${{ matrix.os }}
+    # Preserve existing required-check names when changing runner providers.
+    name: Tests PHP${{ matrix.php }} - ubuntu-latest
 
     steps:
       - name: Checkout code
@@ -38,7 +38,7 @@ jobs:
         run: vendor/bin/phpunit --configuration ./phpunit.xml.dist --colors=always --testsuite Feature
 
   monolog:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     name: Monolog ${{ matrix.monolog }} compatibility
     strategy:
       fail-fast: false
@@ -73,7 +73,7 @@ jobs:
           vendor/bin/phpunit --configuration phpunit.xml.dist tests/Feature/Log
 
   slic:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     name: SLIC Tests (${{ matrix.database.name }})
     strategy:
       fail-fast: false
@@ -211,7 +211,7 @@ jobs:
   coverage:
     if: github.event_name == 'pull_request'
     needs: slic
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     name: Monitor coverage
 
     permissions:
