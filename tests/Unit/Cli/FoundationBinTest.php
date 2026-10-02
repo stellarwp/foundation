@@ -38,7 +38,7 @@ final class FoundationBinTest extends TestCase
 		$result = $this->runPhp([$proxy]);
 
 		$this->assertSame(0, $result['status']);
-		$this->assertStringContainsString('make:wpcli-command', $result['stdout']);
+		$this->assertStringContainsString('make:wpcli:command', $result['stdout']);
 		$this->assertStringNotContainsString('package:create', $result['stdout']);
 	}
 
@@ -52,7 +52,7 @@ final class FoundationBinTest extends TestCase
 			$result = $this->runPhp([dirname(__DIR__, 3) . '/src/Cli/bin/foundation', 'list', '--raw'], $root);
 
 			$this->assertSame(0, $result['status'], $provider . ': ' . $result['stderr']);
-			$this->assertSame(1, substr_count($result['stdout'], 'make:database-migration'));
+			$this->assertSame(1, substr_count($result['stdout'], 'make:database:migration'));
 		}
 	}
 
@@ -80,7 +80,7 @@ final class FoundationBinTest extends TestCase
 
 		$result = $this->runPhp([
 			dirname(__DIR__, 3) . '/src/Cli/bin/foundation',
-			'make:wpcli-command',
+			'make:wpcli:command',
 			'Sync_Products_Command',
 			'--no-ansi',
 		], $root);
@@ -103,9 +103,9 @@ final class FoundationBinTest extends TestCase
 
 		$list = $this->runPhp([$binary, 'list', '--no-ansi'], $root);
 		$this->assertSame(0, $list['status'], $list['stderr']);
-		$this->assertStringContainsString('make:wpcli-command', $list['stdout']);
+		$this->assertStringContainsString('make:wpcli:command', $list['stdout']);
 
-		$result = $this->runPhp([$binary, 'make:wpcli-command', 'Sync_Command', '--no-ansi'], $root);
+		$result = $this->runPhp([$binary, 'make:wpcli:command', 'Sync_Command', '--no-ansi'], $root);
 		$this->assertSame(0, $result['status'], $result['stderr'] . $result['stdout']);
 		$this->assertFileExists($root . '/src/Commands/Sync_Command.php');
 	}
@@ -116,7 +116,7 @@ final class FoundationBinTest extends TestCase
 		$list   = $this->runPhp([$binary, 'list', '--no-ansi'], $root);
 		$this->assertSame(0, $list['status'], $list['stderr']);
 		$this->assertStringContainsString('make:report', $list['stdout']);
-		$this->assertStringContainsString('make:database-table', $list['stdout']);
+		$this->assertStringContainsString('make:database:table', $list['stdout']);
 
 		$result = $this->runPhp([$binary, 'make:report', 'Sales_Report', '--no-ansi'], $root);
 		$this->assertSame(0, $result['status'], $result['stderr'] . $result['stdout']);

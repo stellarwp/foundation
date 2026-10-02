@@ -13,9 +13,9 @@ Each component is published as a focused package from this monorepo. Application
 
 ## Choose packages by deployment boundary
 
-Libraries and distributable WordPress plugins should generally use focused component packages. This keeps their production dependency set aligned with the infrastructure they actually ship.
+Projects, libraries, and distributable WordPress plugins should generally use focused component packages. This keeps their production dependency set aligned with the infrastructure they actually ship.
 
-Complete applications that centrally own their dependency graph can use the aggregate package when having every Foundation component available is more useful than minimizing installed code. The installation guide explains the production and developer dependency implications of each approach.
+The aggregate `stellarwp/foundation` package is a deliberate exception for environments that want every component, including developer tooling. Its CLI code remains installed with `--no-dev`. Follow the [installation guide](/start/install-foundation/) to keep runtime dependencies explicit and exclude CLI from production plugin ZIPs.
 
 ## Treat Foundation as application infrastructure
 

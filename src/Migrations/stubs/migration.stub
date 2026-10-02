@@ -1,0 +1,25 @@
+<?php declare(strict_types=1);
+
+use {{ foundation_database_migration }};
+use {{ foundation_database_schema }};
+use {{ foundation_database_irreversible_migration }};
+
+return new class extends Migration {
+
+	/**
+	 * Declare this migration's schema changes.
+	 */
+	public function up( Blueprint $schema ): void {
+		// Declare schema changes using stable, unprefixed table names.
+	}
+
+	/**
+	 * Stop rollback until a safe inverse is supplied.
+	 *
+	 * @throws IrreversibleMigration Until a safe inverse is implemented.
+	 */
+	public function down( Blueprint $schema ): void {
+		throw new IrreversibleMigration( 'Implement a safe down() declaration before rolling back this migration.' );
+	}
+
+};

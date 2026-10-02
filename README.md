@@ -3,7 +3,7 @@
 Foundation is a StellarWP Composer monorepo of shared PHP infrastructure for Nexcess libraries and WordPress plugins. Its packages are publicly available, while Nexcess application needs primarily drive changes and the roadmap.
 
 > [!NOTE]
-> This monorepo splits each package out into their own sub-repository, if you only need a specific component you can install only that specific one.
+> Projects should generally install the split packages they need. The monorepo publishes an aggregate package, `stellarwp/foundation`, that also includes developer tooling and is unsuitable for production plugin ZIPs that must exclude Foundation CLI.
 
 See the [Foundation documentation](https://foundation.nexcess.dev/) for installation, application architecture, component configuration, and developer tooling.
 
@@ -16,8 +16,10 @@ See the [Foundation documentation](https://foundation.nexcess.dev/) for installa
 | [stellarwp/foundation-log](https://github.com/stellarwp/foundation-log) | Services need a configured PSR logger | Runtime |
 | [stellarwp/foundation-shutdown](https://github.com/stellarwp/foundation-shutdown) | Deferred work should run during PHP shutdown, optionally after finishing the response | Runtime |
 | [stellarwp/foundation-lock](https://github.com/stellarwp/foundation-lock) | Code needs the portable lock contract or process-local test implementation | Runtime |
+| [stellarwp/foundation-lock-database](https://github.com/stellarwp/foundation-lock-database) | Requests and workers coordinate through the primary WordPress database | Runtime |
 | [stellarwp/foundation-lock-redis](https://github.com/stellarwp/foundation-lock-redis) | Multiple processes or servers coordinate through dedicated Redis | Runtime |
-| [stellarwp/foundation-database](https://github.com/stellarwp/foundation-database) | A WordPress application needs queries, migrations, or database-backed locks | Runtime |
+| [stellarwp/foundation-database](https://github.com/stellarwp/foundation-database) | A WordPress application needs queries or managed transactions | Runtime |
+| [stellarwp/foundation-migrations](https://github.com/stellarwp/foundation-migrations) | A WordPress application needs schema history, upgrades, and rollback | Runtime |
 | [stellarwp/foundation-identifier](https://github.com/stellarwp/foundation-identifier) | Services need injectable ULID generation and validation | Runtime |
 | [stellarwp/foundation-view](https://github.com/stellarwp/foundation-view) | Services need scoped PHP template rendering without global state | Runtime |
 | [stellarwp/foundation-wpcli](https://github.com/stellarwp/foundation-wpcli) | A shipped WordPress plugin exposes WP-CLI commands | Runtime |
@@ -26,13 +28,16 @@ See the [Foundation documentation](https://foundation.nexcess.dev/) for installa
 
 ## Installation
 
-Install the aggregate package when you want the convenient all-in-one Foundation package:
+Install the split runtime packages your project uses, and add the CLI separately for development:
 
 ```shell
-composer require stellarwp/foundation
+composer require stellarwp/foundation-container
+composer require --dev stellarwp/foundation-cli
 ```
 
-The aggregate package includes all Foundation components, including the CLI package and `vendor/bin/foundation`. For lean production WordPress plugin archives, require only the split packages your plugin needs and install `stellarwp/foundation-cli` as a development dependency.
+Keep every runtime package your application uses in `require`, even if installing the CLI has already made it available locally. Packages installed only through the development CLI are excluded by `composer install --no-dev`, which can leave generated code with missing classes in production. See the [installation guide](https://foundation.nexcess.dev/start/install-foundation/) for examples and production packaging.
+
+The aggregate `stellarwp/foundation` package physically includes CLI code and its binary. Installing it as a production dependency keeps that tooling even with `--no-dev`.
 
 ## ‍💻 Developer / Contributing Documentation
 
@@ -190,12 +195,12 @@ composer require stellarwp/foundation-wpcli
 Then generate a starter WP-CLI command:
 
 ```bash
-vendor/bin/foundation make:wpcli-command Sync_Products_Command
+vendor/bin/foundation make:wpcli:command Sync_Products_Command
 ```
 
 The command reads the project's PSR-4 Composer autoload namespaces, writes a Snake_Case command class under `Cli/Commands` inside the selected PSR-4 root, and uses the default WP-CLI command stub from `foundation-wpcli`.
 
-If your project adds a Composer script such as `"foundation": "@php vendor/bin/foundation"`, you may run the command as `composer run foundation -- make:wpcli-command Sync_Products_Command`.
+If your project adds a Composer script such as `"foundation": "@php vendor/bin/foundation"`, you may run the command as `composer run foundation -- make:wpcli:command Sync_Products_Command`.
 
 `stellarwp/foundation-cli` is build-time developer tooling when installed as a split package. Do not register `StellarWP\Foundation\Cli\CliProvider` in a WordPress plugin application, and do not include the CLI split package in production plugin zips. Production split-package installs should normally run with Composer's `--no-dev` mode so the generator, Symfony Console, and other dev tooling are not packaged.
 

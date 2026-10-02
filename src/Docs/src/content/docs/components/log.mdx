@@ -17,6 +17,8 @@ Install the split package:
 composer require stellarwp/foundation-log
 ```
 
+Foundation supports Monolog `^2.11` and `^3.10`. Composer selects the version compatible with your application's other dependencies. Provider configuration and ordinary PSR-3 logging work with either version.
+
 ### Prepare the application
 
 Foundation Log uses the shared application configuration and provider architecture established in these guides:
@@ -235,6 +237,8 @@ return [
 Foundation supplies the built-in channel definitions; configure only the settings you want to change. You can also define another stack name with its own `channels` list, or select `audit` directly with `APP_LOG_CHANNEL=audit`. Application services continue injecting `LoggerInterface`.
 
 Custom handlers implement Monolog's `HandlerInterface`. Foundation resolves them through the container, so their dependencies use ordinary application provider bindings. Use transient bindings when the same custom handler class serves independently configured channels. A singleton handler can serve one channel and remain shared with other application services. An optional `formatter` class selects a formatter for handlers implementing `FormattableHandlerInterface`; setting it to `null` keeps the handler's own formatter. Handlers extending Monolog's `AbstractHandler` receive `log.level`; implementations of the minimal `HandlerInterface` own their filtering behavior.
+
+Custom handlers, processors, and formatters must support the installed Monolog major. Monolog 2 supplies array records; Monolog 3 supplies `Monolog\LogRecord` objects. Foundation does not convert records for application extensions. See Monolog's [upgrade guidance](https://github.com/Seldaek/monolog/blob/main/UPGRADE.md) when supporting both.
 
 List handler-backed channels as stack members. Handlers run in reverse list order, preserving Monolog's `pushHandler()` behavior; a handler with bubbling disabled stops delivery to earlier entries. An empty stack, or one whose only handler is an unavailable PHP error log, discards records.
 

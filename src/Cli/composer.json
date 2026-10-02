@@ -13,7 +13,8 @@
         "stellarwp/foundation-container": "^2.0",
         "stellarwp/foundation-database": "^2.0",
         "stellarwp/foundation-wpcli": "^2.0",
-        "symfony/console": ">=5.4"
+        "symfony/console": ">=5.4",
+        "stellarwp/foundation-migrations": "^2.0"
     },
     "autoload": {
         "psr-4": {

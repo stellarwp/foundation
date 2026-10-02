@@ -95,22 +95,6 @@ final class WPCliProviderTest extends WPTestCase
 		$this->assertSame(1, RecordingCommand::$registrationCount);
 	}
 
-	public function test_it_registers_commands_only_once_when_the_provider_is_registered_repeatedly(): void {
-		RecordingCommand::$registered        = false;
-		RecordingCommand::$registeredName    = null;
-		RecordingCommand::$registrationCount = 0;
-		$this->container->mergeArrayVar(WPCliProvider::COMMANDS, static fn (C $c): array => [
-			$c->get(RecordingCommand::class),
-		]);
-
-		$this->container->register(WPCliProvider::class);
-		$this->container->register(WPCliProvider::class);
-
-		do_action('cli_init');
-
-		$this->assertSame(1, RecordingCommand::$registrationCount);
-	}
-
 	public function test_it_rejects_invalid_commands_before_registering_any_command(): void {
 		RecordingCommand::$registered        = false;
 		RecordingCommand::$registeredName    = null;

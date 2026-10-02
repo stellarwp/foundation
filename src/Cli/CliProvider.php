@@ -38,23 +38,16 @@ final class CliProvider extends Provider
 
 	private const string ROOT_PATH = self::class . '.root_path';
 
-	private bool $registered = false;
-
 	/**
 	 * Register the CLI application and every built-in command feature.
 	 */
 	public function register(): void {
-		if ($this->registered) {
-			return;
-		}
-
 		$this->registerRootPath();
 		$this->registerProcess();
 		$this->registerGeneration();
 		$this->registerDatabaseCommands();
 		$this->registerWpCliCommand();
 		$this->registerApplication();
-		$this->registered = true;
 	}
 
 	/**

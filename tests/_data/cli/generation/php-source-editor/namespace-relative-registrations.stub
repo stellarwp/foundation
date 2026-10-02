@@ -2,7 +2,7 @@
 
 namespace Acme\Plugin\Database;
 
-use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\Migrations\MigrationsProvider;
 
 final class Provider
 {
@@ -10,7 +10,7 @@ final class Provider
 		$this->container->singleton(Tables\Reports_Table::class);
 		// foundation:database-tables
 
-		$this->container->mergeArrayVar(DatabaseProvider::MIGRATIONS, static fn ($c): array => [
+		$this->container->mergeArrayVar(MigrationsProvider::MIGRATIONS, static fn ($c): array => [
 			$c->get(Migrations\Create_Reports_Table::class),
 			// foundation:database-migrations
 		]);

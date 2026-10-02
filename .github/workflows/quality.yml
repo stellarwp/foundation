@@ -7,7 +7,7 @@ on:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     name: Code Quality
 
     steps:
@@ -19,7 +19,8 @@ jobs:
         with:
           php-version: '8.3'
           coverage: pcov
-          extensions: redis
+          extensions: redis, mysqli
+          tools: composer:v2
 
       - name: Detect File Changes
         uses: dorny/paths-filter@v4
