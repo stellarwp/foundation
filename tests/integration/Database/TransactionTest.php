@@ -8,6 +8,9 @@ use Doctrine\DBAL\Exception\LockWaitTimeoutException;
 use Doctrine\DBAL\Exception\NotNullConstraintViolationException;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use RuntimeException;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
+use StellarWP\Foundation\Database\DatabaseProvider;
 use StellarWP\Foundation\Database\Exceptions\CommitOutcomeUnknown;
 use StellarWP\Foundation\Database\Exceptions\DatabaseException;
 use StellarWP\Foundation\Database\Exceptions\TransactionFailed;
@@ -972,17 +975,13 @@ final class TransactionTest extends DatabaseTestCase
 	}
 
 	private function withLogging(\Psr\Log\LoggerInterface $logger): Connection {
-		$configuration = new \Doctrine\DBAL\Configuration();
-		$configuration->setSchemaManagerFactory(new \Doctrine\DBAL\Schema\DefaultSchemaManagerFactory());
-		$configuration->setMiddlewares([
-			new \StellarWP\Foundation\Database\Connection\WordPressMiddleware($this->container->get(\StellarWP\Foundation\Database\Connection\WordPressSession::class)),
+		$container = (new ContainerFactory())->create(new ArrayConfiguration([]));
+		$container->register(DatabaseProvider::class);
+		$container->singleton(\wpdb::class, $this->source);
+		$container->mergeArrayVar(DatabaseProvider::MIDDLEWARE, static fn (): array => [
 			new \Doctrine\DBAL\Logging\Middleware($logger),
 		]);
-		$db = \Doctrine\DBAL\DriverManager::getConnection([
-			'driver'       => 'mysqli',
-			'wrapperClass' => \StellarWP\Foundation\Database\Connection\WordPressConnection::class,
-		], $configuration);
 
-		return $db;
+		return $container->get(Connection::class);
 	}
 }

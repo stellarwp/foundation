@@ -27,9 +27,16 @@ use wpdb;
 final class DatabaseProvider extends Provider
 {
 	/**
+	 * Contribute Doctrine Driver\Middleware objects before resolving the shared connection.
+	 * Later contributions wrap earlier ones, outside Foundation's WordPress middleware.
+	 */
+	public const string MIDDLEWARE = self::class . '.middleware';
+
+	/**
 	 * Register lazy database services without executing queries or creating storage.
 	 */
 	public function register(): void {
+		$this->container->mergeArrayVar(self::MIDDLEWARE, []);
 		$this->container->singleton(wpdb::class, static function (): wpdb {
 			$source = $GLOBALS['wpdb'] ?? null;
 
@@ -51,6 +58,7 @@ final class DatabaseProvider extends Provider
 			$config->setSchemaManagerFactory(new DefaultSchemaManagerFactory());
 			$config->setMiddlewares([
 				new WordPressMiddleware($c->get(WordPressSession::class)),
+				...$c->get(self::MIDDLEWARE),
 			]);
 
 			return DriverManager::getConnection([

@@ -116,3 +116,58 @@ Applications can replace `DatabaseScope` and `TableNameResolver` when they own a
 Implementations acquire once without waiting, retain the original site and connection across DDL and nested transactions, check ownership before execution and completion, and preserve a caught database failure until the locked operation ends. An escaping callback exception takes precedence over release failure. Connection changes must never reconnect or replay protected work. Contention raises `AdvisoryLockContended`; failed or uncertain ownership raises `AdvisoryLockInterrupted`.
 
 Database owns the supported DBAL constraint. When upgrading it, verify the migration schema APIs and failure-handling tests as well as queries and transactions. Foundation Migrations requires a compatible Database release; applications should update their Composer lock file and run their migration tests before deployment.
+
+### Add database middleware
+
+Contribute [Doctrine driver middleware](https://www.doctrine-project.org/projects/doctrine-dbal/en/4.5/reference/architecture.html#middlewares) through `DatabaseProvider::MIDDLEWARE` to add logging or instrumentation to the shared connection. Foundation keeps its WordPress connection integration installed.
+
+For example, Doctrine's supplied logging middleware sends query and transaction events to a PSR logger. In `src/Database/Query_Logging_Provider.php`:
+
+```php title="Query_Logging_Provider.php"
+<?php declare( strict_types=1 );
+
+namespace Plugin\Database;
+
+use Doctrine\DBAL\Logging\Middleware;
+use Psr\Log\LoggerInterface;
+use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use StellarWP\Foundation\Database\DatabaseProvider;
+
+final class Query_Logging_Provider extends Provider {
+
+	/**
+	 * Send database events to the application's logger.
+	 */
+	public function register(): void {
+		$this->container->mergeArrayVar(
+			DatabaseProvider::MIDDLEWARE,
+			static fn ( C $container ): array => [
+				new Middleware( $container->get( LoggerInterface::class ) ),
+			],
+		);
+	}
+}
+```
+
+Register the providers in dependency order in `src/App.php`:
+
+```php title="App.php"
+use Plugin\Database\Query_Logging_Provider;
+use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\Log\LogProvider;
+
+/** @var list<class-string<Provider>> */
+private const array PROVIDERS = [
+	DatabaseProvider::class,
+	LogProvider::class,
+	Query_Logging_Provider::class,
+];
+```
+
+Configure your [logging handler](/components/log/) to accept debug records for SQL execution events. The supplied middleware includes SQL and bound parameter values, which may contain sensitive application data. Enable it only where that logging is appropriate. It does not update `$wpdb->num_queries` or integrate with Query Monitor.
+
+Contribute middleware objects in an array, or a lazy factory returning that array as shown above. Register all contributions before first resolving `Doctrine\DBAL\Connection`, including through tables or repositories. Foundation resolves the factories when constructing that shared connection; registering them alone does not open the database. Adding contributions afterward does not reconfigure an existing connection.
+
+Foundation's WordPress middleware is applied first. Application middleware is applied in contribution order, with each wrapping the previous driver. For contributions `[A, B]`, calls enter `B`, then `A`, then Foundation's WordPress driver. Your middleware must delegate to the wrapped driver and preserve exceptions, results, and transaction behavior; opening a separate connection or retrying failed work would violate the shared connection's guarantees.
