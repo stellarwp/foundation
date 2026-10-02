@@ -109,6 +109,18 @@ jobs:
           path: slic
           fetch-depth: 1
 
+      - name: Get Composer cache directory
+        id: composer-cache-directory
+        run: echo "path=$(composer config cache-dir --absolute)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Composer cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ steps.composer-cache-directory.outputs.path }}
+          key: ${{ runner.os }}-composer-slic-php8.3-v1-${{ hashFiles('composer.lock', 'composer.json', 'src/*/composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-slic-php8.3-v1-
+
       - name: Set SLIC environment variables
         run: |
           echo "SLIC_BIN=${GITHUB_WORKSPACE}/slic/slic" >> $GITHUB_ENV
@@ -124,6 +136,8 @@ jobs:
           echo "SSH_AUTH_SOCK=/tmp/ssh_agent.sock" >> $GITHUB_ENV
 
       - name: Configure SLIC
+        env:
+          COMPOSER_CACHE_PATH: ${{ steps.composer-cache-directory.outputs.path }}
         run: |
           cd "${GITHUB_WORKSPACE}/.."
           "${SLIC_BIN}" here
@@ -133,13 +147,13 @@ jobs:
           "${SLIC_BIN}" xdebug off
           "${SLIC_BIN}" debug on
           "${SLIC_BIN}" php-version set 8.3 --skip-rebuild
+          "${SLIC_BIN}" composer-cache set "$COMPOSER_CACHE_PATH"
           "${SLIC_BIN}" info
           "${SLIC_BIN}" config
 
       - name: Install dependencies
         run: |
           "${SLIC_BIN}" use foundation
-          "${SLIC_BIN}" composer set-version 2
           "${SLIC_BIN}" composer install
 
       - name: Update WordPress
