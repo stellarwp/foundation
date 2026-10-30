@@ -3,7 +3,7 @@
 > [!WARNING]
 > **This is a read-only repository!** For pull requests or issues, see [stellarwp/foundation](https://github.com/stellarwp/foundation).
 
-Foundation View renders trusted PHP templates to strings. It confines template selection to a configured directory and supports immutable directory changes. Requires PHP 8.3 or later.
+Foundation View renders trusted PHP templates to strings. It confines template selection to a configured directory and supports immutable directory changes.
 
 ```sh
 composer require stellarwp/foundation-view:^2.0

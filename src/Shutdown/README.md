@@ -3,7 +3,7 @@
 > [!WARNING]
 > **This is a read-only repository!** For pull requests or issues, see [stellarwp/foundation](https://github.com/stellarwp/foundation).
 
-Foundation Shutdown runs contributed tasks once, in ascending priority order. Tasks with equal priorities retain contribution order. Requires PHP 8.3 or later.
+Foundation Shutdown runs contributed tasks once, in ascending priority order. Tasks with equal priorities retain contribution order.
 
 ```sh
 composer require stellarwp/foundation-shutdown:^2.0

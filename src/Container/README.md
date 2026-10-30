@@ -3,7 +3,12 @@
 > [!WARNING]
 > **This is a read-only repository!** For pull requests or issues, see [stellarwp/foundation](https://github.com/stellarwp/foundation).
 
-Foundation Container supplies autowiring, contextual bindings, lazy callbacks and decorator chains behind Foundation-owned contracts. Requires PHP 8.3 or later.
+Foundation Container provides a shared container contract and service provider
+base class.
+
+It supports autowiring, contextual bindings, lazy WordPress callbacks,
+cross-provider collections, and decorator chains without exposing the underlying
+container implementation to application code.
 
 ```sh
 composer require stellarwp/foundation-container:^2.0
