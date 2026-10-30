@@ -10,13 +10,13 @@ permissions:
 
 jobs:
   ci:
-    runs-on: ${{ matrix.os }}
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     strategy:
       fail-fast: true
       matrix:
-        os: [ ubuntu-latest ]
         php: [ '8.3', '8.4', '8.5' ]
-    name: Tests PHP${{ matrix.php }} - ${{ matrix.os }}
+    # Preserve existing required-check names when changing runner providers.
+    name: Tests PHP${{ matrix.php }} - ubuntu-latest
 
     steps:
       - name: Checkout code
@@ -27,6 +27,7 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
           coverage: none
+          tools: composer:v2
 
       - name: Install Composer dependencies
         uses: ramsey/composer-install@v4
@@ -40,7 +41,7 @@ jobs:
         run: vendor/bin/phpunit --configuration ./phpunit.xml.dist --colors=always --testsuite Feature
 
   monolog:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     name: Monolog ${{ matrix.monolog }} compatibility
     strategy:
       fail-fast: false
@@ -56,6 +57,7 @@ jobs:
         with:
           php-version: '8.3'
           coverage: none
+          tools: composer:v2
 
       - name: Install Composer dependencies
         uses: ramsey/composer-install@v4
@@ -74,13 +76,8 @@ jobs:
           vendor/bin/phpunit --configuration phpunit.xml.dist tests/Feature/Log
 
   slic:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     name: SLIC Tests
-
-    permissions:
-      contents: read
-      pull-requests: write
-      statuses: write
 
     env:
       COMPOSER_AUTH: '{"github-oauth": {"github.com": "${{ github.token }}"}}'
@@ -97,6 +94,27 @@ jobs:
           path: slic
           fetch-depth: 1
 
+      - name: Set up host PHP and Composer
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: composer:v2
+
+      - name: Get Composer cache directory
+        id: composer-cache-directory
+        run: |
+          cache_directory=$(composer config cache-dir --absolute)
+          echo "path=$cache_directory" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Composer cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ steps.composer-cache-directory.outputs.path }}
+          key: ${{ runner.os }}-composer-slic-php8.3-v1-${{ hashFiles('composer.lock', 'composer.json', 'src/*/composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-slic-php8.3-v1-
+
       - name: Set SLIC environment variables
         run: |
           echo "SLIC_BIN=${GITHUB_WORKSPACE}/slic/slic" >> $GITHUB_ENV
@@ -112,6 +130,8 @@ jobs:
           echo "SSH_AUTH_SOCK=/tmp/ssh_agent.sock" >> $GITHUB_ENV
 
       - name: Configure SLIC
+        env:
+          COMPOSER_CACHE_PATH: ${{ steps.composer-cache-directory.outputs.path }}
         run: |
           cd "${GITHUB_WORKSPACE}/.."
           "${SLIC_BIN}" here
@@ -121,13 +141,13 @@ jobs:
           "${SLIC_BIN}" xdebug off
           "${SLIC_BIN}" debug on
           "${SLIC_BIN}" php-version set 8.3 --skip-rebuild
+          "${SLIC_BIN}" composer-cache set "$COMPOSER_CACHE_PATH"
           "${SLIC_BIN}" info
           "${SLIC_BIN}" config
 
       - name: Install dependencies
         run: |
           "${SLIC_BIN}" use foundation
-          "${SLIC_BIN}" composer set-version 2
           "${SLIC_BIN}" composer install
 
       - name: Update WordPress
@@ -163,14 +183,39 @@ jobs:
         run: |
           "${SLIC_BIN}" run --coverage --coverage-xml clover.xml --disable-coverage-php --ext DotReporter
 
-      - name: Monitor coverage
+      - name: Upload coverage report
         if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: tests/_output/clover.xml
+          if-no-files-found: error
+          retention-days: 1
+
+  coverage:
+    if: github.event_name == 'pull_request'
+    needs: slic
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    name: Monitor coverage
+
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
+
+    steps:
+      - name: Download coverage report
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage-report
+
+      - name: Monitor coverage
         uses: slavcodev/coverage-monitor-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           comment_footer: false
           coverage_format: clover
-          coverage_path: tests/_output/clover.xml
+          coverage_path: clover.xml
           threshold_alert: 90
           threshold_warning: 95
           threshold_metric: "lines"
