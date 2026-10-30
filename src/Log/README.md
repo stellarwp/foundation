@@ -11,20 +11,31 @@ composer require stellarwp/foundation-log:^2.0
 
 ## Configure the logger
 
+Add the logging settings to the application's `config.php`:
+
+```php
+<?php declare(strict_types=1);
+
+return [
+    'log' => [
+        'channel' => 'errorlog',
+        'level'   => $_ENV['LOG_LEVEL'] ?? 'info',
+    ],
+];
+```
+
+Load the configuration when bootstrapping the application container, then register the logging provider:
+
 ```php
 use Psr\Log\LoggerInterface;
 use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
 use StellarWP\Foundation\Container\ContainerFactory;
 use StellarWP\Foundation\Log\LogProvider;
 
-$configuration = new ArrayConfiguration([
-    'log' => [
-        'channel' => 'errorlog',
-        'level'   => 'info',
-    ],
-]);
-$factory   = new ContainerFactory();
-$container = $factory->create($configuration);
+$values        = require __DIR__ . '/config.php';
+$configuration = new ArrayConfiguration($values);
+$factory       = new ContainerFactory();
+$container     = $factory->create($configuration);
 $container->register(LogProvider::class);
 
 $logger = $container->get(LoggerInterface::class);
@@ -32,6 +43,8 @@ $logger->info('Order {order_id} paid.', [
     'order_id' => 42,
 ]);
 ```
+
+If the application already has a Foundation container, include these settings in its configuration and register `LogProvider` on that existing container.
 
 Inject `Psr\Log\LoggerInterface` into application services. The logger is shared, so handler and processor changes remain in effect for that container's lifetime.
 

@@ -14,7 +14,7 @@ The former `foundation-container-wordpress` package is removed. Register WordPre
 
 Factory callbacks receive `Contracts\Resolver`, not DI52. Change callback parameter types and use its `get()` and `has()` methods. Raw-container access through `getContainer()` and magic forwarding of undocumented DI52 operations are removed. Use the declared Foundation container operations. Catch Foundation's `Exceptions\ContainerException` or `Exceptions\NotFoundException` instead of DI52 exceptions.
 
-Configuration is a read-only application-lifetime snapshot. Assemble plugin settings before registering their providers. Replacing configuration after providers have been constructed does not update their stored snapshot.
+Configuration is a read-only application-lifetime snapshot. Load application settings with `$values = require __DIR__ . '/config.php';` and pass the returned array to `ArrayConfiguration`. Combine settings from plugins sharing a container before creating that snapshot; replace late calls to `Dot::merge()` with this bootstrap-time assembly. Replacing configuration after providers have been constructed does not update their stored snapshot.
 
 ## Logging
 

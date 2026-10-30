@@ -11,18 +11,33 @@ composer require stellarwp/foundation-container:^2.0
 
 ## Create the application container
 
+Keep application settings in a `config.php` file that returns an array:
+
+```php
+<?php declare(strict_types=1);
+
+return [
+    'catalog' => [
+        'endpoint' => $_ENV['CATALOG_ENDPOINT'] ?? 'https://example.com/catalog',
+    ],
+];
+```
+
+Load that file during application bootstrap, after the Composer autoloader and any environment setup:
+
 ```php
 use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
 use StellarWP\Foundation\Container\ContainerFactory;
 
-$configuration = new ArrayConfiguration([
-    'catalog' => [
-        'endpoint' => 'https://example.com/catalog',
-    ],
-]);
-$factory   = new ContainerFactory();
-$container = $factory->create($configuration);
+$values        = require __DIR__ . '/config.php';
+$configuration = new ArrayConfiguration($values);
+$factory       = new ContainerFactory();
+$container     = $factory->create($configuration);
 ```
+
+Use `require`, not `require_once`, when capturing the returned array: a repeated `require_once` returns `true`. `ArrayConfiguration` uses Dot internally for dotted-key lookups such as `catalog.endpoint`.
+
+If several plugins contribute to one application's configuration, load and combine their values before constructing `ArrayConfiguration`. Providers read the completed configuration; they do not merge settings into a mutable Dot instance. Load any `.env` values before requiring the configuration file.
 
 `ContainerFactory` registers the container, resolver and configuration contracts. Configuration is a read-only snapshot for the container lifetime. Missing keys return the supplied default; an explicitly configured `null` remains `null`.
 
