@@ -17,6 +17,9 @@ composer require stellarwp/foundation-container
 
 ## Container Configuration
 
+> [!TIP]
+> Combine shared defaults and overrides ***before*** creating `ArrayConfiguration`. Providers receive read-only configuration.
+
 Create the container with `ContainerFactory`, which sets up DI52 and registers
 your configuration:
 
