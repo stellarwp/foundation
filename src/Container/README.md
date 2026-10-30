@@ -10,8 +10,10 @@ It supports autowiring, contextual bindings, lazy WordPress callbacks,
 cross-provider collections, and decorator chains without exposing the underlying
 container implementation to application code.
 
-```sh
-composer require stellarwp/foundation-container:^2.0
+## Installation
+
+```shell
+composer require stellarwp/foundation-container
 ```
 
 ## Create the application container

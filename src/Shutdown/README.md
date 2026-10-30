@@ -3,13 +3,17 @@
 > [!WARNING]
 > **This is a read-only repository!** For pull requests or issues, see [stellarwp/foundation](https://github.com/stellarwp/foundation).
 
-Foundation Shutdown runs contributed tasks once, in ascending priority order. Tasks with equal priorities retain contribution order.
+Foundation Shutdown runs application tasks at the end of a request.
 
-```sh
-composer require stellarwp/foundation-shutdown:^2.0
+## Installation
+
+```shell
+composer require stellarwp/foundation-shutdown
 ```
 
 ## Flush an application's logging buffer
+
+Tasks run once, in ascending priority order. Tasks with equal priorities retain contribution order.
 
 Implement `Terminable` for the work performed at shutdown. For a shared Monolog buffer:
 

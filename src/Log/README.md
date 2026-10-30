@@ -3,11 +3,15 @@
 > [!WARNING]
 > **This is a read-only repository!** For pull requests or issues, see [stellarwp/foundation](https://github.com/stellarwp/foundation).
 
-Foundation Log registers one shared PSR-3 logger per container using Monolog 2.11+ or 3.10+.
+Foundation Log provides a shared PSR-3 logger using Monolog and the Foundation container.
 
-```sh
-composer require stellarwp/foundation-log:^2.0
+## Installation
+
+```shell
+composer require stellarwp/foundation-log
 ```
+
+Supports Monolog `^2.11 || ^3.10`.
 
 ## Configure the logger
 
