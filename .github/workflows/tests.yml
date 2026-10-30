@@ -74,6 +74,11 @@ jobs:
     runs-on: ubuntu-latest
     name: SLIC Tests
 
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
+
     env:
       COMPOSER_AUTH: '{"github-oauth": {"github.com": "${{ github.token }}"}}'
 
