@@ -14,7 +14,8 @@
         "ext-exif": "*",
         "adbario/php-dot-notation": ">=2.5",
         "lucatume/di52": ">=4.1",
-        "monolog/monolog": "^2.11",
+        "monolog/monolog": "^2.11 || ^3.10",
+        "psr/container": ">=1.1",
         "psr/log": ">=1.0",
         "stellarwp/container-contract": "^1.1",
         "symfony/console": ">=5.4",
@@ -37,6 +38,8 @@
         "stellarwp/foundation-container": "self.version",
         "stellarwp/foundation-log": "self.version",
         "stellarwp/foundation-pipeline": "self.version",
+        "stellarwp/foundation-shutdown": "self.version",
+        "stellarwp/foundation-view": "self.version",
         "stellarwp/foundation-wpcli": "self.version"
     },
     "minimum-stability": "dev",
@@ -47,11 +50,14 @@
             "StellarWP\\Foundation\\Container\\": "src/Container/",
             "StellarWP\\Foundation\\Log\\": "src/Log/",
             "StellarWP\\Foundation\\Pipeline\\": "src/Pipeline/",
+            "StellarWP\\Foundation\\Shutdown\\": "src/Shutdown/",
+            "StellarWP\\Foundation\\View\\": "src/View/",
             "StellarWP\\Foundation\\WPCli\\": "src/WPCli/"
         },
         "exclude-from-classmap": [
             "src/*/vendor/",
-            "tests/CodeceptionSupport/"
+            "tests/CodeceptionSupport/",
+            "tests/_data/temp/"
         ]
     },
     "autoload-dev": {
@@ -69,6 +75,9 @@
         "sort-packages": true,
         "allow-plugins": {
             "phpstan/extension-installer": true
+        },
+        "platform": {
+            "php": "8.3.28"
         }
     },
     "scripts": {

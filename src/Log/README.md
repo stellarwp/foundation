@@ -3,48 +3,62 @@
 > [!WARNING]
 > **This is a read-only repository!** For pull requests or issues, see [stellarwp/foundation](https://github.com/stellarwp/foundation).
 
-A logging library using [Monolog](https://github.com/Seldaek/monolog) that implements the `Psr\Log\LoggerInterface` interface.
+Foundation Log registers one shared PSR-3 logger per container using Monolog 2.11+ or 3.10+. Requires PHP 8.3 or later.
 
-## Installation
-
-
-```shell
-composer require stellarwp/foundation-log
+```sh
+composer require stellarwp/foundation-log:^2.0
 ```
 
-If using [stellarwp/foundation-container](https://github.com/stellarwp/foundation-container), create a `config.php` and register
-it in the container with:
+## Configure the logger
 
 ```php
-$this->container->bind(Dot::class, new Dot(require_once dirname(__FILE__) . '/config.php'));
+use Psr\Log\LoggerInterface;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
+use StellarWP\Foundation\Log\LogProvider;
+
+$configuration = new ArrayConfiguration([
+    'log' => [
+        'channel' => 'errorlog',
+        'level'   => 'info',
+    ],
+]);
+$factory   = new ContainerFactory();
+$container = $factory->create($configuration);
+$container->register(LogProvider::class);
+
+$logger = $container->get(LoggerInterface::class);
+$logger->info('Order {order_id} paid.', [
+    'order_id' => 42,
+]);
 ```
 
-The config.php file maps environment variables, either from an `.env` file if you configured [phpdotenv](https://github.com/vlucas/phpdotenv), or manually set, e.g.
+Inject `Psr\Log\LoggerInterface` into application services. The logger is shared, so handler and processor changes remain in effect for that container's lifetime.
+
+Built-in channels are `errorlog`, `console`, `null`, and `stack` (console plus error log). The level defaults to `debug`; select a channel explicitly. PSR-3 placeholders are interpolated while structured context is retained.
+
+## Custom destinations and stacks
+
+Add channel definitions under `log.channels`. Each destination selects a registered Monolog handler; an optional `formatter` selects a registered formatter. For example, with your `BufferedAxiomHandler` already bound in the container:
 
 ```php
-<?php declare(strict_types=1);
-
-return [
-	'log'             => [
-		'level'    => $_ENV['APP_LOG_LEVEL'] ?? 'debug',
-		'channel'  => $_ENV['APP_LOG_CHANNEL'] ?? 'null', // console, errorlog, stack (both console and errorlog) or null
-		'channels' => [
-			'errorlog' => [],
-			'console'  => [
-				'with' => [
-					'stream' => 'php://stdout',
-				],
-			],
-			'stack'    => [
-				'with' => [
-					'stream' => 'php://stdout',
-				],
-			],
-		],
-	],
-];
+'log' => [
+    'channel' => 'application',
+    'level'   => 'info',
+    'channels' => [
+        'axiom' => [
+            'handler' => BufferedAxiomHandler::class,
+        ],
+        'application' => [
+            'channels' => [
+                'errorlog',
+                'axiom',
+            ],
+        ],
+    ],
+],
 ```
 
-Then, include the [LogProvider.php](./LogProvider.php) in your
-application and call the `register` method. Anytime you inject a `Psr\Log\LoggerInterface` instance into another class, it will use 
-your provided configuration.
+A custom stream channel can use `Monolog\Handler\StreamHandler` with `with.stream` set to a path or open stream. Stack entries must identify concrete handler channels, not nested stacks. Separate entries must not resolve to the same handler instance. Monolog invokes handlers in reverse insertion order; handler bubbling controls further delivery.
+
+Foundation does not include an Axiom transport or automatically buffer records. The application supplies credentials, transport failure handling, buffer limits and flushing. [Foundation Shutdown](https://github.com/stellarwp/foundation-shutdown) provides an explicit end-of-request flush boundary. Long-running workers should flush between jobs rather than waiting for process termination.

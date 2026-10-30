@@ -2,27 +2,13 @@
 
 namespace StellarWP\Foundation\Container\Contracts;
 
+/**
+ * Allows application-owned registration classes to integrate without inheriting Foundation's provider base.
+ */
 interface Providable
 {
 	/**
-	 * Registers bindings in the container.
+	 * Register this feature's bindings and hooks before application services are resolved.
 	 */
 	public function register(): void;
-
-	/**
-	 * Whether the service provider will be a deferred one or not.
-	 */
-	public function isDeferred(): bool;
-
-	/**
-	 * Returns an array of the class or interfaces bound and provided by the service provider.
-	 *
-	 * @return string[] A list of fully-qualified implementations provided by the service provider.
-	 */
-	public function provides(): array;
-
-	/**
-	 * Binds and sets up implementations at boot time.
-	 */
-	public function boot(): void;
 }

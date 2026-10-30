@@ -9,7 +9,6 @@ use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use Psr\Log\LoggerInterface;
 use StellarWP\Foundation\Log\Handlers\NullHandler;
-use StellarWP\Foundation\Log\LogProvider;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class UnavailableErrorLogLoggerTest extends TestCase
@@ -20,7 +19,7 @@ final class UnavailableErrorLogLoggerTest extends TestCase
 	#[RunInSeparateProcess]
 	#[PreserveGlobalState(false)]
 	public function test_it_falls_back_to_the_null_handler_when_error_log_is_unavailable(): void {
-		$_ENV['TEST_LOG_CHANNEL'] = LogProvider::CHANNEL_ERRORLOG;
+		$_ENV['TEST_LOG_CHANNEL'] = 'errorlog';
 
 		parent::setUp();
 

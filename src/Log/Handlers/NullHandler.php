@@ -11,7 +11,12 @@ use Monolog\Handler\AbstractHandler;
  */
 final class NullHandler extends AbstractHandler
 {
-	public function handle(array $record): bool {
-		return $record['level'] >= $this->level;
+	/**
+	 * Discard matching records and stop their delivery to subsequent handlers.
+	 *
+	 * Accept the installed Monolog version's record; the parent owns level comparison.
+	 */
+	public function handle($record): bool {
+		return $this->isHandling($record);
 	}
 }

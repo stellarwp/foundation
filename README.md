@@ -9,8 +9,12 @@ Foundation is a StellarWP Composer monorepo for reusable PHP packages intended f
 - [stellarwp/foundation-container](https://github.com/stellarwp/foundation-container)
 - [stellarwp/foundation-pipeline](https://github.com/stellarwp/foundation-pipeline)
 - [stellarwp/foundation-log](https://github.com/stellarwp/foundation-log)
+- [stellarwp/foundation-shutdown](https://github.com/stellarwp/foundation-shutdown)
+- [stellarwp/foundation-view](https://github.com/stellarwp/foundation-view)
 - [stellarwp/foundation-wpcli](https://github.com/stellarwp/foundation-wpcli)
 - [stellarwp/foundation-cli](https://github.com/stellarwp/foundation-cli)
+
+See [Upgrading to 2.0](UPGRADING-2.0.md) when moving from Foundation 1.x. Package READMEs contain the setup and API guidance for this release.
 
 ## Installation
 
@@ -137,7 +141,6 @@ composer run foundation -- package:create <Package>
 
 The package argument can be a new package component such as `WPCli`, an existing package directory, short package name, or Composer package name, for example `Log`, `foundation-log`, or `stellarwp/foundation-log`.
 
-If the package does not exist yet, the command asks whether to create the local scaffold in `src/<Package>` and asks for the Composer package name with a default such as `stellarwp/foundation-wpcli`. The scaffold includes the required `composer.json`, `README.md`, `.gitattributes`, `.gitignore`, and `close-pull-request.yml` files. After scaffolding, the command runs `composer monorepo merge` so the root `composer.json` includes the new package.
 
 The command runs as a dry run by default. It validates the required split package files, prints the target repository name and description, and shows the GitHub CLI commands it will run.
 
@@ -151,7 +154,6 @@ The command runs as a dry run by default. It validates the required split packag
 composer run foundation -- package:create <Package> --apply
 ```
 
-The command creates the `stellarwp/foundation-<package>` repository with the standard `[READ ONLY]` description and disables issues, wiki, projects, and pull requests. The package's `close-pull-request.yml` workflow is still included as a fallback guard for read-only split repositories.
 
 #### Generating WP-CLI Commands
 

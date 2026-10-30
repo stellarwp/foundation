@@ -23,7 +23,6 @@ final class PackageFilesValidatorTest extends TestCase
 			'README.md',
 			'.gitattributes',
 			'.gitignore',
-			'.github/workflows/close-pull-request.yml',
 		], $missingFiles);
 	}
 }

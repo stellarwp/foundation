@@ -20,7 +20,6 @@ jobs:
           # Find all subdirectories in src/ and look for required files
           for folder in */; do
             file_paths=(
-              "$folder.github/workflows/close-pull-request.yml"
               "$folder/.gitattributes"
               "$folder/.gitignore"
             )

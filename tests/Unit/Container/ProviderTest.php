@@ -2,18 +2,22 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Container;
 
-use StellarWP\Foundation\Tests\Support\Fixtures\Container\TestProvider;
+use StellarWP\Foundation\Container\Contracts\Configuration;
+use StellarWP\Foundation\Tests\Support\Fixtures\Container\ConfigurationReadingProvider;
+use StellarWP\Foundation\Tests\Support\Fixtures\Container\FixedConfiguration;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class ProviderTest extends TestCase
 {
-	public function test_it_uses_default_provider_behavior(): void {
-		$provider = new TestProvider($this->container);
+	public function test_it_makes_configuration_available_to_providers(): void {
+		$this->container->singleton(Configuration::class, new FixedConfiguration([
+			'fixture' => [
+				'value' => 'configured',
+			],
+		]));
 
-		$this->assertFalse($provider->isDeferred());
-		$this->assertSame([], $provider->provides());
+		$this->container->register(ConfigurationReadingProvider::class);
 
-		$provider->boot();
-		$this->addToAssertionCount(1);
+		$this->assertSame('configured', $this->container->get(ConfigurationReadingProvider::VALUE));
 	}
 }

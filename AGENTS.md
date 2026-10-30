@@ -8,6 +8,8 @@ Initial packages:
 
 - `stellarwp/foundation-container`
 - `stellarwp/foundation-log`
+- `stellarwp/foundation-shutdown`
+- `stellarwp/foundation-view`
 - `stellarwp/foundation-pipeline`
 - `stellarwp/foundation-wpcli`
 - `stellarwp/foundation-cli`
@@ -73,6 +75,12 @@ When writing providers or container registration code, prefer container-driven c
 
 Use contextual bindings with `$this->container->when()->needs()->give()` for scalar constructor arguments, command lists, or feature-specific substitutions. Use a factory closure only when the value must be computed or resolved from the container, and keep that closure focused on supplying the constructor dependency rather than constructing the full object.
 
+Ordinary providers extend `Provider`, whose final constructor supplies the shared container and configuration snapshot. Applications with their own registration abstraction may implement `Providable`; it requires only `register(): void`. Keep the default examples on `Provider` and document the interface as an integration extension point. Do not restore DI52's deferred provider lifecycle. Register providers once per container in dependency order.
+
+Use Foundation's `Resolver` contract for factory callbacks. Keep raw DI52 access inside the adapter and factory. Bootstrap configuration before registering providers using `ContainerFactory` and `ArrayConfiguration`.
+
+Package READMEs and the root upgrade guide contain the release documentation. This release does not ship the Foundation documentation-site package.
+
 ## Split Packages
 
 Split packages live in `src/<Package>/` and are split to read-only repositories named `stellarwp/foundation-<package>`.
@@ -91,7 +99,6 @@ Each split package should include:
 - `README.md`
 - `.gitattributes`
 - `.gitignore`
-- `.github/workflows/close-pull-request.yml`
 
 When adding a new split package, add its `stellarwp/foundation-<package>` repository link to the root `README.md` repositories list.
 
