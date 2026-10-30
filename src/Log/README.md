@@ -52,7 +52,7 @@ If the application already has a Foundation container, include these settings in
 
 Inject `Psr\Log\LoggerInterface` into application services. The logger is shared, so handler and processor changes remain in effect for that container's lifetime.
 
-Built-in channels are `errorlog`, `console`, `null`, and `stack` (console plus error log). The level defaults to `debug`; select a channel explicitly. PSR-3 placeholders are interpolated while structured context is retained.
+Built-in channels are `errorlog`, `console`, `null`, and `stack` (console plus PHP error log when available). The level defaults to `debug`; select a channel explicitly. PSR-3 placeholders are interpolated while structured context is retained.
 
 ## Custom destinations and stacks
 
