@@ -43,7 +43,7 @@ $configuration = new ArrayConfiguration($values);
 $factory       = new ContainerFactory();
 $container     = $factory->create($configuration);
 
-// Register the application providers in dependency order.
+// Register the application providers.
 $providers = [
     CatalogProvider::class,
 ];
@@ -52,6 +52,9 @@ foreach ($providers as $provider) {
     $container->register($provider);
 }
 ```
+
+> [!WARNING]
+> Register providers in dependency order. Providers that supply dependencies must be registered before providers that use them.
 
 Here is an example service provider. The application's `HttpCatalog` implements
 `Catalog` and accepts an `$endpoint` constructor argument:
