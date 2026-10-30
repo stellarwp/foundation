@@ -3,8 +3,8 @@
 > [!WARNING]
 > **This is a read-only repository!** For pull requests or issues, see [stellarwp/foundation](https://github.com/stellarwp/foundation).
 
-Foundation Container provides a shared container contract and service provider
-base class, backed by [DI52](https://github.com/lucatume/di52) out of the box.
+The DI container configuration and service provider implementation, using
+[DI52](https://github.com/lucatume/di52) out of the box.
 
 ## Installation
 
@@ -14,12 +14,8 @@ composer require stellarwp/foundation-container
 
 ## Container Configuration
 
-Create a `config.php` in the application root that returns its settings as an
-array. The [configuration example below](#making-a-configphp) includes catalog
-and logging settings.
-
-Use `ContainerFactory` to create the container with your configuration and register
-the application's providers. It creates the DI52 instance automatically:
+Create the container with `ContainerFactory`, which sets up DI52 and registers
+your configuration:
 
 ```php
 <?php declare(strict_types=1);
@@ -33,6 +29,7 @@ use StellarWP\Foundation\Container\ContainerFactory;
 
 require_once __DIR__ . '/vendor/autoload.php';
 
+// Optionally, load environment variables from an .env file.
 $path = __DIR__;
 
 if (is_file($path . '/.env')) {
@@ -40,11 +37,13 @@ if (is_file($path . '/.env')) {
     $dotenv->load();
 }
 
+// Load the project's configuration. See "Making a config.php" below.
 $values        = require $path . '/config.php';
 $configuration = new ArrayConfiguration($values);
 $factory       = new ContainerFactory();
 $container     = $factory->create($configuration);
 
+// Register the application providers in dependency order.
 $providers = [
     CatalogProvider::class,
 ];
@@ -54,16 +53,8 @@ foreach ($providers as $provider) {
 }
 ```
 
-Register providers in dependency order.
-
-## Service Providers
-
-Extend `Provider` to register services using `$this->container` and read
-configuration through `$this->config`.
-
-For example, suppose the application owns a `Catalog` interface and an
-`HttpCatalog` implementation whose constructor accepts `string $endpoint`.
-The provider binds the implementation and supplies its endpoint from configuration:
+Here is an example service provider. The application's `HttpCatalog` implements
+`Catalog` and accepts an `$endpoint` constructor argument:
 
 ```php
 <?php declare(strict_types=1);
@@ -87,16 +78,19 @@ final class CatalogProvider extends Provider
 }
 ```
 
-Application services can now receive `Catalog` through constructor injection.
-
 ## Environment Variable Configuration
 
-Use the included [vlucas/phpdotenv](https://github.com/vlucas/phpdotenv) to load
-`.env` values before requiring `config.php`, as shown in the bootstrap example.
+`ArrayConfiguration` uses [Dot](https://github.com/adbario/php-dot-notation) to read
+configuration values. Supply environment values directly or load them from an
+`.env` file using the included [vlucas/phpdotenv](https://github.com/vlucas/phpdotenv)
+before creating the configuration.
+
+Each service provider accesses configuration through `$this->config`. Read settings
+in the provider and inject the values into your services, as shown above.
 
 ### Making a config.php
 
-Provide defaults for environment values that have not been set:
+A sample `config.php` for a project, with defaults when environment values are not set:
 
 ```php
 <?php declare(strict_types=1);
@@ -122,31 +116,22 @@ return [
 The `log` settings apply when using
 [Foundation Log](https://github.com/stellarwp/foundation-log).
 
-An optional `.env` file for these settings could contain:
-
-```dotenv
-CATALOG_ENDPOINT=https://example.com/catalog
-LOG_LEVEL=info
-LOG_CHANNEL=errorlog
-```
-
-In WordPress, the application can set these values in `wp-config.php` before
-WordPress loads the plugins:
+Inside a provider, read nested values with dot notation:
 
 ```php
+// Get the console log stream from config.php.
+$stream = $this->config->get('log.channels.console.with.stream');
+
+// Get the log level.
+$level = $this->config->get('log.level');
+```
+
+If using `config.php` in a WordPress plugin, set the environment values in
+`wp-config.php` before WordPress loads the plugins:
+
+```php
+// Inside wp-config.php.
 $_ENV['CATALOG_ENDPOINT'] = 'https://example.com/catalog';
 $_ENV['LOG_LEVEL']        = 'info';
 $_ENV['LOG_CHANNEL']      = 'errorlog';
 ```
-
-### Reading configuration
-
-`ArrayConfiguration` uses [Dot](https://github.com/adbario/php-dot-notation) for
-nested lookups. Inside a provider:
-
-```php
-$stream = $this->config->get('log.channels.console.with.stream');
-$level  = $this->config->get('log.level', 'info');
-```
-
-`has()` checks whether a key exists; `all()` returns the complete configuration array.
