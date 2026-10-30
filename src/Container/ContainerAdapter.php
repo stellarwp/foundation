@@ -153,12 +153,14 @@ final class ContainerAdapter implements Container
 	 * {@inheritDoc}
 	 */
 	public function instance(mixed $id, array $buildArgs = [], ?array $afterBuildMethods = null): Closure {
+		$implementation = $this->adaptImplementation($id);
+
 		/**
 		 * @var Closure $factory
 		 */
 		$factory = $this->call(
 			// @phpstan-ignore-next-line invalid DocBlock comments in DI52
-			fn (): Closure => $this->container->instance($id, $buildArgs, $afterBuildMethods)
+			fn (): Closure => $this->container->instance($implementation, $buildArgs, $afterBuildMethods)
 		);
 
 		return fn (): mixed => $this->resolveDeferred(static fn (): mixed => $factory());

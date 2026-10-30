@@ -76,6 +76,8 @@ Add channel definitions under `log.channels`. Each destination selects a registe
 ],
 ```
 
+The configured level is the minimum for every destination, including composite handlers. Their own filtering may be stricter.
+
 A custom stream channel can use `Monolog\Handler\StreamHandler` with `with.stream` set to a path or open stream. Stack entries must identify concrete handler channels, not nested stacks. Separate entries must not resolve to the same handler instance. Monolog invokes handlers in reverse insertion order; handler bubbling controls further delivery.
 
 Foundation does not include an Axiom transport or automatically buffer records. The application supplies credentials, transport failure handling, buffer limits and flushing. [Foundation Shutdown](https://github.com/stellarwp/foundation-shutdown) provides an explicit end-of-request flush boundary. Long-running workers should flush between jobs rather than waiting for process termination.
