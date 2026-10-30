@@ -56,6 +56,8 @@ foreach ($providers as $provider) {
 > [!WARNING]
 > Register providers in dependency order. Providers that supply dependencies must be registered before providers that use them.
 
+## Service Providers
+
 Here is an example service provider. The application's `HttpCatalog` implements
 `Catalog` and accepts an `$endpoint` constructor argument:
 
@@ -127,6 +129,14 @@ $stream = $this->config->get('log.channels.console.with.stream');
 
 // Get the log level.
 $level = $this->config->get('log.level');
+```
+
+An optional `.env` file for these settings could contain:
+
+```dotenv
+CATALOG_ENDPOINT=https://example.com/catalog
+LOG_LEVEL=info
+LOG_CHANNEL=errorlog
 ```
 
 If using `config.php` in a WordPress plugin, set the environment values in
