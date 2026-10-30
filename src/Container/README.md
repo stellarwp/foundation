@@ -3,8 +3,11 @@
 > [!WARNING]
 > **This is a read-only repository!** For pull requests or issues, see [stellarwp/foundation](https://github.com/stellarwp/foundation).
 
-The DI container configuration and service provider implementation, using
-[DI52](https://github.com/lucatume/di52) out of the box.
+Foundation Container provides a shared container contract and service provider
+base class, backed by [DI52](https://github.com/lucatume/di52) out of the box.
+
+It supports autowiring, contextual bindings, lazy WordPress callbacks,
+cross-provider collections, and decorator chains.
 
 ## Installation
 
