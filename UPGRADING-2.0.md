@@ -26,6 +26,14 @@ The former public `LogProvider::LOG_LEVEL`, `CHANNEL_ERRORLOG` and `CHANNELS` im
 
 Custom channels and stacks can resolve application-defined handlers. Built-in channel names remain `errorlog`, `console`, `null` and `stack`; use those strings in configuration. Duplicate handler instances in a stack are rejected to prevent conflicting destination setup.
 
+## Pipelines
+
+Construct pipelines with Foundation's `Contracts\Resolver`, or resolve the concrete `Pipeline` through the container. The optional/null constructor argument and `setContainer()` are removed. Consumers can depend on `Pipeline\Contracts\Pipeline` for `send()`, `then()`, and `thenReturn()`; configure the concrete implementation in a provider. See the [Pipeline examples](src/Pipeline/README.md).
+
+Call `send()` before execution. Missing input now throws `PipelineNotStarted` instead of an uninitialized-property error; `send(null)` remains valid.
+
+Execution state and helpers are private. Subclasses using `carry()`, `prepareDestination()`, `parsePipeString()`, `pipes()`, `getContainer()`, `handleCarry()`, or `handleException()` must move that behavior into pipes or implement the execution contract. Wrap `$next()` inside a pipe to transform its result or catch a downstream exception. The fluent `send()` return type is now `static`; overrides must use a compatible return type.
+
 ## New packages
 
 - [Shutdown](src/Shutdown/README.md) runs application-owned termination tasks with failure isolation and deterministic ordering. It does not add an Axiom transport, retry queue or automatic log buffering.
