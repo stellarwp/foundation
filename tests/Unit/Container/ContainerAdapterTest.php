@@ -27,6 +27,14 @@ final class ContainerAdapterTest extends TestCase
 		$this->assertSame('value', $factory()->value);
 	}
 
+	public function test_deferred_closure_factories_receive_the_foundation_resolver(): void {
+		$backend = new DI52Container();
+		$adapter = new ContainerAdapter($backend);
+		$factory = $adapter->instance(static fn (Resolver $resolver): Resolver => $resolver);
+
+		$this->assertSame($adapter, $factory());
+	}
+
 	public function test_it_returns_callbacks_from_the_wrapped_container(): void {
 		$adapter  = new ContainerAdapter(new DI52Container());
 		$callback = $adapter->callback(new ContainerAdapterSample('value'), 'read');
@@ -78,11 +86,11 @@ final class ContainerAdapterTest extends TestCase
 		$this->assertSame($adapter->get(TestProvider::class), $adapter->get('test-provider'));
 	}
 
-	public function test_it_rejects_classes_that_do_not_extend_the_provider_base_class(): void {
+	public function test_it_rejects_classes_that_do_not_implement_the_provider_contract(): void {
 		$adapter = new ContainerAdapter(new DI52Container());
 
 		$this->expectException(ContainerException::class);
-		$this->expectExceptionMessage('must extend');
+		$this->expectExceptionMessage('must implement');
 
 		$adapter->register(CallbackListener::class);
 	}

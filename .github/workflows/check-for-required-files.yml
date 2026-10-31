@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   check-workflows:
     runs-on: blacksmith-2vcpu-ubuntu-2404

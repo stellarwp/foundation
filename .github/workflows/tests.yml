@@ -5,6 +5,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   ci:
     runs-on: blacksmith-2vcpu-ubuntu-2404
@@ -232,6 +235,17 @@ jobs:
           path: clover.xml
           if-no-files-found: error
           retention-days: 1
+
+  slic-complete:
+    if: always()
+    needs: slic
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    name: SLIC Tests
+    steps:
+      - name: Require every database test job to pass
+        env:
+          SLIC_RESULT: ${{ needs.slic.result }}
+        run: test "$SLIC_RESULT" = success
 
   coverage:
     if: github.event_name == 'pull_request'

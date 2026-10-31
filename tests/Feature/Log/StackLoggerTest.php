@@ -27,7 +27,9 @@ final class StackLoggerTest extends TestCase
 
 		$this->assertSame('debug', $_ENV['TEST_LOG_LEVEL']);
 
-		/** @var AbstractProcessingHandler $handler */
+		/**
+		 * @var AbstractProcessingHandler $handler
+		 */
 		foreach ($logger->getHandlers() as $handler) {
 			// https://github.com/Seldaek/monolog/blob/main/doc/01-usage.md#log-levels
 			$this->assertSame(Logger::toMonologLevel('debug'), $handler->getLevel());

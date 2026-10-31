@@ -16,14 +16,6 @@ use Throwable;
  */
 class Pipeline implements PipelineContract
 {
-	/**
-	 * The container implementation.
-	 */
-	private readonly Resolver $container;
-
-	/**
-	 * The object being passed through the pipeline.
-	 */
 	private mixed $passable;
 
 	/**
@@ -32,26 +24,21 @@ class Pipeline implements PipelineContract
 	private bool $started = false;
 
 	/**
-	 * The array of class pipes.
+	 * Pipes retain their configured order and can be classes, objects, or callables.
 	 *
 	 * @var mixed[]
 	 */
 	private array $pipes = [];
 
-	/**
-	 * The method to call on each pipe.
-	 */
 	private string $method = 'handle';
 
-	/**
-	 * Create a new class instance.
-	 */
-	public function __construct(Resolver $container) {
-		$this->container = $container;
+	public function __construct(
+		private readonly Resolver $container
+	) {
 	}
 
 	/**
-	 * Set the object being sent through the pipeline.
+	 * Supply the value for this execution, including an explicit null.
 	 *
 	 * @return $this
 	 */
@@ -63,9 +50,7 @@ class Pipeline implements PipelineContract
 	}
 
 	/**
-	 * Set the array of pipes.
-	 *
-	 * @param array|mixed $pipes
+	 * Replace the configured pipes without changing the current value.
 	 *
 	 * @return $this
 	 */
@@ -77,8 +62,6 @@ class Pipeline implements PipelineContract
 
 	/**
 	 * Push additional pipes onto the pipeline.
-	 *
-	 * @param array|mixed $pipes
 	 *
 	 * @return $this
 	 */
@@ -108,9 +91,9 @@ class Pipeline implements PipelineContract
 			throw new PipelineNotStarted('Call send() before executing the pipeline.');
 		}
 
-		$pipeline = array_reduce(
-			array_reverse($this->pipes), $this->carry(), $destination
-		);
+		$pipes    = array_reverse($this->pipes);
+		$reducer  = $this->carry();
+		$pipeline = array_reduce($pipes, $reducer, $destination);
 
 		return $pipeline($this->passable);
 	}
@@ -154,14 +137,12 @@ class Pipeline implements PipelineContract
 	/**
 	 * Parse full pipe string to get name and parameters.
 	 *
-	 * @return array<int, mixed>
+	 * @return array{string, list<string>}
 	 */
 	private function parsePipeString(string $pipe): array {
-		[$name, $parameters] = array_pad(explode(':', $pipe, 2), 2, []);
-
-		if (is_string($parameters)) {
-			$parameters = explode(',', $parameters);
-		}
+		$segments   = explode(':', $pipe, 2);
+		$name       = $segments[0];
+		$parameters = isset($segments[1]) ? explode(',', $segments[1]) : [];
 
 		return [$name, $parameters];
 	}

@@ -9,9 +9,9 @@
     },
     "require": {
         "php": ">=8.3",
-        "stellarwp/foundation-container": "^2.0",
-        "stellarwp/foundation-database": "^2.0",
-        "stellarwp/foundation-lock": "^2.0"
+        "stellarwp/foundation-container": "^2.1",
+        "stellarwp/foundation-database": "^2.1",
+        "stellarwp/foundation-lock": "^2.1"
     },
     "autoload": {
         "psr-4": {
@@ -20,7 +20,7 @@
     },
     "extra": {
         "branch-alias": {
-            "dev-main": "2.0.x-dev"
+            "dev-main": "1.4.x-dev"
         }
     }
 }

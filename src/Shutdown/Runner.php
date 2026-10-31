@@ -13,7 +13,9 @@ use Throwable;
  */
 final class Runner implements ShutdownRunner
 {
-	/** @var list<Task> */
+	/**
+	 * @var list<Task>
+	 */
 	private array $tasks;
 
 	private bool $terminated = false;
@@ -89,7 +91,9 @@ final class Runner implements ShutdownRunner
 	 * @return list<Task>
 	 */
 	private function orderedTasks(): array {
-		/** @var list<array{index: int, task: Task}> $indexedTasks */
+		/**
+		 * @var list<array{index: int, task: Task}> $indexedTasks
+		 */
 		$indexedTasks = [];
 
 		foreach ($this->tasks as $index => $task) {

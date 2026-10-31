@@ -8,7 +8,7 @@ use StellarWP\Foundation\Container\Exceptions\NotFoundException;
 /**
  * Provides feature registration access to the shared container and configuration.
  */
-abstract class Provider
+abstract class Provider implements Providable
 {
 	protected readonly Configuration $config;
 

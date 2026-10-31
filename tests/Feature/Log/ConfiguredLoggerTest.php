@@ -120,6 +120,85 @@ final class ConfiguredLoggerTest extends TestCase
 		$this->assertTrue($audit->hasInfo('Custom handler dependency.'));
 	}
 
+	public function test_the_configured_level_filters_composite_handlers(): void {
+		$this->configureLogger([
+			'channel'  => 'audit',
+			'level'    => 'error',
+			'channels' => [
+				'audit' => [
+					'handler' => GroupHandler::class,
+				],
+			],
+		]);
+		$audit = new TestHandler();
+		$this->container->when(GroupHandler::class)->needs('$handlers')->give([$audit]);
+
+		$logger = $this->container->get(LoggerInterface::class);
+		$logger->debug('Below the configured threshold.');
+		$logger->error('At the configured threshold.');
+
+		$this->assertCount(1, $audit->getRecords());
+		$this->assertTrue($audit->hasError('At the configured threshold.'));
+	}
+
+	/**
+	 * @param Logger::DEBUG|Logger::ERROR $handlerLevel
+	 *
+	 * @dataProvider handlerThresholds
+	 */
+	#[DataProvider('handlerThresholds')]
+	public function test_custom_handlers_keep_the_stricter_threshold(string $applicationLevel, int $handlerLevel): void {
+		$this->configureLogger([
+			'channel'  => 'audit',
+			'level'    => $applicationLevel,
+			'channels' => [
+				'audit' => ['handler' => TestHandler::class],
+			],
+		]);
+		$audit = new TestHandler($handlerLevel);
+		$this->container->singleton(TestHandler::class, $audit);
+		$logger = $this->container->get(LoggerInterface::class);
+
+		$logger->debug('Below both thresholds.');
+		$logger->warning('Below the stricter threshold.');
+		$logger->error('At the stricter threshold.');
+
+		$this->assertCount(1, $audit->getRecords());
+		$this->assertTrue($audit->hasError('At the stricter threshold.'));
+	}
+
+	/**
+	 * @return iterable<string, array{string, Logger::DEBUG|Logger::ERROR}>
+	 */
+	public static function handlerThresholds(): iterable {
+		yield 'handler is stricter' => ['debug', Logger::ERROR];
+
+		yield 'application is stricter' => ['error', Logger::DEBUG];
+	}
+
+	public function test_a_shared_composite_handler_cannot_appear_twice_in_a_stack(): void {
+		$this->configureLogger([
+			'channel'  => 'stack',
+			'channels' => [
+				'stack'  => [
+					'channels' => ['first', 'second'],
+				],
+				'first'  => [
+					'handler' => GroupHandler::class,
+				],
+				'second' => [
+					'handler' => GroupHandler::class,
+				],
+			],
+		]);
+		$this->container->singleton(GroupHandler::class, new GroupHandler([new TestHandler()]));
+
+		$this->expectException(ContainerException::class);
+		$this->expectExceptionMessage('shares a handler instance');
+
+		$this->container->get(LoggerInterface::class);
+	}
+
 	public function test_an_application_can_define_a_named_stack(): void {
 		$this->configureLogger([
 			'channel'  => 'background',

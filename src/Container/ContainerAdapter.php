@@ -7,7 +7,7 @@ use lucatume\DI52\Container as DI52Container;
 use lucatume\DI52\ContainerException as DI52ContainerException;
 use lucatume\DI52\NotFoundException as DI52NotFoundException;
 use StellarWP\Foundation\Container\Contracts\Container;
-use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Providable;
 use StellarWP\Foundation\Container\Exceptions\ContainerException;
 use StellarWP\Foundation\Container\Exceptions\NotFoundException;
 use Throwable;
@@ -21,7 +21,9 @@ use Throwable;
  */
 final class ContainerAdapter implements Container
 {
-	/** @var array<string, Closure> */
+	/**
+	 * @var array<string, Closure>
+	 */
 	private array $callbacks = [];
 
 	/**
@@ -78,21 +80,39 @@ final class ContainerAdapter implements Container
 	 * @throws ContainerException When the class is not a Foundation provider or cannot be registered.
 	 */
 	public function register(string $serviceProviderClass, ...$alias): void {
-		if (! is_a($serviceProviderClass, Provider::class, true)) {
+		if (! is_a($serviceProviderClass, Providable::class, true)) {
 			throw new ContainerException(sprintf(
-				'%s must extend %s to be registered as a provider.',
+				'%s must implement %s to be registered as a provider.',
 				$serviceProviderClass,
-				Provider::class
+				Providable::class
 			));
 		}
 
-		$provider = $this->get($serviceProviderClass);
+		$provider = $this->resolveProvider($serviceProviderClass);
 		$provider->register();
 		$this->singleton($serviceProviderClass, $provider);
 
 		foreach ($alias as $providerAlias) {
 			$this->singleton($providerAlias, $provider);
 		}
+	}
+
+	/**
+	 * Check the resolved binding as applications can replace a provider class with a factory.
+	 */
+	private function resolveProvider(string $id): Providable {
+		$provider = $this->get($id);
+
+		if (! $provider instanceof Providable) {
+			throw new ContainerException(sprintf(
+				'The binding for %s must resolve to %s; received %s.',
+				$id,
+				Providable::class,
+				get_debug_type($provider)
+			));
+		}
+
+		return $provider;
 	}
 
 	/**
@@ -133,10 +153,14 @@ final class ContainerAdapter implements Container
 	 * {@inheritDoc}
 	 */
 	public function instance(mixed $id, array $buildArgs = [], ?array $afterBuildMethods = null): Closure {
-		/** @var Closure $factory */
+		$implementation = $this->adaptImplementation($id);
+
+		/**
+		 * @var Closure $factory
+		 */
 		$factory = $this->call(
 			// @phpstan-ignore-next-line invalid DocBlock comments in DI52
-			fn (): Closure => $this->container->instance($id, $buildArgs, $afterBuildMethods)
+			fn (): Closure => $this->container->instance($implementation, $buildArgs, $afterBuildMethods)
 		);
 
 		return fn (): mixed => $this->resolveDeferred(static fn (): mixed => $factory());

@@ -10,7 +10,9 @@ use StellarWP\Foundation\Container\Contracts\Configuration;
  */
 final readonly class ArrayConfiguration implements Configuration
 {
-	/** @var Dot<string, mixed> */
+	/**
+	 * @var Dot<string, mixed>
+	 */
 	private Dot $configuration;
 
 	/**

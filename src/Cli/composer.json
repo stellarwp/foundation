@@ -10,11 +10,11 @@
     "require": {
         "php": ">=8.3",
         "nikic/php-parser": ">=5.0 <6.0",
-        "stellarwp/foundation-container": "^2.0",
-        "stellarwp/foundation-database": "^2.0",
-        "stellarwp/foundation-wpcli": "^2.0",
+        "stellarwp/foundation-container": "^2.1",
+        "stellarwp/foundation-database": "^2.1",
+        "stellarwp/foundation-wpcli": "^2.1",
         "symfony/console": ">=5.4",
-        "stellarwp/foundation-migrations": "^2.0"
+        "stellarwp/foundation-migrations": "^2.1"
     },
     "autoload": {
         "psr-4": {
@@ -26,7 +26,7 @@
     ],
     "extra": {
         "branch-alias": {
-            "dev-main": "2.0.x-dev"
+            "dev-main": "1.4.x-dev"
         }
     }
 }
