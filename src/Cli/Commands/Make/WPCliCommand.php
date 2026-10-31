@@ -3,13 +3,13 @@
 namespace StellarWP\Foundation\Cli\Commands\Make;
 
 use RuntimeException;
-use StellarWP\Foundation\Cli\Generation\ComposerAutoloadResolver;
+use StellarWP\Foundation\Cli\Composer\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
+use StellarWP\Foundation\Cli\Generation\GeneratorLocationResolver;
 use StellarWP\Foundation\Cli\Generation\StubRenderer;
 use StellarWP\Foundation\Cli\Generation\StubResolver;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\ComposerProject;
 use StellarWP\Foundation\Cli\Generation\ValueObjects\GeneratedFile;
-use StellarWP\Foundation\Cli\Generation\ValueObjects\Psr4Namespace;
+use StellarWP\Foundation\Cli\Generation\ValueObjects\ProjectDirectory;
 use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\WPCli\WPCliStubPath;
 use Symfony\Component\Console\Command\Command;
@@ -26,11 +26,14 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 final class WPCliCommand extends Command
 {
-	private const string NAME = 'make:wpcli-command';
+	public const string CONFIG_KEY        = 'wpcli-command';
+	public const string NAME              = 'make:' . self::CONFIG_KEY;
+	public const string DEFAULT_NAMESPACE = 'Cli\\Commands';
 
 	public function __construct(
-		private readonly string $rootPath,
+		private readonly ProjectDirectory $projectDirectory,
 		private readonly ComposerAutoloadResolver $autoloadResolver,
+		private readonly GeneratorLocationResolver $locations,
 		private readonly WordPressClassNameResolver $classNameResolver,
 		private readonly StubResolver $stubResolver,
 		private readonly StubRenderer $stubRenderer,
@@ -61,7 +64,7 @@ final class WPCliCommand extends Command
 
 		$output->writeln(sprintf('<info>Created:</info> %s', $file->relativePath));
 		$output->writeln('');
-		$output->writeln('<comment>Register this command from your WP-CLI provider and configure its $commandPrefix container argument.</comment>');
+		$output->writeln('<comment>Contribute this command to WPCliProvider::COMMANDS from its feature provider.</comment>');
 
 		$runtimeDependencyWarning = $this->runtimeDependencyWarning();
 
@@ -76,10 +79,10 @@ final class WPCliCommand extends Command
 	private function generatedFile(InputInterface $input): GeneratedFile {
 		$className   = $this->classNameResolver->commandClass((string) $input->getArgument('name'));
 		$project     = $this->autoloadResolver->project();
-		$namespace   = $this->namespace($input, $project->defaultPsr4Namespace());
-		$path        = $this->path($input, $namespace, $project);
+		$namespace   = $this->locations->namespaceFor(self::CONFIG_KEY, self::DEFAULT_NAMESPACE, $project, (string) $input->getOption('namespace'));
+		$path        = $this->locations->directoryFor($namespace, $project, (string) $input->getOption('path'));
 		$stub        = $this->stubResolver->resolve('wpcli', 'command', WPCliStubPath::command());
-		$relative    = $this->relativePath($path . '/' . $className . '.php');
+		$relative    = $this->projectDirectory->relativePath($path . '/' . $className . '.php');
 		$description = (string) ($input->getOption('description') ?: $this->classNameResolver->description($className));
 		$subcommand  = (string) ($input->getOption('subcommand') ?: $this->classNameResolver->subcommand($className));
 
@@ -90,77 +93,16 @@ final class WPCliCommand extends Command
 				'namespace'                => $namespace,
 				'class'                    => $className,
 				'foundation_wpcli_command' => $project->foundationClass('StellarWP\\Foundation\\WPCli\\Command'),
-				'subcommand'               => $subcommand,
-				'subcommand_php'           => $this->phpString($subcommand),
-				'description'              => $description,
-				'description_php'          => $this->phpString($description),
+				'subcommand_doc'           => $this->stubRenderer->phpDocLine($subcommand),
+				'subcommand_php'           => $this->stubRenderer->phpStringLiteral($subcommand),
+				'description_doc'          => $this->stubRenderer->phpDocLine($description),
+				'description_php'          => $this->stubRenderer->phpStringLiteral($description),
 			])
 		);
 	}
 
-	private function phpString(string $value): string {
-		return var_export($value, true);
-	}
-
-	private function namespace(InputInterface $input, Psr4Namespace $autoload): string {
-		$namespace = $input->getOption('namespace');
-
-		if (is_string($namespace) && trim($namespace) !== '') {
-			return $this->validNamespace(trim($namespace, '\\'));
-		}
-
-		return trim($autoload->namespace, '\\') . '\\Cli\\Commands';
-	}
-
-	private function path(InputInterface $input, string $namespace, ComposerProject $project): string {
-		$path = $input->getOption('path');
-
-		if (is_string($path) && trim($path) !== '') {
-			return $this->absolutePath($path);
-		}
-
-		$autoload = $project->psr4NamespaceFor($namespace);
-
-		if ($autoload === null) {
-			throw new RuntimeException(sprintf(
-				'Namespace "%s" is outside the Composer PSR-4 namespaces in composer.json. Pass --path to choose an output directory.',
-				$namespace
-			));
-		}
-
-		return $this->rootPath . '/' . $autoload->pathFor($namespace);
-	}
-
-	private function absolutePath(string $path): string {
-		$path = trim($path);
-
-		if (str_starts_with($path, '/')) {
-			return rtrim($path, '/');
-		}
-
-		return $this->rootPath . '/' . trim($path, '/');
-	}
-
-	private function relativePath(string $path): string {
-		$root = rtrim($this->rootPath, '/') . '/';
-
-		if (str_starts_with($path, $root)) {
-			return substr($path, strlen($root));
-		}
-
-		return $path;
-	}
-
-	private function validNamespace(string $namespace): string {
-		if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\\\\[A-Za-z_][A-Za-z0-9_]*)*$/', $namespace)) {
-			throw new RuntimeException(sprintf('Namespace "%s" is not a valid PHP namespace.', $namespace));
-		}
-
-		return $namespace;
-	}
-
 	private function runtimeDependencyWarning(): ?string {
-		$composerPath = $this->rootPath . '/composer.json';
+		$composerPath = $this->projectDirectory->absolutePath('composer.json');
 
 		if (! is_readable($composerPath)) {
 			return null;

@@ -10,6 +10,24 @@ use RuntimeException;
 final class StubRenderer
 {
 	/**
+	 * Render a string as a valid PHP literal for a stub placeholder.
+	 */
+	public function phpStringLiteral(string $value): string {
+		return var_export($value, true);
+	}
+
+	/**
+	 * Render user-provided text on one safe PHPDoc line.
+	 */
+	public function phpDocLine(string $value): string {
+		return trim(str_replace(
+			["\r", "\n", '*/'],
+			[' ', ' ', '* /'],
+			$value
+		));
+	}
+
+	/**
 	 * @param array<string,string> $replacements
 	 */
 	public function render(string $stubPath, array $replacements): string {

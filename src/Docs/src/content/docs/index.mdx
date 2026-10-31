@@ -1,0 +1,40 @@
+---
+title: Foundation
+description: Shared PHP infrastructure for Nexcess libraries and WordPress plugins.
+template: splash
+hero:
+  title: Foundation
+  tagline: Shared PHP infrastructure for Nexcess libraries and WordPress plugins.
+  actions:
+    - text: Start with Foundation
+      link: /start/what-is-foundation/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/stellarwp/foundation
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Start with the application foundation
+
+<CardGrid>
+  <Card title="Install only what you need" icon="puzzle">
+    Use the aggregate package for convenience or select individual components for a lean production archive.
+    [Choose an installation approach](/start/install-foundation/)
+  </Card>
+  <Card title="Configure one container" icon="setting">
+    Build the shared container and configuration that Foundation providers use throughout an application.
+    [Configure the container](/start/configure-the-container/)
+  </Card>
+  <Card title="Register application features" icon="add-document">
+    Keep bindings, hooks, and feature configuration inside focused service providers.
+    [Register service providers](/start/register-service-providers/)
+  </Card>
+  <Card title="Keep resources isolated" icon="seti:lock">
+    Set a stable application prefix so multiple Foundation consumers do not share commands or database resources.
+    [Scope Foundation resources](/start/scope-foundation/)
+  </Card>
+</CardGrid>

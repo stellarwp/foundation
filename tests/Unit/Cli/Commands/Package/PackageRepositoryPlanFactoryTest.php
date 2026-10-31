@@ -2,8 +2,8 @@
 
 namespace StellarWP\Foundation\Tests\Unit\Cli\Commands\Package;
 
-use StellarWP\Foundation\Cli\Commands\Package\Package;
-use StellarWP\Foundation\Cli\Commands\Package\PackageRepositoryPlanFactory;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\Package;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageRepositoryPlanFactory;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class PackageRepositoryPlanFactoryTest extends TestCase
@@ -14,7 +14,7 @@ final class PackageRepositoryPlanFactoryTest extends TestCase
 			component: 'Log',
 			directory: 'src/Log',
 			path: '/repo/src/Log',
-			composerPath: '/repo/src/Log/composer.json'
+			manifestPath: '/repo/src/Log/composer.json'
 		));
 
 		$this->assertSame('stellarwp', $plan->organization);

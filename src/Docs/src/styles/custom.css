@@ -1,0 +1,62 @@
+:root {
+  --sl-color-accent-low: #dce8ff;
+  --sl-color-accent: #0a55cc;
+  --sl-color-accent-high: #062f7a;
+  --sl-content-width: 52rem;
+  --foundation-code-bg: #f3f5f7;
+  --foundation-code-title-bg: #e9edf2;
+  --foundation-code-border: #cfd5dd;
+}
+
+:root[data-theme='dark'] {
+  --sl-color-accent-low: #112c5c;
+  --sl-color-accent: #3d7bf5;
+  --sl-color-accent-high: #dce8ff;
+  --foundation-code-bg: #171c26;
+  --foundation-code-title-bg: #111620;
+  --foundation-code-border: #343b49;
+}
+
+:root[data-theme='light'] {
+  --sl-color-bg: #fefbf2;
+  --sl-color-bg-nav: #fefbf2;
+  --sl-color-bg-sidebar: #f8f4e9;
+}
+
+.hero .actions a[href='/start/what-is-foundation/'] {
+  background: #0a55cc;
+  color: #fefbf2;
+}
+
+.hero .actions a[href='/start/what-is-foundation/']:hover {
+  background: #3d7bf5;
+}
+
+a[aria-current='page'] {
+  background: #0a55cc;
+  color: #fefbf2;
+}
+
+.sl-markdown-content h2 {
+  border-top: 1px solid var(--sl-color-gray-5);
+  padding-top: 1.5rem;
+}
+
+.sl-markdown-content h2:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.sl-markdown-content [data-nova-code-container] {
+  background: var(--foundation-code-bg);
+  border-color: var(--foundation-code-border);
+}
+
+.sl-markdown-content [data-nova-code-container] pre.astro-code {
+  background: var(--foundation-code-bg) !important;
+}
+
+.sl-markdown-content [data-nova-code-container][data-nova-code-title] > div:first-child {
+  background: var(--foundation-code-title-bg);
+  border-color: var(--foundation-code-border);
+}

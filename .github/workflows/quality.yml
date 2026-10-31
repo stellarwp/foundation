@@ -23,6 +23,7 @@ jobs:
         with:
           php-version: '8.3'
           coverage: pcov
+          extensions: redis
           tools: composer:v2
 
       - name: Detect File Changes
@@ -41,8 +42,7 @@ jobs:
 
       - name: Run code style checks
         if: ${{ steps.filter.outputs.php == 'true' }}
-        run: composer lint ${{ steps.filter.outputs.php_files }}
+        run: composer lint
 
       - name: Run static analysis
         run: composer analyze
-

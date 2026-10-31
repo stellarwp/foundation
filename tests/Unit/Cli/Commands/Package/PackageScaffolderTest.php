@@ -3,7 +3,7 @@
 namespace StellarWP\Foundation\Tests\Unit\Cli\Commands\Package;
 
 use RuntimeException;
-use StellarWP\Foundation\Cli\Commands\Package\PackageScaffolder;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageScaffolder;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class PackageScaffolderTest extends TestCase
@@ -45,7 +45,6 @@ final class PackageScaffolderTest extends TestCase
 			'.gitignore',
 		], $scaffold->createdFiles);
 		$this->assertFileExists($rootPath . '/src/WPCli/composer.json');
-
 		$composer = $this->packageComposer($rootPath, 'WPCli');
 
 		$this->assertArrayHasKey('StellarWP\\Foundation\\WPCli\\', $composer['autoload']['psr-4']);

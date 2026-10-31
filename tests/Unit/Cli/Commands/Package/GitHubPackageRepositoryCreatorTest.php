@@ -3,9 +3,9 @@
 namespace StellarWP\Foundation\Tests\Unit\Cli\Commands\Package;
 
 use RuntimeException;
-use StellarWP\Foundation\Cli\Commands\Package\GitHubPackageRepositoryCreator;
-use StellarWP\Foundation\Cli\Commands\Package\PackageRepositoryPlan;
 use StellarWP\Foundation\Cli\Process\Contracts\ProcessRunner;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\GitHubPackageRepositoryCreator;
+use StellarWP\Foundation\Dev\Cli\Commands\Package\PackageRepositoryPlan;
 use StellarWP\Foundation\Tests\TestCase;
 
 final class GitHubPackageRepositoryCreatorTest extends TestCase
