@@ -9,8 +9,8 @@
     },
     "require": {
         "php": ">=8.3",
-        "stellarwp/foundation-container": "^2.0",
-        "stellarwp/foundation-lock": "^2.0"
+        "stellarwp/foundation-container": "^2.1",
+        "stellarwp/foundation-lock": "^2.1"
     },
     "suggest": {
         "ext-redis": "Required to use PhpRedisConnection.",
@@ -23,7 +23,7 @@
     },
     "extra": {
         "branch-alias": {
-            "dev-main": "2.0.x-dev"
+            "dev-main": "1.4.x-dev"
         }
     }
 }
