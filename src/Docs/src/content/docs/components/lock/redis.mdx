@@ -1,0 +1,196 @@
+---
+title: Redis Lock
+description: Use Redis as the shared backend for Foundation lock ownership.
+sidebar:
+  order: 2
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+`stellarwp/foundation-lock-redis` supplies `RedisLock`, which implements the shared Foundation `Lock` contract with atomic Redis acquisition, renewal, and release. Choose it when requests and workers share a Redis endpoint for lock coordination.
+
+<CardGrid>
+  <LinkCard
+    title="Bootstrap a WordPress Plugin"
+    description="Create the application, shared container, and ordered provider list."
+    href="/start/bootstrap-wordpress-plugin/"
+  />
+  <LinkCard
+    title="Lock Overview"
+    description="Run protected operations and handle contention, renewal, and failures."
+    href="/components/lock/"
+  />
+</CardGrid>
+
+## Set up Redis locks
+
+Install the Redis implementation and the supported Predis client:
+
+```shell
+composer require stellarwp/foundation-lock-redis "predis/predis:>=3.3 <4.0"
+```
+
+### Configure the connection
+
+Set a stable application prefix and configure one writable Redis endpoint for locks. Foundation supports TCP, TLS, and Unix-socket connections. The required `lock.redis.parameters` setting accepts a Predis URI or parameter array; `lock.redis.options` accepts optional Predis client settings. Missing parameters raise `InvalidArgumentException` during provider registration; add the setting shown below before registering the provider.
+
+In `config.php`:
+
+```php title="config.php"
+<?php declare(strict_types=1);
+
+$config = [
+	'foundation' => [
+		'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? 'your-plugin',
+	],
+	'lock' => [
+		'redis' => [
+			'parameters' => [
+				'host'     => $_ENV['FOUNDATION_LOCK_REDIS_HOST'] ?? '127.0.0.1',
+				'port'     => (int) ( $_ENV['FOUNDATION_LOCK_REDIS_PORT'] ?? 6379 ),
+				'database' => (int) ( $_ENV['FOUNDATION_LOCK_REDIS_DATABASE'] ?? 1 ),
+			],
+		],
+	],
+];
+
+if ( isset( $_ENV['FOUNDATION_LOCK_REDIS_PREFIX'] ) ) {
+	$config['lock']['redis']['prefix'] = $_ENV['FOUNDATION_LOCK_REDIS_PREFIX'];
+}
+
+return $config;
+```
+
+Invalid Predis configuration raises `ContainerException` when the connection is resolved; correct the configuration before retrying.
+
+### Select the Redis implementation
+
+`PredisConnectionProvider` supplies the connection. `LockRedisProvider` wires `RedisLock`. Select it as the application's `Lock` implementation in your existing application provider, or create `src/Lock/Provider.php`:
+
+```php title="Provider.php"
+<?php declare(strict_types=1);
+
+namespace Plugin\Lock;
+
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use StellarWP\Foundation\Lock\Contracts\Lock;
+use StellarWP\Foundation\LockRedis\RedisLock;
+
+/**
+ * Selects Redis for application lock consumers.
+ */
+final class Provider extends Service_Provider {
+
+	/**
+	 * Register the application's default lock implementation.
+	 */
+	public function register(): void {
+		$this->container->singleton(
+			Lock::class,
+			static fn ( C $c ): RedisLock => $c->get( RedisLock::class )
+		);
+	}
+}
+```
+
+Register providers in dependency order in `src/App.php`:
+
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\LockRedis\LockRedisProvider;
+use StellarWP\Foundation\LockRedis\PredisConnectionProvider;
+use Plugin\Lock;
+
+/** @var list<class-string<Provider>> */
+private const array PROVIDERS = [
+	PredisConnectionProvider::class,
+	LockRedisProvider::class,
+	Lock\Provider::class,
+];
+```
+
+The Redis key prefix defaults to `foundation.prefix . ':lock:'`. Without configuration, Foundation uses `nx:lock:`; this example defaults to `your-plugin:lock:`. A complete application that owns its shared composition root can use `nx`, but a distributable standalone plugin must set a stable unique `foundation.prefix`. The optional `FOUNDATION_LOCK_REDIS_PREFIX` environment variable sets `lock.redis.prefix` explicitly; Foundation preserves its nonempty value exactly. When that variable is absent, the provider derives the prefix from `foundation.prefix`.
+
+:::caution[Protect active lock keys]
+Use a dedicated Redis database or endpoint for locks. A cache flush or eviction that removes an active lock allows another worker to acquire it while the original work is still running. Keep lock keys out of cache-clearing operations.
+:::
+
+## Usage
+
+Inject `LockOperation` into application services to run bounded work using the selected backend. The [Lock guide](/components/lock/#usage) covers complete usage, contention, renewal, and failure handling.
+
+## Customization
+
+### Use PhpRedis or a custom connection
+
+Predis is the supplied setup path. For PhpRedis, install and enable the extension, omit `PredisConnectionProvider` and the Predis dependency, and supply an application-owned connection dedicated to locks. Bind the Redis `Connection` contract before `RedisLock` resolves. An application can also replace a provider-supplied connection after provider registration and before resolution.
+
+In `src/Lock/PhpRedis_Connection_Provider.php`:
+
+```php title="PhpRedis_Connection_Provider.php"
+<?php declare(strict_types=1);
+
+namespace Plugin\Lock;
+
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\LockRedis\Connections\PhpRedisConnection;
+use StellarWP\Foundation\LockRedis\Contracts\Connection;
+
+/**
+ * Adapts the application's configured PhpRedis client for Foundation locks.
+ */
+final class PhpRedis_Connection_Provider extends Service_Provider {
+
+	/**
+	 * Register the Redis lock connection adapter.
+	 */
+	public function register(): void {
+		$this->container->singleton( Connection::class, PhpRedisConnection::class );
+	}
+}
+```
+
+The application must bind its dedicated, connected `Redis` instance before this adapter resolves. A custom adapter can implement `Connection` and use the same replacement point, provided its `evaluate()` and `exists()` methods preserve the lock contract's atomicity and failure behavior.
+
+### Use Redis for one feature while another lock stays default
+
+An application can keep [Database Lock](/components/lock/database/) as the global `Lock` while one feature uses Redis. Register both Redis Foundation providers, keep the existing application provider that selects the database `Lock`, then configure that feature's `LockOperation` construction with the Redis lock.
+
+In `src/Catalog/Provider.php`:
+
+```php title="Provider.php"
+<?php declare(strict_types=1);
+
+namespace Plugin\Catalog;
+
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use StellarWP\Foundation\Lock\LockOperation;
+use StellarWP\Foundation\LockRedis\RedisLock;
+
+/**
+ * Configures catalog synchronization with its Redis lock lifecycle.
+ */
+final class Provider extends Service_Provider {
+
+	/**
+	 * Use Redis only for Catalog_Synchronizer's lock operation.
+	 */
+	public function register(): void {
+		$this->container->when( Catalog_Synchronizer::class )
+			->needs( LockOperation::class )
+			->give(
+				static fn ( C $c ): LockOperation => new LockOperation(
+					$c->get( RedisLock::class )
+				)
+			);
+	}
+}
+```
+
+Register this feature provider in `App` after the Redis providers. The [shared usage example](/components/lock/#run-a-protected-operation) defines `Catalog_Synchronizer`. This contextual binding selects Redis for that service; other services continue using the application's default lock.
+
+## Testing
+
+Use `InMemoryLock` when testing application behavior against the shared contract. The [Lock testing example](/components/lock/#test-application-behavior) shows successful work and contention. Use a real Redis service for integration tests involving Redis connections, expiration, or coordination between processes.

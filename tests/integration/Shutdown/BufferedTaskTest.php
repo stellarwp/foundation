@@ -29,12 +29,14 @@ final class BufferedTaskTest extends WPTestCase
 			$this->assertFalse(get_transient($cacheKey));
 			do_action('shutdown');
 
-			$this->assertSame($products, get_transient($cacheKey));
+			$cachedProducts = get_transient($cacheKey);
+			$this->assertSame($products, $cachedProducts);
 
 			$buffer->replace([['id' => 99, 'name' => 'Added after shutdown']]);
 			do_action('shutdown');
 
-			$this->assertSame($products, get_transient($cacheKey));
+			$cachedProducts = get_transient($cacheKey);
+			$this->assertSame($products, $cachedProducts);
 		} finally {
 			delete_transient($cacheKey);
 		}

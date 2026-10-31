@@ -1,0 +1,987 @@
+<?php declare(strict_types=1);
+
+namespace StellarWP\Foundation\Tests\Integration\Database;
+
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\InvalidFieldNameException;
+use Doctrine\DBAL\Exception\LockWaitTimeoutException;
+use Doctrine\DBAL\Exception\NotNullConstraintViolationException;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+use RuntimeException;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
+use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\Database\Exceptions\CommitOutcomeUnknown;
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
+use StellarWP\Foundation\Database\Exceptions\TransactionFailed;
+use StellarWP\Foundation\Tests\Support\Fixtures\Database\DatabaseTestCase;
+use StellarWP\Foundation\Tests\Support\Fixtures\Log\CallbackLogger;
+use Throwable;
+
+final class TransactionTest extends DatabaseTestCase
+{
+	public function test_a_prefix_change_cannot_commit_even_after_the_error_is_caught(): void {
+		$prefix = $this->source->prefix;
+
+		try {
+			$this->db->transactional(function () use ($prefix): void {
+				$this->db->executeStatement("UPDATE {$this->table} SET name = 'Wrong'");
+				$this->source->set_prefix($prefix . 'changed_');
+
+				try {
+					$this->db->fetchOne('SELECT 1');
+				} catch (\RuntimeException) {
+					$this->source->set_prefix($prefix);
+				}
+			});
+			$this->fail('A caught scope failure must remain terminal.');
+		} catch (\StellarWP\Foundation\Database\Exceptions\TransactionFailed) {
+			$this->assertOriginal();
+		} finally {
+			$this->source->set_prefix($prefix);
+		}
+	}
+
+	public function test_provider_shares_one_connection_and_borrows_wordpress_session(): void {
+		$this->assertSame($this->db, $this->container->get(Connection::class));
+		$this->assertSame($this->native($this->source), $this->db->getNativeConnection());
+	}
+
+	public function test_commit_publishes_all_work_at_once_and_returns_the_callback_result(): void {
+		$result = $this->db->transactional(function (): int {
+			$this->db->executeStatement('DELETE FROM ' . $this->table);
+			$this->db->insert($this->table, ['id' => 2, 'name' => 'First']);
+			$this->assertOriginal();
+			$this->db->insert($this->table, ['id' => 3, 'name' => 'Second']);
+			$this->assertOriginal();
+
+			return 2;
+		});
+		$this->assertSame(2, $result);
+		$this->assertSame(['First', 'Second'], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->table . ' ORDER BY id'));
+	}
+
+	public function test_manual_transactions_use_void_and_publish_only_at_outer_commit(): void {
+		foreach (['beginTransaction', 'commit', 'rollBack'] as $method) {
+			$this->assertSame('void', (string) (new \ReflectionMethod($this->db, $method))->getReturnType());
+		}
+
+		$this->db->beginTransaction();
+		$this->db->update($this->table, ['name' => 'Outer'], ['id' => 1]);
+		$this->db->beginTransaction();
+		$this->db->update($this->table, ['name' => 'Nested'], ['id' => 1]);
+		$this->db->commit();
+		$this->assertOriginal();
+		$this->db->rollBack();
+		$this->assertOriginal();
+
+		$this->db->beginTransaction();
+		$this->db->update($this->table, ['name' => 'Committed'], ['id' => 1]);
+		$this->db->commit();
+		$this->assertSame('Committed', $this->observer->fetchOne('SELECT name FROM ' . $this->table));
+		$this->assertFalse($this->db->isTransactionActive());
+	}
+
+	public function test_false_and_null_callback_results_are_successful_committed_work(): void {
+		foreach ([false, null] as $expected) {
+			$name   = $expected === false ? 'False result' : 'Null result';
+			$result = $this->db->transactional(function () use ($expected, $name): ?bool {
+				$this->db->update($this->table, ['name' => $name], ['id' => 1]);
+
+				return $expected;
+			});
+
+			$this->assertSame($expected, $result);
+			$this->assertSame($name, $this->observer->fetchOne('SELECT name FROM ' . $this->table));
+			$this->assertFalse($this->db->isTransactionActive());
+		}
+	}
+
+	public function test_late_failure_restores_existing_data(): void {
+		$failure = new RuntimeException('Invalid later batch');
+
+		try {
+			$this->db->transactional(function () use ($failure): void {
+				$this->db->executeStatement('DELETE FROM ' . $this->table);
+				$this->db->insert($this->table, ['id' => 2, 'name' => 'Provisional']);
+
+				throw $failure;
+			});
+		} catch (Throwable $caught) {
+			$this->assertSame($failure, $caught);
+		}
+		$this->assertOriginal();
+		$this->assertSame(42, $this->db->transactional(static fn (): int => 42));
+	}
+
+	public function test_caught_prepared_statement_failure_is_terminal(): void {
+		$statement = $this->db->prepare('INSERT INTO ' . $this->table . ' (id, name) VALUES (?, ?)');
+
+		try {
+			$this->db->transactional(function () use ($statement): void {
+				$this->db->update($this->table, ['name' => 'Provisional'], ['id' => 1]);
+
+				try {
+					$statement->bindValue(1, 1);
+					$statement->bindValue(2, 'Duplicate');
+					$statement->executeStatement();
+				} catch (UniqueConstraintViolationException) {
+				}
+			});
+			$this->fail('A caught database failure must prevent commit.');
+		} catch (TransactionFailed) {
+			$this->assertOriginal();
+		}
+	}
+
+	public function test_caught_query_failure_blocks_further_queries(): void {
+		try {
+			$this->db->transactional(function (): void {
+				try {
+					$this->db->executeQuery('SELECT missing_column FROM ' . $this->table);
+				} catch (Throwable) {
+				}
+
+				try {
+					$this->db->insert($this->table, ['id' => 2, 'name' => 'Must not execute']);
+					$this->fail('A failed transaction must reject further SQL.');
+				} catch (Throwable $failure) {
+					$this->assertInstanceOf(TransactionFailed::class, $failure);
+				}
+			});
+			$this->fail('Expected terminal failure.');
+		} catch (TransactionFailed) {
+			$this->assertOriginal();
+		}
+	}
+
+	public function test_nested_application_failure_uses_savepoint_and_outer_can_continue(): void {
+		$this->db->transactional(function (): void {
+			$this->db->insert($this->table, ['id' => 2, 'name' => 'Outer']);
+
+			try {
+				$this->db->transactional(function (): void {
+					$this->db->insert($this->table, ['id' => 3, 'name' => 'Inner']);
+
+					throw new RuntimeException('Skip inner work');
+				});
+			} catch (RuntimeException) {
+			}
+			$this->db->transactional(function (): void {
+				$this->db->insert($this->table, ['id' => 4, 'name' => 'Nested success']);
+			});
+		});
+		$this->assertSame([1, 2, 4], array_map('intval', $this->observer->fetchFirstColumn('SELECT id FROM ' . $this->table . ' ORDER BY id')));
+	}
+
+	public function test_outer_rollback_includes_successful_nested_work(): void {
+		try {
+			$this->db->transactional(function (): void {
+				$this->db->transactional(function (): void {
+					$this->db->insert($this->table, ['id' => 2, 'name' => 'Nested']);
+				});
+
+				throw new RuntimeException('Outer failure');
+			});
+		} catch (RuntimeException) {
+			$this->assertOriginal();
+		}
+	}
+
+	public function test_ambient_transaction_is_rejected_without_committing_or_rolling_it_back(): void {
+		$native = $this->native($this->source);
+		$native->begin_transaction();
+		$native->query('UPDATE ' . $this->table . " SET name = 'Ambient'");
+
+		try {
+			$this->db->transactional(static function (): void {
+				self::fail('Callback must not run.');
+			});
+		} catch (Throwable $failure) {
+			$this->assertStringContainsString('Transaction characteristics', $failure->getMessage());
+		}
+		$this->assertOriginal();
+		$result = $native->query('SELECT name FROM ' . $this->table);
+		$this->assertInstanceOf(\mysqli_result::class, $result);
+		$this->assertSame(['Ambient'], $result->fetch_row());
+		$native->rollback();
+	}
+
+	public function test_autocommit_disabled_is_rejected(): void {
+		$native = $this->native($this->source);
+		$native->autocommit(false);
+
+		try {
+			$this->db->transactional(static function (): void {
+				self::fail('Callback must not run.');
+			});
+		} catch (RuntimeException $failure) {
+			$this->assertStringContainsString('autocommit', $failure->getMessage());
+		} finally {
+			$native->autocommit(true);
+		}
+	}
+
+	public function test_lost_connection_cannot_replay_a_write_even_if_wordpress_reconnects(): void {
+		try {
+			@$this->db->transactional(function (): void {
+				$this->db->executeStatement('DELETE FROM ' . $this->table);
+				$this->killConnection();
+
+				try {
+					$this->db->insert($this->table, ['id' => 2, 'name' => 'Must not replay']);
+				} catch (Throwable) {
+					$this->source->db_connect(false);
+				}
+
+				try {
+					$this->db->insert($this->table, ['id' => 3, 'name' => 'Must not adopt']);
+				} catch (Throwable) {
+				}
+			});
+			$this->fail('Expected terminal connection loss.');
+		} catch (TransactionFailed) {
+			$this->assertOriginal();
+		}
+		$this->assertSame(7, $this->db->transactional(static fn (): int => 7));
+		$this->assertSame($this->native($this->source), $this->db->getNativeConnection());
+	}
+
+	public function test_lost_commit_acknowledgement_reports_uncertain_outcome(): void {
+		try {
+			@$this->db->transactional(function (): void {
+				$this->db->update($this->table, ['name' => 'Lost'], ['id' => 1]);
+				$this->killConnection();
+			});
+			$this->fail('Expected uncertain commit.');
+		} catch (DatabaseException $failure) {
+			$this->assertInstanceOf(CommitOutcomeUnknown::class, $failure);
+			$this->assertOriginal();
+		}
+	}
+
+	public function test_cleanup_failure_preserves_the_original_business_exception(): void {
+		$failure = new RuntimeException('Original business failure');
+
+		try {
+			$this->db->transactional(function () use ($failure): void {
+				$this->native($this->source)->close();
+
+				throw $failure;
+			});
+		} catch (Throwable $caught) {
+			$this->assertSame($failure, $caught);
+		}
+	}
+
+	public function test_site_change_prevents_commit_and_restoration_does_not_erase_failure(): void {
+		$otherSite = $this->factory()->blog->create();
+		$this->assertIsInt($otherSite);
+
+		try {
+			$this->db->transactional(function () use ($otherSite): void {
+				$this->db->update($this->table, ['name' => 'Wrong scope'], ['id' => 1]);
+				switch_to_blog($otherSite);
+
+				try {
+					$this->db->executeQuery('SELECT 1');
+				} catch (Throwable) {
+				} finally {
+					restore_current_blog();
+				}
+			});
+			$this->fail('Expected terminal scope failure.');
+		} catch (TransactionFailed) {
+			$this->assertOriginal();
+		}
+	}
+
+	public function test_nested_unknown_column_failure_rolls_back_only_nested_work(): void {
+		$this->db->transactional(function (): void {
+			$this->db->update($this->table, [
+				'name' => 'Outer',
+			], [
+				'id' => 1,
+			]);
+
+			try {
+				$this->db->transactional(function (): void {
+					$this->db->insert($this->table, [
+						'id'   => 2,
+						'name' => 'Discarded',
+					]);
+					$this->db->executeQuery('SELECT missing_column FROM ' . $this->table);
+				});
+				$this->fail('The invalid column must escape the nested operation.');
+			} catch (InvalidFieldNameException) {
+				$this->assertSame(1, $this->db->getTransactionNestingLevel());
+			}
+
+			$this->db->insert($this->table, [
+				'id'   => 3,
+				'name' => 'Continued',
+			]);
+			$this->assertOriginal();
+		});
+
+		$this->assertSame([
+			'Outer',
+			'Continued',
+		], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->table . ' ORDER BY id'));
+	}
+
+	public function test_nested_not_null_failure_rolls_back_only_nested_work(): void {
+		$this->db->transactional(function (): void {
+			$this->db->update($this->table, [
+				'name' => 'Outer',
+			], [
+				'id' => 1,
+			]);
+
+			try {
+				$this->db->transactional(function (): void {
+					$this->db->insert($this->table, [
+						'id'   => 2,
+						'name' => 'Discarded',
+					]);
+					$this->db->insert($this->table, [
+						'id'   => 3,
+						'name' => null,
+					]);
+				});
+				$this->fail('The null constraint violation must escape the nested operation.');
+			} catch (NotNullConstraintViolationException) {
+				$this->assertSame(1, $this->db->getTransactionNestingLevel());
+			}
+
+			$this->db->insert($this->table, [
+				'id'   => 4,
+				'name' => 'Continued',
+			]);
+			$this->assertOriginal();
+		});
+
+		$this->assertSame([
+			'Outer',
+			'Continued',
+		], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->table . ' ORDER BY id'));
+	}
+
+	public function test_nested_duplicate_rolls_back_its_writes_and_outer_work_can_continue(): void {
+		$result = $this->db->transactional(function (): string {
+			$this->db->insert($this->table, [
+				'id'   => 2,
+				'name' => 'Before',
+			]);
+
+			try {
+				$this->db->transactional(function (): void {
+					$this->db->insert($this->table, [
+						'id'   => 3,
+						'name' => 'Discarded',
+					]);
+					$this->db->insert($this->table, [
+						'id'   => 1,
+						'name' => 'Duplicate',
+					]);
+				});
+				$this->fail('The duplicate must escape the nested operation.');
+			} catch (UniqueConstraintViolationException) {
+				$this->assertSame(1, $this->db->getTransactionNestingLevel());
+			}
+
+			$this->assertOriginal();
+			$this->db->insert($this->table, [
+				'id'   => 4,
+				'name' => 'After',
+			]);
+
+			return 'Recovered';
+		});
+
+		$this->assertSame('Recovered', $result);
+		$this->assertSame([
+			'Original',
+			'Before',
+			'After',
+		], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->table . ' ORDER BY id'));
+	}
+
+	public function test_duplicate_caught_inside_nested_callback_cannot_be_reported_as_success(): void {
+		$this->db->transactional(function (): void {
+			$this->db->update($this->table, [
+				'name' => 'Outer',
+			], [
+				'id' => 1,
+			]);
+
+			try {
+				$this->db->transactional(function (): void {
+					$this->db->insert($this->table, [
+						'id'   => 2,
+						'name' => 'Discarded',
+					]);
+
+					try {
+						$this->db->insert($this->table, [
+							'id'   => 1,
+							'name' => 'Duplicate',
+						]);
+					} catch (UniqueConstraintViolationException) {
+					}
+				});
+				$this->fail('Catching the duplicate inside its callback cannot make that callback successful.');
+			} catch (TransactionFailed) {
+				$this->assertSame(1, $this->db->getTransactionNestingLevel());
+			}
+
+			$this->db->insert($this->table, [
+				'id'   => 3,
+				'name' => 'Acknowledged failure',
+			]);
+		});
+
+		$this->assertSame([
+			'Outer',
+			'Acknowledged failure',
+		], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->table . ' ORDER BY id'));
+	}
+
+	public function test_deep_duplicate_recovery_preserves_both_parent_savepoints(): void {
+		$this->db->transactional(function (): void {
+			$this->db->transactional(function (): void {
+				$this->db->insert($this->table, [
+					'id'   => 2,
+					'name' => 'Parent',
+				]);
+
+				try {
+					$this->db->transactional(function (): void {
+						$this->db->insert($this->table, [
+							'id'   => 3,
+							'name' => 'Discarded',
+						]);
+						$this->db->insert($this->table, [
+							'id'   => 1,
+							'name' => 'Duplicate',
+						]);
+					});
+				} catch (UniqueConstraintViolationException) {
+					$this->assertSame(2, $this->db->getTransactionNestingLevel());
+				}
+
+				$this->db->insert($this->table, [
+					'id'   => 4,
+					'name' => 'Continued',
+				]);
+			});
+			$this->assertOriginal();
+		});
+
+		$this->assertSame([
+			'Original',
+			'Parent',
+			'Continued',
+		], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->table . ' ORDER BY id'));
+	}
+
+	public function test_outer_failure_still_rolls_back_work_after_duplicate_recovery(): void {
+		$failure = new RuntimeException('Later application failure');
+
+		try {
+			$this->db->transactional(function () use ($failure): void {
+				try {
+					$this->db->transactional(function (): void {
+						$this->db->insert($this->table, [
+							'id'   => 1,
+							'name' => 'Duplicate',
+						]);
+					});
+				} catch (UniqueConstraintViolationException) {
+				}
+
+				$this->db->update($this->table, [
+					'name' => 'Recovered but provisional',
+				], [
+					'id' => 1,
+				]);
+
+				throw $failure;
+			});
+		} catch (Throwable $caught) {
+			$this->assertSame($failure, $caught);
+		}
+
+		$this->assertOriginal();
+	}
+
+	public function test_recovered_duplicate_uses_a_current_read_to_find_a_competing_insert(): void {
+		$this->db->executeStatement('SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED');
+		$result = $this->db->transactional(function (): string {
+			$this->assertSame('Original', $this->db->fetchOne('SELECT name FROM ' . $this->table . ' WHERE id = 1'));
+			$this->observer->insert($this->table, [
+				'id'   => 2,
+				'name' => 'Competing insert',
+			]);
+
+			try {
+				$this->db->transactional(function (): void {
+					$this->db->insert($this->table, [
+						'id'   => 2,
+						'name' => 'Losing insert',
+					]);
+				});
+				$this->fail('The competing insert must cause a duplicate.');
+			} catch (UniqueConstraintViolationException) {
+				$this->assertSame(1, $this->db->getTransactionNestingLevel());
+			}
+
+			return (string) $this->db->fetchOne('SELECT name FROM ' . $this->table . ' WHERE id = 2 FOR UPDATE');
+		});
+
+		$this->assertSame('Competing insert', $result);
+	}
+
+	public function test_savepoint_recovery_does_not_refresh_a_repeatable_read_snapshot(): void {
+		$this->db->executeStatement('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+		$this->db->transactional(function (): void {
+			$this->assertSame('Original', $this->db->fetchOne('SELECT name FROM ' . $this->table . ' WHERE id = 1'));
+			$this->observer->insert($this->table, [
+				'id'   => 2,
+				'name' => 'Competing insert',
+			]);
+
+			try {
+				$this->db->transactional(function (): void {
+					$this->db->insert($this->table, [
+						'id'   => 1,
+						'name' => 'Duplicate original',
+					]);
+				});
+				$this->fail('The existing original row must cause a duplicate.');
+			} catch (UniqueConstraintViolationException) {
+				$this->assertFalse($this->db->fetchOne('SELECT name FROM ' . $this->table . ' WHERE id = 2'));
+			}
+		});
+
+		$this->assertSame('Competing insert', $this->db->fetchOne('SELECT name FROM ' . $this->table . ' WHERE id = 2'));
+	}
+
+	public function test_failed_savepoint_recovery_preserves_duplicate_and_prevents_outer_commit(): void {
+		$logger = new CallbackLogger(function (string $message, array $context): void {
+			if (str_starts_with($context['sql'] ?? '', 'ROLLBACK TO SAVEPOINT')) {
+				$this->killConnection();
+			}
+		});
+		$db = $this->withLogging($logger);
+
+		try {
+			@$db->transactional(function () use ($db): void {
+				$db->update($this->table, [
+					'name' => 'Outer',
+				], [
+					'id' => 1,
+				]);
+
+				try {
+					$db->transactional(function () use ($db): void {
+						$db->insert($this->table, [
+							'id'   => 1,
+							'name' => 'Duplicate',
+						]);
+					});
+					$this->fail('The original duplicate must remain visible when rollback fails.');
+				} catch (UniqueConstraintViolationException) {
+				}
+			});
+			$this->fail('Failed savepoint cleanup must prevent the outer commit.');
+		} catch (TransactionFailed) {
+			$this->assertOriginal();
+		}
+	}
+
+	public function test_scope_change_before_duplicate_recovery_remains_terminal_after_restoration(): void {
+		$prefix = $this->source->prefix;
+
+		try {
+			$this->db->transactional(function () use ($prefix): void {
+				$this->db->update($this->table, [
+					'name' => 'Outer',
+				], [
+					'id' => 1,
+				]);
+
+				try {
+					$this->db->transactional(function () use ($prefix): void {
+						try {
+							$this->db->insert($this->table, [
+								'id'   => 1,
+								'name' => 'Duplicate',
+							]);
+						} catch (UniqueConstraintViolationException $failure) {
+							$this->source->set_prefix($prefix . 'changed_');
+
+							throw $failure;
+						}
+					});
+					$this->fail('The duplicate must escape even if scope prevents cleanup.');
+				} catch (UniqueConstraintViolationException) {
+					$this->source->set_prefix($prefix);
+				}
+			});
+			$this->fail('Restoring scope must not erase failed savepoint cleanup.');
+		} catch (TransactionFailed) {
+			$this->assertOriginal();
+		} finally {
+			$this->source->set_prefix($prefix);
+		}
+	}
+
+	public function test_manual_nested_rollback_recovers_duplicate_without_committing_outer_work(): void {
+		$this->db->beginTransaction();
+		$this->db->update($this->table, [
+			'name' => 'Outer',
+		], [
+			'id' => 1,
+		]);
+		$this->db->beginTransaction();
+
+		try {
+			$this->db->insert($this->table, [
+				'id'   => 1,
+				'name' => 'Duplicate',
+			]);
+			$this->fail('The duplicate must fail before explicit rollback.');
+		} catch (UniqueConstraintViolationException) {
+			$this->db->rollBack();
+		}
+
+		$this->assertSame(1, $this->db->getTransactionNestingLevel());
+		$this->assertOriginal();
+		$this->db->insert($this->table, [
+			'id'   => 2,
+			'name' => 'Continued',
+		]);
+		$this->db->commit();
+		$this->assertSame([
+			'Outer',
+			'Continued',
+		], $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->table . ' ORDER BY id'));
+	}
+
+	public function test_lock_timeout_recovery_respects_the_servers_rollback_setting(): void {
+		$wholeTransaction = (bool) $this->observer->fetchOne('SELECT @@GLOBAL.innodb_rollback_on_timeout');
+		$this->db->executeStatement('SET SESSION innodb_lock_wait_timeout = 1');
+		$this->observer->beginTransaction();
+		$this->observer->executeStatement("UPDATE {$this->table} SET name = 'Held lock' WHERE id = 1");
+
+		try {
+			try {
+				$this->db->transactional(function () use ($wholeTransaction): void {
+					$this->db->insert($this->table, [
+						'id'   => 2,
+						'name' => 'Outer',
+					]);
+
+					try {
+						$this->db->transactional(function (): void {
+							$this->db->insert($this->table, [
+								'id'   => 3,
+								'name' => 'Discarded',
+							]);
+							$this->db->executeStatement("UPDATE {$this->table} SET name = 'Blocked' WHERE id = 1");
+						});
+						$this->fail('The observer must hold the row until the statement times out.');
+					} catch (LockWaitTimeoutException) {
+					}
+
+					if (! $wholeTransaction) {
+						$this->db->insert($this->table, [
+							'id'   => 4,
+							'name' => 'Continued',
+						]);
+					}
+				});
+				$this->assertFalse($wholeTransaction, 'A server-wide transaction rollback must prevent outer commit.');
+			} catch (TransactionFailed) {
+				$this->assertTrue($wholeTransaction, 'A statement-only timeout must permit confirmed savepoint recovery.');
+			}
+		} finally {
+			$this->observer->rollBack();
+		}
+
+		$expected = $wholeTransaction ? [
+			'Original',
+		] : [
+			'Original',
+			'Outer',
+			'Continued',
+		];
+		$this->assertSame($expected, $this->observer->fetchFirstColumn('SELECT name FROM ' . $this->table . ' ORDER BY id'));
+	}
+
+	public function test_missing_savepoint_cleanup_cannot_be_recovered_at_a_parent_boundary(): void {
+		try {
+			$this->db->transactional(function (): void {
+				$this->db->update($this->table, [
+					'name' => 'Outer',
+				], [
+					'id' => 1,
+				]);
+
+				try {
+					$this->db->transactional(function (): void {
+						try {
+							$this->db->transactional(function (): void {
+								// Fault injection: remove only the innermost savepoint, leaving its parent valid.
+								$this->native($this->source)->query('RELEASE SAVEPOINT DOCTRINE_3');
+								$this->db->executeQuery('SELECT missing_column FROM ' . $this->table);
+							});
+							$this->fail('The original statement error must survive failed savepoint cleanup.');
+						} catch (InvalidFieldNameException) {
+						}
+					});
+					$this->fail('The parent boundary must remain failed.');
+				} catch (TransactionFailed) {
+				}
+			});
+			$this->fail('Catching both failures must not allow the outer transaction to commit.');
+		} catch (TransactionFailed) {
+			$this->assertOriginal();
+		}
+	}
+
+	public function test_failed_savepoint_release_cannot_be_recovered_at_a_parent_boundary(): void {
+		try {
+			$this->db->transactional(function (): void {
+				$this->db->update($this->table, [
+					'name' => 'Outer',
+				], [
+					'id' => 1,
+				]);
+
+				try {
+					$this->db->transactional(function (): void {
+						try {
+							$this->db->transactional(function (): void {
+								// Fault injection: force DBAL's subsequent release to fail on the live session.
+								$this->native($this->source)->query('RELEASE SAVEPOINT DOCTRINE_3');
+							});
+							$this->fail('Releasing the missing savepoint must fail.');
+						} catch (\Doctrine\DBAL\Exception\DriverException) {
+						}
+					});
+					$this->fail('A failed transaction-control statement must remain terminal.');
+				} catch (TransactionFailed) {
+				}
+			});
+			$this->fail('An intact parent savepoint must not erase a transaction-control failure.');
+		} catch (TransactionFailed) {
+			$this->assertOriginal();
+		}
+	}
+
+	public function test_deadlock_rollback_cannot_be_recovered_as_a_nested_failure(): void {
+		for ($id = 2; $id <= 21; $id++) {
+			$this->observer->insert($this->table, [
+				'id'   => $id,
+				'name' => 'Original',
+			]);
+		}
+
+		$this->db->executeStatement('SET SESSION innodb_lock_wait_timeout = 3');
+		$this->observer->executeStatement('SET SESSION innodb_lock_wait_timeout = 3');
+		$this->observer->beginTransaction();
+		$this->observer->executeStatement("UPDATE {$this->table} SET name = 'Heavier transaction' WHERE id >= 2");
+		$native  = $this->native($this->observerSource);
+		$pending = false;
+
+		try {
+			try {
+				$this->db->transactional(function () use ($native, &$pending): void {
+					$this->db->executeStatement("UPDATE {$this->table} SET name = 'Lighter transaction' WHERE id = 1");
+					$this->assertTrue($native->query("UPDATE {$this->table} SET name = 'Waiting' WHERE id = 1", MYSQLI_ASYNC));
+					$pending = true;
+
+					try {
+						$this->db->transactional(function (): void {
+							$this->db->executeStatement("UPDATE {$this->table} SET name = 'Deadlock' WHERE id = 2");
+						});
+						$this->fail('The lighter transaction must be selected as the deadlock victim.');
+					} catch (\Doctrine\DBAL\Exception\DeadlockException) {
+					}
+				});
+				$this->fail('A caught deadlock must prevent the outer transaction from committing.');
+			} catch (TransactionFailed) {
+				$this->assertFalse($this->db->isTransactionActive());
+			}
+		} finally {
+			try {
+				if ($pending) {
+					$read = [
+						$native,
+					];
+					$error  = $read;
+					$reject = [];
+					$ready  = mysqli_poll($read, $error, $reject, 5);
+					$this->assertSame(1, $ready, 'The competing update must finish after deadlock resolution.');
+					$native->reap_async_query();
+				}
+			} finally {
+				$this->observer->rollBack();
+			}
+		}
+
+		$this->assertSame([
+			'Original',
+		], $this->observer->fetchFirstColumn('SELECT DISTINCT name FROM ' . $this->table));
+		$this->assertSame(42, $this->db->transactional(static fn (): int => 42));
+	}
+
+	public function test_a_business_exception_takes_precedence_over_a_caught_database_failure(): void {
+		$business = new RuntimeException('Application failure');
+
+		try {
+			$this->db->transactional(function () use ($business): void {
+				try {
+					$this->db->executeQuery('SELECT missing_column FROM ' . $this->table);
+				} catch (Throwable) {
+				}
+
+				throw $business;
+			});
+		} catch (Throwable $failure) {
+			$this->assertSame($business, $failure);
+		}
+		$this->assertOriginal();
+	}
+
+	public function test_replacing_a_live_wordpress_session_prevents_commit(): void {
+		try {
+			$this->db->transactional(function (): void {
+				$this->db->executeStatement('DELETE FROM ' . $this->table);
+				$this->source->db_connect(false);
+			});
+			$this->fail('Expected connection replacement to abort the operation.');
+		} catch (RuntimeException $failure) {
+			$this->assertStringContainsString('connection changed', $failure->getMessage());
+			$this->assertOriginal();
+		}
+		$this->assertSame(9, $this->db->transactional(static fn (): int => 9));
+	}
+
+	public function test_native_logging_middleware_can_wrap_the_wordpress_driver(): void {
+		$logger  = new \Monolog\Logger('doctrine-evaluation');
+		$handler = new \Monolog\Handler\TestHandler();
+		$logger->pushHandler($handler);
+		$db = $this->withLogging($logger);
+		$this->assertSame(1, (int) $db->transactional(static fn (Connection $db): mixed => $db->fetchOne('SELECT 1')));
+		$this->assertTrue($handler->hasDebugThatContains('Committing transaction'));
+	}
+
+	public function test_connection_loss_before_begin_rejects_the_callback(): void {
+		$logger = new CallbackLogger(function (string $message, array $context): void {
+			if ($message === 'Beginning transaction') {
+				$this->killConnection();
+			}
+		});
+		$db     = $this->withLogging($logger);
+		$called = false;
+
+		try {
+			@$db->transactional(static function () use (&$called): void {
+				$called = true;
+			});
+			$this->fail('Expected begin failure.');
+		} catch (RuntimeException $failure) {
+			$this->assertStringContainsString('Unable to start', $failure->getMessage());
+		}
+		$this->assertFalse($called);
+		$this->assertOriginal();
+	}
+
+	public function test_caught_savepoint_release_failure_remains_terminal(): void {
+		$logger = new CallbackLogger(function (string $message, array $context): void {
+			if (str_starts_with($context['sql'] ?? '', 'RELEASE SAVEPOINT')) {
+				$this->killConnection();
+			}
+		});
+		$db = $this->withLogging($logger);
+
+		try {
+			@$db->transactional(function () use ($db): void {
+				try {
+					$db->transactional(function () use ($db): void {
+						$db->update($this->table, ['name' => 'Nested'], ['id' => 1]);
+					});
+				} catch (Throwable) {
+				}
+			});
+			$this->fail('Expected terminal savepoint failure.');
+		} catch (TransactionFailed) {
+			$this->assertOriginal();
+		}
+	}
+
+	public function test_stale_prepared_statement_cannot_write_to_an_old_session(): void {
+		$statement = $this->db->prepare('UPDATE ' . $this->table . ' SET name = ?');
+		$this->source->db_connect(false);
+
+		try {
+			$this->db->transactional(static function () use ($statement): void {
+				try {
+					$statement->bindValue(1, 'Stale');
+					$statement->executeStatement();
+				} catch (Throwable) {
+				}
+			});
+			$this->fail('Expected stale statement failure.');
+		} catch (TransactionFailed) {
+			$this->assertOriginal();
+		}
+	}
+
+	public function test_a_closed_wordpress_source_is_rejected(): void {
+		$this->source->close();
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('WordPress must have an open mysqli connection.');
+		$this->db->transactional(static function (): void {
+			self::fail('Must not invoke work.');
+		});
+	}
+
+	public function test_rollback_without_an_active_transaction_does_not_poison_the_next_operation(): void {
+		try {
+			$this->db->rollBack();
+			$this->fail('Rollback without an active transaction must report misuse.');
+		} catch (\Doctrine\DBAL\Exception\NoActiveTransaction) {
+			$this->assertFalse($this->db->isTransactionActive());
+		}
+
+		$this->assertSame(42, $this->db->transactional(static fn (): int => 42));
+		$this->assertOriginal();
+	}
+
+	public function test_native_manual_rollback_remains_available(): void {
+		$this->db->beginTransaction();
+		$this->db->update($this->table, ['name' => 'Provisional'], ['id' => 1]);
+		$this->db->rollBack();
+		$this->assertOriginal();
+		$this->db->beginTransaction();
+		$this->killConnection();
+		$this->expectException(RuntimeException::class);
+		$this->expectExceptionMessage('The database did not acknowledge rollback.');
+		@$this->db->rollBack();
+	}
+
+	private function withLogging(\Psr\Log\LoggerInterface $logger): Connection {
+		$container = (new ContainerFactory())->create(new ArrayConfiguration([]));
+		$container->register(DatabaseProvider::class);
+		$container->singleton(\wpdb::class, $this->source);
+		$container->mergeArrayVar(DatabaseProvider::MIDDLEWARE, static fn (): array => [
+			new \Doctrine\DBAL\Logging\Middleware($logger),
+		]);
+
+		return $container->get(Connection::class);
+	}
+}

@@ -13,6 +13,9 @@ stacked, and null channels.
 composer require stellarwp/foundation-log
 ```
 
+Supports Monolog `^2.11 || ^3.10`, using the version compatible with the
+application's other dependencies.
+
 ## Documentation
 
 See the [Foundation Log documentation](https://foundation.nexcess.dev/components/log/)

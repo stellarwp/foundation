@@ -13,19 +13,12 @@ use StellarWP\Foundation\Shutdown\Task;
  */
 final class Product_Cache_Provider extends Provider
 {
-	private bool $registered = false;
-
 	/**
 	 * Register the shared buffer, cache settings, and shutdown task.
 	 *
 	 * @throws ContainerException When service bindings cannot be registered.
 	 */
 	public function register(): void {
-		if ($this->registered) {
-			return;
-		}
-
-		$this->registered = true;
 		$this->container->singleton(Product_Cache_Buffer::class);
 
 		$this->container->when(Product_Cache_Writer::class)

@@ -49,8 +49,8 @@ Foundation adapts the prefix to the format required by each package. Given `your
 
 - WP-CLI commands are registered under `wp your-plugin`.
 - The migration ledger defaults to `<wp_prefix>your_plugin_foundation_migrations`.
-- Database-backed migration locks default to `<wp_prefix>your_plugin_foundation_locks`.
-- The migration lock name defaults to `your-plugin-foundation-database-migrations`.
+- Application database lock storage defaults to `<wp_prefix>your_plugin_foundation_locks`.
+- Migration advisory locks are derived from the active database and physical ledger name. They use the database session, with no separate lock table or lease TTL.
 
 Without configuration, those resources use `nx`. That is convenient for an application that owns the installation, but unsafe for a standalone plugin because another Foundation consumer may use the same defaults.
 
@@ -66,4 +66,4 @@ Different environments may use different databases, but a deployed environment s
 
 Package-specific configuration takes precedence over names derived from `foundation.prefix`. Use an override when an existing installation must retain a previously published table, lock, or command name.
 
-For Foundation-managed infrastructure, configure `foundation.prefix` and use the derived defaults unless an existing resource name must be preserved. Developers choose application table names separately: when [generating a table](/components/database/migrations/#create-and-change-a-table) for a standalone plugin, supply a stable name unique to that plugin, such as `--table-name=your_plugin_reports`.
+For Foundation-managed infrastructure, configure `foundation.prefix` and use the derived defaults unless an existing resource name must be preserved. Developers choose application table names separately: when [generating a table](/components/migrations/#create-and-change-a-table) for a standalone plugin, supply a stable name unique to that plugin, such as `--table-name=your_plugin_reports`.

@@ -37,12 +37,18 @@ export default defineConfig({
               collapsed: false,
               items: [
                 { slug: 'components/database', label: 'Overview' },
-                { slug: 'components/database/migrations' },
                 { slug: 'components/database/query-builder' },
-                { slug: 'components/database/lock' },
               ],
             },
-            { slug: 'components/lock' },
+            {
+              label: 'Lock',
+              items: [
+                { slug: 'components/lock', label: 'Overview' },
+                { slug: 'components/lock/database' },
+                { slug: 'components/lock/redis' },
+              ],
+            },
+            { slug: 'components/migrations' },
             { slug: 'components/log' },
             { slug: 'components/identifier' },
             { slug: 'components/pipeline' },

@@ -9,6 +9,11 @@ final class TestWpCliLogger extends Regular
 	/**
 	 * @var list<string>
 	 */
+	public array $errorMessages = [];
+
+	/**
+	 * @var list<string>
+	 */
 	public array $infoMessages = [];
 
 	/**
@@ -50,6 +55,10 @@ final class TestWpCliLogger extends Regular
 
 	public function warning($message): void {
 		$this->warningMessages[] = $message;
+	}
+
+	public function error($message): void {
+		$this->errorMessages[] = $message;
 	}
 
 	public function debug($message, $group = false): void {

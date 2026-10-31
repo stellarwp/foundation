@@ -23,7 +23,7 @@ jobs:
         with:
           php-version: '8.3'
           coverage: pcov
-          extensions: redis
+          extensions: redis, mysqli
           tools: composer:v2
 
       - name: Detect File Changes

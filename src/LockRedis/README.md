@@ -23,6 +23,7 @@ Alternatively, install and enable the PhpRedis extension.
 
 ## Documentation
 
-See the [Foundation Lock guide](https://foundation.nexcess.dev/components/lock/)
-for backend selection, Redis configuration, container registration, lease
-handling, failure behavior, and usage examples.
+See the [Redis Lock guide](https://foundation.nexcess.dev/components/lock/redis/)
+for connection configuration, provider registration, and client customization.
+The [Lock overview](https://foundation.nexcess.dev/components/lock/) covers shared
+usage, renewal, failure handling, and testing.

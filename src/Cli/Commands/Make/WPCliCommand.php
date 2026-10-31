@@ -27,7 +27,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 final class WPCliCommand extends Command
 {
 	public const string CONFIG_KEY        = 'wpcli-command';
-	public const string NAME              = 'make:' . self::CONFIG_KEY;
+	public const string NAME              = 'make:wpcli:command';
 	public const string DEFAULT_NAMESPACE = 'Cli\\Commands';
 
 	public function __construct(

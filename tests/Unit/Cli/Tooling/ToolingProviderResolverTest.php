@@ -47,11 +47,14 @@ final class ToolingProviderResolverTest extends TestCase
 
 	public function test_no_manifest_or_namespace_or_project_provider_is_optional(): void {
 		unlink($this->root . '/composer.json');
-		$this->assertSame([], $this->resolver()->providers());
+		$providers = $this->resolver()->providers();
+		$this->assertSame([], $providers);
 		file_put_contents($this->root . '/composer.json', '{}');
-		$this->assertSame([], $this->resolver()->providers());
+		$providers = $this->resolver()->providers();
+		$this->assertSame([], $providers);
 		file_put_contents($this->root . '/composer.json', '{"autoload":{"psr-4":{"Absent\\\\":"src"}}}');
-		$this->assertSame([], $this->resolver()->providers());
+		$providers = $this->resolver()->providers();
+		$this->assertSame([], $providers);
 	}
 
 	public function test_it_reports_invalid_composer_metadata(): void {

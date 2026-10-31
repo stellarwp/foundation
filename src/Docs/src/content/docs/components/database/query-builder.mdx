@@ -1,42 +1,15 @@
 ---
-title: Query Builder
-description: Read and write WordPress tables through a small query API with inspectable SQL and bindings.
+title: Queries and Transactions
+description: Query application tables with Foundation's fluent builder and choose reliable transaction boundaries.
 sidebar:
   order: 2
 ---
 
-import { LinkCard } from '@astrojs/starlight/components';
-
-Foundation Database wraps common `wpdb` operations with prepared bindings, quoted identifiers, consistent exceptions, and a small fluent query builder. It remains intentionally close to SQL so developers can inspect exactly what WordPress will execute.
-
-<LinkCard
-  title="Database Overview"
-  description="Install the package and register DatabaseProvider before injecting application table classes."
-  href="/components/database/"
-/>
-
-Tables used for queries do not need to be managed by Foundation migrations. A wrapper around an existing WordPress, WooCommerce, or legacy table can extend the supplied `Table` base class and provide only its stable name. For example, `src/Database/Tables/Import_Log_Table.php` can target an externally managed table without declaring ownership of its schema:
-
-```php title="Import_Log_Table.php"
-<?php declare(strict_types=1);
-
-namespace Plugin\Database\Tables;
-
-use StellarWP\Foundation\Database\Table\Table;
-
-final readonly class Import_Log_Table extends Table {
-
-	public function unprefixedName(): string {
-		return 'import_log';
-	}
-}
-```
-
-The same table shape works whether Foundation migrations, another plugin, or an external system owns its schema.
+[Register DatabaseProvider](/components/database/) and inject your concrete table into the service that owns its queries. Foundation's fluent builder binds values and quotes structured identifiers, then executes through the shared Doctrine connection. A table can wrap an existing WordPress or third-party table without owning its migrations.
 
 ## Read rows
 
-Inject the table object into the class that owns its queries. The table keeps physical naming and common database operations together. For example, create `src/Report/Report_Repository.php`:
+A repository is an optional way to organize reusable application queries:
 
 ```php title="Report_Repository.php"
 <?php declare(strict_types=1);
@@ -48,200 +21,674 @@ use Plugin\Database\Tables\Reports_Table;
 final readonly class Report_Repository {
 
 	public function __construct(
-		private Reports_Table $table
+		private Reports_Table $reports,
 	) {
 	}
 
 	/**
-	 * @return list<array<string, mixed>>
+	 * Find one report, or return null when it does not exist.
+	 *
+	 * @return array<string, mixed>|null
 	 */
-	public function published( int $limit = 100 ): array {
-		return $this->table
-			->query( 'r' )
-			->select( 'r.id', 'r.status', 'r.payload', 'r.created_at' )
-			->where( 'r.status', '=', 'published' )
-			->orderBy( 'r.created_at', 'DESC' )
-			->limit( $limit )
-			->get();
+	public function find( int $id ): ?array {
+		return $this->reports->query()
+			->select( 'id', 'title' )
+			->where( 'id', $id )
+			->first();
 	}
 }
 ```
 
-`first()` returns one row or `null`. `get()` returns a list of associative rows. Qualified identifiers such as `r.created_at` are quoted as `` `r`.`created_at` `` rather than as one identifier.
-
-`max( 'column' )` returns the maximum value matching the builder's `where()` predicates. Aggregate queries ignore ordering and pagination because those clauses do not constrain the rows being aggregated.
-
-Use `null` with equality operators for SQL null checks:
+`query()` returns a fresh `StellarWP\Foundation\Database\Query\Query`. Use `query( 'report' )` for an alias. `get()` returns a list of associative arrays; `first()` returns one associative array or `null`. Driver-returned numeric values can be strings, so convert results according to your application contract.
 
 ```php
-$unpublished = $this->table
-	->query()
-	->where( 'published_at', '=', null )
-	->get();
-
-$published = $this->table
-	->query()
-	->where( 'published_at', '!=', null )
+$rows = $this->reports->query()
+	->select( 'id', 'title' )
+	->where( 'status', 'ready' )
+	->orderBy( 'id', 'desc' )
+	->limit( 50 )
 	->get();
 ```
 
-These comparisons compile to `IS NULL` and `IS NOT NULL`. Other operators with `null` are rejected because they do not have useful SQL semantics.
+The initial builder is deliberately bounded. It supplies the operations described here; familiar Laravel-style names do not imply the whole Laravel API is available.
+
+### Conditions and literal substring searches
+
+Use two arguments for equality, or three for an explicit comparison. Supported comparison operators are `=`, `!=`, `<>`, `<`, `<=`, `>`, and `>=`. Comparing equality to `null` means `IS NULL`; inequality means `IS NOT NULL`. Ordering comparisons against null are rejected.
+
+Group alternatives with a callback receiving `WhereGroup`:
+
+```php
+use StellarWP\Foundation\Database\Query\WhereGroup;
+
+$rows = $this->reports->query()
+	->where( 'status', 'ready' )
+	->where( static fn ( WhereGroup $where ) => $where
+		->where( 'priority', '>', 5 )
+		->orWhere( 'owner_id', $ownerId ) )
+	->get();
+```
+
+`where()` also accepts an associative map of equalities. `whereIn()` accepts a list of values, and an empty list matches no rows. `whereNull()` expresses a null test directly.
+
+```php
+$rows = $this->reports->query()
+	->where( [
+		'status' => 'ready',
+		'owner_id' => $ownerId,
+	] )
+	->whereContainsAny( 'title', $searchTerms )
+	->limit( 50 )
+	->get();
+```
+
+Use `whereContains()` for one literal substring:
+
+```php
+$rows = $this->reports->query()
+	->whereContains( 'title', $searchTerm )
+	->get();
+```
+
+`whereContainsAny()` matches any of several literal substrings. Both methods escape percent signs, underscores, and the escape character before binding search terms. An empty term list matches nothing; an empty string matches every non-null value. Case sensitivity follows the column's collation. Structured column names, aliases, and sort directions are validated; choose an application allowlist when users should be limited to particular columns.
+
+### Use a database expression in a condition
+
+Use `whereRaw()` when a condition needs application-owned SQL, such as the database's current time:
+
+```php
+$rows = $this->reports->query()
+	->where( 'status', 'ready' )
+	->whereRaw( '(expires_at IS NULL OR expires_at >= NOW())' )
+	->get();
+```
+
+Pass external values through positional `?` placeholders and the bindings array. They use the same value normalization and parameter types as ordinary conditions:
+
+```php
+use StellarWP\Foundation\Database\Query\WhereGroup;
+
+$rows = $this->reports->query()
+	->where( static fn ( WhereGroup $where ) => $where
+		->whereRaw( 'amount + ? >= ?', [
+			$adjustment,
+			$minimum,
+		] )
+		->orWhereRaw( 'owner_id = ?', [
+			$ownerId,
+		] ) )
+	->get();
+```
+
+`whereRaw()` joins with `AND`; `orWhereRaw()` joins with `OR`. SQL fragments are used as supplied, so include parentheses around alternatives within a fragment or use a grouped callback around multiple conditions. Blank fragments are rejected. Keep SQL text and identifiers application-owned: bindings protect values, not SQL assembled from user input. Raw conditions work with reads, updates, and deletes.
+
+### Order by a database expression
+
+Use `orderBy()` for ordinary columns and `orderByRaw()` when ordering requires an application-owned SQL expression. For example, sort by priority, then put reports with an expiration date before those without one within each priority:
+
+```php
+$rows = $this->reports->query()
+	->orderBy( 'priority' )
+	->orderByRaw( 'IF(expires_at IS NULL, 1, 0) ASC' )
+	->orderBy( 'expires_at' )
+	->get();
+```
+
+Bind external values using the optional second argument. This example puts reports in a preferred category first, ordered by ID, followed by all remaining reports ordered by ID:
+
+```php
+$rows = $this->reports->query()
+	->orderByRaw( 'IF(category = ?, 0, 1) ASC', [
+		$preferredCategory,
+	] )
+	->orderBy( 'id' )
+	->get();
+```
+
+Ordering calls append in declaration order and work with reads and supported single-table updates and deletes. Include `ASC` or `DESC` in the raw SQL when needed. Bindings use the same normalization as ordinary query values; they protect values, not SQL text or identifiers. Blank expressions are rejected. Simple aggregates omit ordering and its bindings. Aggregates over paginated, grouped, distinct, or raw selections retain them in the inner query.
+
+### Read one column
+
+Use `pluck()` to retrieve a plain list of column values:
+
+```php
+$ids = $this->reports->query()
+	->where( 'status', 'ready' )
+	->orderBy( 'id' )
+	->limit( 50 )
+	->pluck( 'id' );
+```
+
+`pluck()` returns an array with sequential numeric keys, preserving database value types, duplicates, and nulls. No matching rows returns `[]`. Use `distinct()` when you want unique values.
+
+The call selects only the requested column, replacing any existing `select()` or `selectRaw()` projection for that execution. Other clauses remain in place, and the original builder is unchanged. Use a column name or qualified column such as `r.id`. Any ordering, grouping, or `having()` must remain valid with that single-column selection; aliases from replaced projections are unavailable.
+
+### Paginate results
+
+Use `paginate()` to retrieve a page of rows together with the total number of matching results:
+
+```php
+$page = $this->reports->query()
+	->where( 'status', 'ready' )
+	->orderBy( 'id' )
+	->paginate( perPage: 25, page: 3 );
+
+$rows        = $page->items;
+$total       = $page->total;
+$currentPage = $page->currentPage;
+$perPage     = $page->perPage;
+$lastPage    = $page->lastPage();
+$hasMore     = $page->hasMorePages();
+```
+
+The default is 25 rows on page one. Supply positive integers for `perPage` and `page`; the application reads and validates its request parameters and builds any navigation links. Order by a unique column, or add a unique column as the final ordering criterion, so page boundaries have a consistent order.
+
+The returned `Page` contains readonly metadata and rows as associative arrays. An empty result has `total` zero, empty `items`, and `lastPage()` one. A page beyond the last page returns empty `items` and preserves the requested `currentPage`.
+
+Pagination replaces any existing `limit()` and `offset()` for this operation and leaves the original builder unchanged. The total excludes paging and ordering but preserves filters, joins, distinctness, grouping, and `having()`. For grouped queries, it counts matching groups. The aggregate projection restrictions described below also apply to pagination totals.
+
+Foundation runs a count query, then fetches the requested rows when the total is nonzero. These are separate reads: concurrent writes can change the data between them, and pagination does not start a transaction. With `lockForUpdate()`, only the page query requests locks; run it inside a managed transaction when those locks must remain held.
+
+### Grouping and aggregates
+
+`count()` returns an integer, `exists()` returns a boolean, and `max( 'column' )` returns the driver's scalar value or null when no value exists. Terminal reads do not alter the builder, so you can count and then fetch the same query.
+
+```php
+$query = $this->reports->query()->where( 'status', 'ready' );
+$count = $query->count();
+$rows  = $query->get();
+```
+
+Use `sum()` to total a numeric column:
+
+```php
+$total = $this->reports->query()
+	->where( 'status', 'ready' )
+	->sum( 'amount' );
+```
+
+`sum()` returns `int|float|string`. It ignores null values and returns integer `0` when no values remain. Otherwise, it preserves the driver's numeric result: exact decimal strings stay strings, and floating-point results stay floats. Like the other terminal reads, it leaves the builder unchanged.
+
+`distinct()`, `groupBy()`, `having()`, `limit()`, and `offset()` shape the rows seen by aggregates. Foundation aggregates a derived table when those operations are present. In particular, `limit( 10 )->count()` counts at most ten rows, and a grouped count counts groups. Explicit projections and their aliases remain intact, including aliases used by ordering.
+
+```php
+$largest = $this->reports->query()
+	->select( 'score as report_score' )
+	->orderBy( 'report_score', 'desc' )
+	->limit( 10 )
+	->max( 'report_score' );
+```
+
+For grouped reports, use application-owned SQL expressions through `selectRaw()` and pass external values in its bindings array:
+
+```php
+$groups = $this->reports->query()
+	->selectRaw( 'status, COUNT(*) AS total' )
+	->groupBy( 'status' )
+	->having( 'total', '>', 1 )
+	->get();
+```
+
+Raw projections are opaque: Foundation preserves every `selectRaw()` projection when counting, summing, finding a maximum, or checking existence. For example, `selectRaw( 'COUNT(*) AS total' )->exists()` returns true even when the source table is empty, because that aggregate produces one result row. Calling `select()` replaces the projection and clears this raw-projection behavior.
+
+A shaped column aggregate must name an output column or alias of the inner query. For example, `select( 'name' )->limit( 10 )->max( 'amount' )` throws `InvalidArgumentException` because `amount` is not selected. Include `amount` in the projection, or use its selected alias. Foundation leaves the projection, grouping, and distinctness unchanged. Foundation does not parse raw expressions to discover their outputs; invalid raw output references fail through the database. Shaped joins require an explicit projection to avoid duplicate column names in a derived table.
+
+## Join application and WordPress tables
+
+Pass injected application tables to `join()` or `leftJoin()`. Use `alias:` to give the joined table a query-local name:
+
+```php
+$rows = $this->reports->query( 'r' )
+	->join(
+		$this->categories,
+		'c.id',
+		'=',
+		'r.category_id',
+		alias: 'c',
+	)
+	->select( 'r.id', 'r.title', 'c.name as category' )
+	->get();
+```
+
+For grouped ON conditions or bound values, pass a callback receiving `JoinClause`. An unmatched `leftJoin()` preserves the source row:
+
+```php
+use StellarWP\Foundation\Database\Query\JoinClause;
+
+$rows = $this->reports->query( 'r' )
+	->leftJoin(
+		$this->categories,
+		static fn ( JoinClause $join ) => $join
+			->on( 'c.id', '=', 'r.category_id' )
+			->where( 'c.active', true ),
+		alias: 'c',
+	)
+	->select( 'r.id', 'r.title', 'c.name as category' )
+	->get();
+```
+
+`join()` and `leftJoin()` also accept unprefixed application names and resolved table references. The optional `alias:` argument replaces any alias already supplied with the table; omitting it preserves that alias. Pass application table objects directly rather than their physical `name()`, which would be treated as an unprefixed string and prefixed again.
+
+Inject `StellarWP\Foundation\Database\Query\Database` when a query needs a table entry point independent of a concrete application table. `DatabaseProvider` supplies its dependencies automatically.
+
+`table()` accepts a `Table`, an unprefixed application name, or a `Query\ValueObjects\TableReference`, with an optional alias argument. `wordpress()` returns a resolved reference to a known WordPress core table. It honors WordPress's site and network table properties, including custom users tables. References are resolved when created; build a fresh query after switching sites between operations.
+
+```php
+$rows = $this->db->table( $this->reports, 'r' )
+	->join( $this->db->wordpress( 'users' ), 'u.ID', '=', 'r.owner_id', alias: 'u' )
+	->select( 'r.id', 'r.title', 'u.user_email' )
+	->where( 'r.status', 'ready' )
+	->get();
+```
 
 ## Write rows
 
-Use the table object for inserts, updates, and deletes so physical table naming stays in one place:
+Insert one row and retrieve its generated identifier:
 
 ```php
-$reportId = $this->table->insertGetId( [
-	'status'     => 'draft',
-	'payload'    => wp_json_encode( $payload ),
-	'created_at' => current_time( 'mysql', true ),
+$id = $this->reports->insertGetId( [
+	'title' => 'Weekly',
+	'status' => 'draft',
 ] );
 
-$updated = $this->table->update(
+$this->reports->update( [
+	'status' => 'ready',
+], [
+	'id' => $id,
+] );
+```
+
+`insert()` accepts one associative row or a list of rows and returns the total affected-row count as `int`. The table convenience and fluent query use the same implementation, including value normalization and bulk insertion:
+
+```php
+$this->reports->insert( [
 	[
-		'status'     => 'published',
-		'updated_at' => current_time( 'mysql', true ),
+		'title' => 'Weekly',
+		'status' => 'draft',
 	],
-	[ 'id' => $reportId ]
-);
+	[
+		'title' => 'Monthly',
+		'status' => 'draft',
+	],
+] );
 
-$deleted = $this->table->delete( [ 'id' => $reportId ] );
-```
-
-`insert()` returns the affected row count, while `insertGetId()` returns the generated integer ID. `update()` and `delete()` return affected row counts.
-
-### Add table-specific operations
-
-Add an intent-revealing method to the table class when specialized SQL belongs to that table and should be reused by its consumers. The base `Table` exposes its table-scoped database gateway to subclasses through the protected `database()` method.
-
-For example, add `archive_status()` to `src/Database/Tables/Reports_Table.php`:
-
-```php title="Reports_Table.php"
-/**
- * Archive reports with the supplied status.
- *
- * @throws \StellarWP\Foundation\Database\Exceptions\DatabaseException When the physical table name is invalid.
- * @throws \StellarWP\Foundation\Database\Exceptions\QueryException    When the update fails.
- */
-public function archive_status( string $status ): int {
-	return $this->database()->execute(
-		'UPDATE %i SET status = %s WHERE status = %s',
-		$this->name(),
-		'archived',
-		$status
-	);
-}
-```
-
-The method uses the same database service as the inherited table operations. Calling `name()` resolves and validates the physical table name for the active WordPress site when the operation runs.
-
-Keep these methods scoped to one table. Cross-table queries, multi-step workflows, and business rules belong in a repository or feature service.
-
-## Inspect and execute SQL
-
-Build a query before executing it when logging or diagnostics need the SQL shape and separate bindings:
-
-```php
-$query = $this->table
-	->query( 'r' )
-	->select( 'r.id', 'r.status' )
-	->where( 'r.status', '=', 'failed' )
-	->limit( 25 )
-	->toQuery();
-
-$sql         = $query->toSql();
-$bindings    = $query->bindings();
-$preparedSql = $query->toPreparedSql();
-$rows        = $query->get();
-```
-
-Prefer `toSql()` plus `bindings()` for structured diagnostics. A fully prepared SQL string may contain customer or application data and should not be logged without considering its sensitivity.
-
-:::caution[Rebuild materialized queries after changing sites]
-`toQuery()` captures SQL for the active WordPress database scope. If code calls `switch_to_blog()`, build a new query before executing it so the table name uses the new site's prefix. Calling `get()`, `first()`, or `max()` directly on the table query builder resolves the active scope as part of that operation. For a scalar result, call `value()` on the `Query` returned by `toQuery()`.
-:::
-
-Inject `QueryReader` in addition to the table when specialized read SQL belongs to a repository workflow rather than one table, or when a query spans multiple tables. Add it explicitly to that repository's constructor:
-
-```php
-use StellarWP\Foundation\Database\Contracts\QueryReader;
-
-public function __construct(
-	private Reports_Table $table,
-	private QueryReader $database
-) {
-}
-```
-
-The contract exposes prepared low-level read operations:
-
-```php
-$row = $this->database->row(
-	'SELECT * FROM %i WHERE id = %d',
-	$this->table->name(),
-	$reportId
-);
-
-$count = $this->database->value(
-	'SELECT COUNT(*) FROM %i WHERE status = %s',
-	$this->table->name(),
-	'published'
-);
-```
-
-Use `QueryExecutor` instead when the same repository must also execute raw writes:
-
-```php
-use StellarWP\Foundation\Database\Contracts\QueryExecutor;
-
-public function __construct(
-	private Reports_Table $table,
-	private QueryExecutor $database
-) {
-}
-
-$affected = $this->database->execute(
-	'UPDATE %i SET status = %s WHERE status = %s',
-	$this->table->name(),
-	'archived',
-	'published'
-);
-```
-
-Use `prepare()` when another WordPress API requires the prepared SQL string. Keep values in placeholders instead of concatenating untrusted input.
-
-For normal application code, follow one of these paths:
-
-1. Inject the concrete table for queries and writes scoped to that table.
-2. Inject `QueryReader` for specialized raw or cross-table reads.
-3. Inject `QueryExecutor` when the same raw workflow also executes writes.
-
-The aggregate `Database` contract is available when one infrastructure collaborator genuinely needs the complete API. The narrower contracts are public extension capabilities for specialized raw-SQL repositories, adapters, and decorators. They are not setup choices every application must make: routine table-scoped repositories should continue injecting their concrete table.
-
-## Handle query failures
-
-Database operations throw `QueryException` when `wpdb` reports an error. The exception retains the SQL template, bindings, and database error separately:
-
-```php
-use Psr\Log\LoggerInterface;
-use StellarWP\Foundation\Database\Exceptions\QueryException;
-
-try {
-	$rows = $query->get();
-} catch ( QueryException $exception ) {
-	$this->logger->error( 'Report query failed.', [
-		'sql'            => $exception->sql(),
-		'bindings'       => $exception->bindings(),
-		'database_error' => $exception->databaseError(),
+$this->reports->query()
+	->where( 'id', $id )
+	->update( [
+		'status' => 'ready',
 	] );
 
-	throw $exception;
+$this->reports->query()->where( 'id', $id )->delete();
+```
+
+You can also call `$this->reports->query()->insert( $rows )`; it has the same behavior as `$this->reports->insert( $rows )`. Empty input returns zero without inserting a row.
+
+`insertGetId()` accepts exactly one associative row and returns its generated ID as `int|string`. Use it on the table or a fresh query. Passing `[]` explicitly inserts one row using database defaults and returns that new ID. A list of rows is rejected, and insertion or ID retrieval failures throw.
+
+`Table::update( $values, $criteria )` and `delete( $criteria )` delegate to filtered queries and return affected-row counts as `int|string`. Criteria are column-to-value equality comparisons; null matches `IS NULL`. Both methods reject empty criteria. Table and fluent writes share value normalization.
+
+To write a PHP array to a JSON column through a table or fluent query, encode it first. `JSON_THROW_ON_ERROR` raises `JsonException` if encoding fails:
+
+```php
+$this->reports->insert( [
+	'payload' => json_encode( [
+		'enabled' => true,
+	], JSON_THROW_ON_ERROR ),
+] );
+```
+
+For writes that require explicit Doctrine conversions, such as a JSON type or a custom type, use the shared connection’s `insert()`, `update()`, or `delete()`. For example, pass the PHP array with `Types::JSON` and let Doctrine encode it:
+
+```php
+use Doctrine\DBAL\Types\Types;
+
+$this->connection->insert( $this->reports->quotedName(), [
+	'payload' => [
+		'enabled' => true,
+	],
+], [
+	'payload' => Types::JSON,
+] );
+```
+
+Insert, insert-or-ignore, upsert, and delete queries use an unaliased target table. Start them with `$table->query()` without an alias.
+
+Query `insert()` and `upsert()` return total affected rows as `int`; `update()` and `delete()` preserve Doctrine’s `int|string` affected-row counts. Rows in a multi-row write must have identical column sets, although their key order may differ. Empty insert and upsert inputs return zero. Boolean values are bound as integers; use decimal strings for exact amounts. Date/time values are formatted with microseconds, and the target column and database determine retained precision.
+
+MySQL normally rounds fractional seconds when writing to a lower-precision column, which can advance the stored date near midnight. Use `DATETIME(6)` to preserve microseconds, or pass `$date->format('Y-m-d H:i:s')` to deliberately discard them before writing to a second-precision column.
+
+Large writes split into multiple statements within the parameter limit. Each statement is atomic, but the complete write needs a caller-owned transaction to roll back earlier chunks if a later chunk fails.
+
+`update()` and `delete()` require conditions, retain supported ordering and limits, and reject joins, projections, distinct, grouping, having, or offsets. `insert()`, `insertOrIgnore()`, `insertGetId()`, and `upsert()` reject previously accumulated query conditions, projections, ordering, limits, and other shaping state, even for empty input. Start from a fresh query for those operations.
+
+### Insert rows and skip duplicates
+
+Use `insertOrIgnore()` when existing rows should remain unchanged on a primary or unique-key conflict:
+
+```php
+$inserted = $this->reports->query()->insertOrIgnore( [
+	[
+		'id' => 10,
+		'title' => 'Weekly',
+		'status' => 'draft',
+	],
+	[
+		'id' => 11,
+		'title' => 'Monthly',
+		'status' => 'draft',
+	],
+] );
+```
+
+The method accepts one associative row or a list of rows and returns the number actually inserted as `int`. If report `10` already exists and `11` is new, `$inserted` is `1`. Empty input or a write in which every row is skipped returns `0`.
+
+:::caution[IGNORE also changes data-error handling]
+This uses MySQL/MariaDB `INSERT IGNORE`, not a duplicate-only exception handler. The server can truncate oversized strings, adjust invalid values, or skip rows with other ignorable constraint errors, even in strict mode. The returned count does not tell you whether inserted values were adjusted. Use ordinary `insert()` to retain the server's normal error handling, or `upsert()` when conflicting rows should be updated. See the [MySQL IGNORE rules](https://dev.mysql.com/doc/refman/8.0/en/sql-mode.html#ignore-effect-on-execution) and [MariaDB INSERT IGNORE documentation](https://mariadb.com/docs/server/reference/sql-statements/data-manipulation/inserting-loading-data/insert-ignore).
+:::
+
+Foundation still rejects invalid row shapes, unsupported PHP values, and accumulated query options. Unignored database failures throw. The method shares `insert()`'s binding and chunking behavior and participates in the caller's transaction; wrap multi-chunk writes in `transactional()` when they must roll back together.
+
+### Increment or decrement a column
+
+Use `increment()` and `decrement()` to change a numeric column in one database statement:
+
+```php
+$affected = $this->reports->query()
+	->where( 'id', $id )
+	->increment( 'views' );
+
+$affected = $this->credits->query()
+	->where( 'id', $id )
+	->decrement( 'credits_remaining', 5 );
+```
+
+The amount defaults to `1`. Both methods return affected-row counts as `int|string`, require conditions, and support the same ordering and limits as `update()`. The database applies the arithmetic to the current column value, avoiding a separate read and write in PHP. They participate in an existing transaction without starting one themselves.
+
+Amounts accept integers and finite floats. Negative amounts reverse the direction; zero leaves values unchanged. SQL arithmetic leaves a `NULL` column as `NULL`. The column's type and database SQL mode govern rounding and overflow. Integer amounts retain integer binding; floating-point amounts use approximate arithmetic. For exact decimal arithmetic, use the native connection with an explicit SQL decimal cast appropriate to your column instead of converting a decimal string to a PHP float.
+
+### Upsert using existing keys
+
+`upsert( $rows, $update )` uses the table's existing primary and unique keys. The required update list names the columns to change on conflict. There is no conflict-target argument: MySQL and MariaDB choose conflicts from all existing primary and unique keys.
+
+For a table whose schema already defines `external_id` as unique:
+
+```php
+$this->reports->query()->upsert( [
+	[
+		'external_id' => 'weekly-2026-09-25',
+		'title' => 'Weekly report',
+		'status' => 'ready',
+	],
+], update: [
+	'title',
+	'status',
+] );
+```
+
+A normal nonunique index does not create upsert conflict semantics. Upsert does not alter your schema, and a multi-statement upsert has the same caller-owned transaction boundary as insert.
+
+## Count or clear a table
+
+`$this->reports->count()` counts all rows; use `query()->where( ... )->count()` for a filtered count.
+
+`deleteAll()` explicitly deletes every row, preserves the auto-increment sequence, and follows foreign-key rules and delete triggers. With InnoDB, deletion participates in the caller's transaction:
+
+```php
+$this->connection->transactional( function () use ( $rows ): void {
+	$this->reports->deleteAll();
+	$this->reports->query()->insert( $rows );
+} );
+```
+
+An insertion failure rolls back the deletion and preserves the previous rows.
+
+`truncate()` removes all rows and resets auto-increment. It returns no value. MySQL and MariaDB truncation implicitly commits and cannot be rolled back, so Foundation rejects it with `DatabaseException` inside an active shared transaction. Truncation does not run delete triggers, and references from other tables can prevent it. Both clearing methods keep foreign-key checks enabled and fail if the table is missing.
+
+## Native SQL and inspection
+
+`toSql()` and `getBindings()` inspect the compiled read query without executing it. Bindings remain separate from SQL.
+
+### Run SQL with bound values
+
+Inject `StellarWP\Foundation\Database\Query\Database` when an operation needs application-written SQL. Each method accepts `( $sql, $bindings = [], $types = [] )`, uses the shared managed connection, and infers binding types from PHP values using the same rules as the fluent builder.
+
+| Method | Result |
+| --- | --- |
+| `insert()` | Affected-row count (`int|string`), not the generated ID |
+| `update()` | Affected-row count (`int|string`) |
+| `delete()` | Affected-row count (`int|string`), including zero when no rows match |
+| `select()` | List of associative rows, or `[]` when no rows match |
+
+Failures throw exceptions. `select()` fetches all rows and preserves Doctrine's returned values; it does not hydrate objects or convert columns through Doctrine types. Use a native Doctrine result when you need to stream a large result set.
+
+The following examples assume an injected `Database $db` and your application's `Reports_Table $reports`:
+
+```php
+$table = $this->reports->quotedName();
+
+$inserted = $this->db->insert(
+	"INSERT INTO {$table} (
+		title,
+		status
+	)
+	VALUES (?, ?)",
+	[
+		'Quarterly report',
+		'draft',
+	],
+);
+
+$rows = $this->db->select(
+	"SELECT id,
+		title
+	FROM {$table}
+	WHERE status = :status
+	ORDER BY id",
+	[
+		'status' => 'draft',
+	],
+);
+
+$deleted = $this->db->delete(
+	"DELETE FROM {$table}
+	WHERE status = ?",
+	[
+		'archived',
+	],
+);
+```
+
+### Apply a conditional SQL update
+
+For example, this repository increments credits within the current period, resets them for a new period, and enforces the quota in one update. MySQL's `<=>` compares periods with null-safe equality. Place the repository in `src/Usage/Usage_Repository.php`.
+
+```php title="Usage_Repository.php"
+use Plugin\Database\Tables\Usage_Table;
+use StellarWP\Foundation\Database\Query\Database;
+
+final readonly class Usage_Repository {
+
+	public function __construct(
+		private Usage_Table $usage,
+		private Database $db,
+	) {
+	}
+
+	/**
+	 * Apply a credit claim when the resulting usage fits within the quota.
+	 */
+	public function claim( int $id, int $amount, ?string $period, int $quota ): bool {
+		$table = $this->usage->quotedName();
+
+		return $this->db->update(
+			"UPDATE {$table}
+			SET credits_used = IF(period_start <=> ?, credits_used + ?, ?),
+				period_start = ?
+			WHERE id = ?
+				AND IF(period_start <=> ?, credits_used + ?, ?) <= ?",
+			[
+				$period,
+				$amount,
+				$amount,
+				$period,
+				$id,
+				$period,
+				$amount,
+				$amount,
+				$quota,
+			],
+		) > 0;
+	}
 }
 ```
 
-Avoid exposing database errors or bindings to end users. They may contain schema details or sensitive values.
+Integers bind as integers, booleans become `0` or `1`, and null binds as SQL `NULL`. Strings remain strings, including numeric strings such as `'00500'`. Dates retain the fluent builder's microsecond formatting, and floats use its string conversion. All four SQL methods infer types from the values, not the table schema.
 
-## Testing
+### Override parameter types
 
-Use `wpunit` tests for repositories and query behavior. Create the real table, exercise the real WordPress database, and remove the table during cleanup. This catches placeholder, collation, identifier, and MariaDB behavior that a mocked `wpdb` cannot reproduce.
+Use either a zero-based list for positional `?` bindings or an associative array for named `:name` bindings in one statement. Supply optional Doctrine types by zero-based position or parameter name when you need explicit conversion. Explicitly typed values reach Doctrine unchanged; other values still use inference:
+
+```php
+use Doctrine\DBAL\Types\Types;
+
+$db->update(
+	'UPDATE ' . $reports->quotedName() . '
+	SET metadata = :metadata
+	WHERE id = :id',
+	[
+		'metadata' => [
+			'source' => 'portal',
+		],
+		'id' => $id,
+	],
+	[
+		'metadata' => Types::JSON,
+	],
+);
+```
+
+`$db->update()` accepts complete SQL, while `$table->query()->update()` accepts column values and builds the SQL. Resolve table names through `quotedName()` and bind external values. With complete SQL, you own the `WHERE` clause and any intended whole-table update or deletion. Raw SQL insert statements execute as supplied; use the fluent builder for automatic bulk-insert chunking.
+
+### Use native Doctrine operations
+
+Inject `Doctrine\DBAL\Connection` for transactions, native builders, results, and other advanced operations. Native execution keeps Doctrine's parameter behavior: supply explicit types when the default string binding would change the query's meaning.
+
+Native Doctrine execution exceptions remain unchanged. Foundation validation failures reject invalid query construction before execution. Keep raw SQL and expressions application-owned; raw query methods do not make untrusted SQL safe.
+
+## Choose a transaction boundary
+
+Inject the shared connection into the service that owns the complete unit of work. Collaborating repositories can continue to use their injected tables.
+
+```php
+use Doctrine\DBAL\Connection;
+use Plugin\Database\Tables\Reports_Table;
+
+final readonly class Create_Report {
+
+	public function __construct(
+		private Connection $connection,
+		private Reports_Table $reports,
+	) {
+	}
+
+	public function create( string $title ): int|string {
+		return $this->connection->transactional( function () use ( $title ): int|string {
+			return $this->reports->insertGetId( [
+				'title' => $title,
+				'status' => 'draft',
+			] );
+		} );
+	}
+}
+```
+
+`transactional()` returns the callback's value only after commit is acknowledged. `false` and `null` are ordinary callback results, not rollback signals. Throw an exception to cancel work. The original escaping exception is preserved if cleanup also fails.
+
+Nested transactions use savepoints. An inner success is provisional until the outer transaction commits. An inner business exception can be caught after its savepoint is rolled back. A database statement failure prevents further work until Foundation confirms rollback to the original nested savepoint. The application can then catch the failure and decide whether to continue. Foundation does not select recoverable error codes or retry the work.
+
+### Lock rows while making a decision
+
+Use `lockForUpdate()` inside a transaction when you need to read a row before deciding how to change it:
+
+```php
+$this->connection->transactional( function () use ( $id, $amount ): void {
+	$credit = $this->credits->query()
+		->where( 'id', $id )
+		->lockForUpdate()
+		->first();
+
+	if ( $credit === null || $credit['credits_remaining'] < $amount ) {
+		throw new \RuntimeException( 'Insufficient credits.' );
+	}
+
+	$this->credits->query()
+		->where( 'id', $id )
+		->decrement( 'credits_remaining', $amount );
+} );
+```
+
+`lockForUpdate()` adds `FOR UPDATE` to the SELECT and works with `first()`, `get()`, and `pluck()`. For InnoDB tables, conflicting writes and locking reads wait until the owning transaction commits or rolls back. Ordinary nonlocking reads can still read a committed snapshot. Lock scope depends on the query, indexes, and isolation level and may include scanned records or gaps beyond the returned rows.
+
+The method does not begin a transaction. With autocommit enabled and no active transaction, it does not protect a later update. Keep the read and related writes inside the same `transactional()` callback, and perform decisions there before it returns. A nested transaction's successful return does not release the outer transaction's locks.
+
+Queries retain the locking option for subsequent reads and clones. Start a fresh query for writes; insert, update, and delete operations reject this read-only option. Aggregates and `exists()` pass the locking clause to their underlying SELECT; use a row read when the application needs to inspect and lock particular records. Database lock timeouts and deadlocks propagate through the existing transaction failure handling.
+
+### Recover from an expected duplicate
+
+Wrap an insert that may conflict in a nested `transactional()` call and catch `UniqueConstraintViolationException` outside that call. Foundation attempts to roll back the nested writes before returning control to the catch block. After successful rollback, earlier outer work remains provisional and the outer transaction can continue. If cleanup fails, the original exception still reaches the catch block, but further work and commit are rejected. Savepoint rollback does not necessarily release every lock acquired during the nested work.
+
+For a reports table with a unique `slug`, this operation creates a report or returns the existing report's ID:
+
+```php
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+
+return $this->connection->transactional( function () use ( $slug, $title ): int|string {
+	try {
+		return $this->connection->transactional(
+			fn (): int|string => $this->reports->insertGetId( [
+				'slug'  => $slug,
+				'title' => $title,
+			] ),
+		);
+	} catch ( UniqueConstraintViolationException $failure ) {
+		$report = $this->reports->query()
+			->select( 'id' )
+			->where( 'slug', $slug )
+			->lockForUpdate()
+			->first();
+
+		if ( $report === null ) {
+			throw $failure;
+		}
+
+		return $report['id'];
+	}
+} );
+```
+
+Under `REPEATABLE READ`, an ordinary read can retain an earlier snapshot even after another transaction commits the conflicting row; rolling back a savepoint does not refresh that snapshot. `FOR UPDATE` requests a locking read. MariaDB with [`innodb_snapshot_isolation`](https://mariadb.com/docs/server/server-usage/storage-engines/innodb/innodb-system-variables#innodb_snapshot_isolation) enabled can reject an insert or locking read against a row outside that snapshot with error 1020 and roll back the entire transaction. Let that failure escape and handle a fresh operation at the application boundary; it is not a recoverable duplicate.
+
+The same boundary supports other statement failures when the original savepoint survives and rollback succeeds. A lock timeout, for example, can affect only the statement or the entire transaction depending on server configuration. Foundation confirms the rollback rather than assuming the error is recoverable. Catch only failures your application knows how to handle.
+
+Catching a database failure inside the nested callback and returning normally still raises `TransactionFailed`; the nested call cannot report success. Explicit nested `beginTransaction()` / `rollBack()` boundaries support the same recovery, but `transactional()` handles cleanup for you.
+
+Without a nested boundary, a database execution failure prevents the outer transaction from committing. Transaction-wide rollbacks, including InnoDB deadlocks, destroy the savepoints needed for recovery. Connection loss, detected scope changes, transaction-control failures, and failed savepoint cleanup remain terminal. Foundation does not retry statements. Operations running under an advisory lock, including migrations, retain their stricter failure behavior and must abort after an execution failure.
+
+### Handle failures deliberately
+
+- Ordinary SQL failures use Doctrine exceptions, such as `Doctrine\DBAL\Exception\UniqueConstraintViolationException`.
+- `TransactionFailed` means a caught failure prevented an operation from completing successfully. Let it escape so cleanup rolls back the operation. After an unrecovered or terminal failure, start fresh work at an application boundary.
+- `CommitOutcomeUnknown` means the server did not confirm commit. The data may already be committed. Inspect durable application state or use an idempotency key before retrying.
+- A detected site or connection change interrupts managed work. Foundation never replays failed SQL or reconnects in the middle of a transaction.
+
+The Foundation exceptions above live under `StellarWP\Foundation\Database\Exceptions` and extend `DatabaseException`. Native Doctrine SQL exceptions retain their own hierarchy.
+
+:::caution[Keep managed work on the shared connection]
+Use transactional tables. Do not issue DDL, manual transaction-control SQL, direct savepoint commands, direct WordPress queries, or `switch_to_blog()` inside a managed transaction. DDL can implicitly commit MySQL transactions, and writes through other sessions are outside this transaction. External HTTP calls cannot be rolled back with database writes.
+:::
+
+Between completed operations, WordPress may replace its mysqli connection. New queries and transactions use the replacement automatically. Prepared statements from the old connection are rejected; prepare them again for the new operation.
+
+## Test application behavior
+
+Unit-test application decisions against your own repository contracts when useful. Use integration tests with real InnoDB tables for transaction boundaries, SQL behavior, and recovery. Test that an observer on a second connection cannot see uncommitted rows, that a failed operation leaves prior rows intact, and that caught database failures cannot produce a successful result without the supported savepoint recovery.

@@ -1,0 +1,149 @@
+---
+title: Database Lock
+description: Use the WordPress database as the shared backend for Foundation lock ownership.
+sidebar:
+  order: 1
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+`stellarwp/foundation-lock-database` supplies `DatabaseLock`, which implements the shared Foundation `Lock` contract with a WordPress table. Choose it when every process that must coordinate can reach the same primary database and a dedicated Redis service is unnecessary.
+
+<CardGrid>
+  <LinkCard
+    title="Database Overview"
+    description="Install Foundation Database, configure its resources, and register DatabaseProvider."
+    href="/components/database/"
+  />
+  <LinkCard
+    title="Lock"
+    description="Acquire, refresh, and release lock tokens safely in application code."
+    href="/components/lock/"
+  />
+</CardGrid>
+
+## Set up database locks
+
+Install the backend and its Database and Lock dependencies:
+
+```shell
+composer require stellarwp/foundation-lock-database
+```
+
+Set a stable application prefix in the root `config.php` supplied to your application container:
+
+```php title="config.php"
+return [
+	'foundation' => [
+		'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? 'your-plugin',
+	],
+];
+```
+
+:::caution[Standalone plugin resources]
+Replace `your-plugin` with your plugin's stable, unique prefix so unrelated plugins cannot share its lock storage. See [application scoping](/start/scope-foundation/).
+:::
+
+For this prefix, the lock table defaults to `your_plugin_foundation_locks` before WordPress adds its site prefix. Register the providers below before resolving lock services.
+
+### Select the database implementation
+
+`DatabaseProvider` supplies the shared database connection. `LockDatabaseProvider` wires the database lock and its storage table. Select it as the application's `Lock` implementation in your existing application provider, or create `src/Lock/Provider.php`:
+
+```php title="Provider.php"
+<?php declare(strict_types=1);
+
+namespace Plugin\Lock;
+
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\LockDatabase\DatabaseLock;
+use StellarWP\Foundation\Lock\Contracts\Lock;
+
+/**
+ * Selects the database-backed lock implementation for the application.
+ */
+final class Provider extends Service_Provider {
+
+	/**
+	 * Select the database backend for application lock operations.
+	 */
+	public function register(): void {
+		$this->container->singleton(
+			Lock::class,
+			static fn ( C $c ): DatabaseLock => $c->get( DatabaseLock::class )
+		);
+	}
+}
+```
+
+The binding shares the configured `DatabaseLock` instance with application lock consumers. Registering the backend provider preserves any existing application `Lock` selection, so both database and Redis implementations can be available.
+
+Register providers in dependency order in `src/App.php`:
+
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Database\DatabaseProvider;
+use StellarWP\Foundation\LockDatabase\LockDatabaseProvider;
+use Plugin\Lock;
+
+/** @var list<class-string<Provider>> */
+private const array PROVIDERS = [
+	DatabaseProvider::class,
+	LockDatabaseProvider::class,
+	Lock\Provider::class,
+];
+```
+
+### Initialize lock storage
+
+Create the configured lock table during activation or deployment by resolving `DatabaseLock` and calling `initialize()` after registering the providers:
+
+```php
+$container->get( DatabaseLock::class )->initialize();
+```
+
+Subsequent calls reuse the existing table. Initialize storage before services acquire locks. Normal lock operations perform no DDL and report `LockUnavailableException` if storage is unavailable.
+
+## Usage
+
+Inject `LockOperation` into application services to run bounded work using the selected backend. The [Lock guide](/components/lock/#usage) covers complete usage, contention, renewal, and failure handling.
+
+Database-backed locks have these operational constraints:
+
+- Lock names must fit within 191 bytes.
+- Expiration uses the database's UTC clock, keeping ownership consistent between PHP processes.
+- Every contender must read and write through the same primary database. Replica reads can report stale ownership.
+- The TTL must exceed the protected operation, or the owner must refresh the token before it expires.
+
+:::caution[Keep each lock token in one site context]
+On multisite, acquire, refresh, and release a database lock without changing the active blog. `DatabaseLock` resolves its table from the current `$wpdb->prefix`; attempting to refresh or release a token after `switch_to_blog()` fails closed and leaves the original site's lease to expire.
+:::
+
+:::caution[Keep database and remote guarantees separate]
+A database lock prevents cooperating application processes from overlapping while its lease is valid. It cannot guarantee exactly-once behavior in a remote payment or messaging API. Use the remote system's idempotency key as well.
+:::
+
+## Customize storage
+
+Override the unprefixed table name through `lock.database.table` when an existing deployment needs a specific name. In root `config.php`, add the override only when configured:
+
+```php title="config.php"
+$config = [
+	'foundation' => [
+		'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? 'your-plugin',
+	],
+];
+
+if ( isset( $_ENV['FOUNDATION_DATABASE_LOCKS_TABLE'] ) ) {
+	$config['lock']['database']['table'] = $_ENV['FOUNDATION_DATABASE_LOCKS_TABLE'];
+}
+
+return $config;
+```
+
+Foundation adds the current WordPress site prefix. Physical names must contain only ASCII letters, numbers, and underscores, and fit within 64 bytes including the site prefix. Keep the configured name stable across deployments so every worker coordinates through the same table.
+
+## Testing
+
+Use `InMemoryLock` in unit and feature tests that only verify application behavior against the shared contract. Use `wpunit` when testing `DatabaseLock` itself or behavior that depends on real lock-table queries and database time.
