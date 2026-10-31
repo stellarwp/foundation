@@ -3,8 +3,11 @@
 > [!WARNING]
 > **This is a read-only repository!** For pull requests or issues, see [stellarwp/foundation](https://github.com/stellarwp/foundation).
 
-The DI Container configuration and Service Provider implementation, utilizing
-[di52](https://github.com/lucatume/di52).
+Foundation Container provides a shared container contract and service provider
+base class, backed by [DI52](https://github.com/lucatume/di52) out of the box.
+
+It supports autowiring, contextual bindings, lazy WordPress callbacks,
+cross-provider collections, and decorator chains.
 
 ## Installation
 
@@ -14,121 +17,140 @@ composer require stellarwp/foundation-container
 
 ## Container Configuration
 
-Create a new ContainerAdapter, by passing in an instance of di52:
+> [!TIP]
+> Combine shared defaults and overrides ***before*** creating `ArrayConfiguration`. Providers receive read-only configuration.
+
+Create the container with `ContainerFactory`, which sets up DI52 and registers
+your configuration:
 
 ```php
 <?php declare(strict_types=1);
 
 namespace My\App;
 
-use lucatume\DI52\Container;
-use StellarWP\Foundation\Container\ContainerAdapter;
+use Dotenv\Dotenv;
+use My\App\Catalog\CatalogProvider;
+use StellarWP\Foundation\Container\Configuration\ArrayConfiguration;
+use StellarWP\Foundation\Container\ContainerFactory;
 
-// Optionally, use the included vlucas/phpdotenv to load environment variables before the container.
+require_once __DIR__ . '/vendor/autoload.php';
+
+// Optionally, load environment variables from an .env file.
 $path = __DIR__;
 
-if ( file_exists( $path . '/.env' )  ) {
-    $dotenv = Dotenv::createImmutable( $path );
+if (is_file($path . '/.env')) {
+    $dotenv = Dotenv::createImmutable($path);
     $dotenv->load();
 }
 
-// This implements the Contracts/Container.php interface.
-$container = new ContainerAdapter(new Container());
+// Load the project's configuration. See "Making a config.php" below.
+$values        = require $path . '/config.php';
+$configuration = new ArrayConfiguration($values);
+$factory       = new ContainerFactory();
+$container     = $factory->create($configuration);
 
-// Bind the concrete to the interface, so anytime we ask for a container we get this one.
-$container->bind(Container::class, $container);
-
-// Register our project's configuration. See "Making a config.php" below for more detail.
-$container->bind(Dot::class, new Dot(require_once dirname(__FILE__) . '/config.php'));
-
-// Register any service providers in the container.
+// Register the application providers.
 $providers = [
-   StellarWP\YourProject\ServiceProvider::class,
-   // as many as you have made... 
+    CatalogProvider::class,
 ];
 
-foreach ( $providers as $provider ) {
+foreach ($providers as $provider) {
     $container->register($provider);
 }
 ```
 
-Here is an example Service Provider:
+> [!WARNING]
+> Register providers in dependency order. Providers that supply dependencies must be registered before providers that use them.
+
+## Service Providers
+
+Here is an example service provider. The application's `HttpCatalog` implements
+`Catalog` and accepts an `$endpoint` constructor argument:
 
 ```php
 <?php declare(strict_types=1);
 
-namespace StellarWP\YourProject\Client;
+namespace My\App\Catalog;
 
-use lucatume\DI52\ContainerException;
+use My\App\Catalog\Contracts\Catalog;
 use StellarWP\Foundation\Container\Contracts\Provider;
-use StellarWP\Foundation\Storage\Contracts\Storage;
-use StellarWP\Foundation\Storage\Drivers\LocalStorage;
 
-final class ServiceProvider extends Provider
+final class CatalogProvider extends Provider
 {
-	/**
-	 * @throws ContainerException
-	 */
-	public function register(): void {
-		$this->container->bind(Storage::class, LocalStorage::class);
-		$this->container->when(LocalStorage::class)
-						->needs('$storagePath')
-						->give($this->config->get('storage_path'));
-	}
+    public function register(): void {
+        $endpoint = $this->config->get('catalog.endpoint');
+
+        $this->container->when(HttpCatalog::class)
+            ->needs('$endpoint')
+            ->give($endpoint);
+
+        $this->container->singleton(Catalog::class, HttpCatalog::class);
+    }
 }
 ```
 
 ## Environment Variable Configuration
 
-This library uses the [Dot](https://github.com/adbario/php-dot-notation) package to set and fetch configuration
-values, which are initially provided via Environment Variables, either manually set or via an `.env` file
-utilizing [vlucas/phpdotenv](https://github.com/vlucas/phpdotenv) to read them.
+`ArrayConfiguration` uses [Dot](https://github.com/adbario/php-dot-notation) to read
+configuration values. Supply environment values directly or load them from an
+`.env` file using the included [vlucas/phpdotenv](https://github.com/vlucas/phpdotenv)
+before creating the configuration.
 
-Each Service Provider will have access to Dot via the `$this->config` property, it is best practice to only
-access configuration variables from a Service Provider and never in your concrete classes.
+Each service provider accesses configuration through `$this->config`. Read settings
+in the provider and inject the values into your services, as shown above.
 
 ### Making a config.php
 
-A sample config.php for a project. Note: we fall back to sane defaults if the environment variable isn't available.
+A sample `config.php` for a project, with defaults when environment values are not set:
 
 ```php
 <?php declare(strict_types=1);
 
 return [
-	'some_key'    => $_ENV['SOME_KEY'] ?? '',
-	'log'             => [
-		'level'    => $_ENV['LOG_LEVEL'] ?? 'debug',
-		'channel'  => $_ENV['LOG_CHANNEL'] ?? 'null',
-		'channels' => [
-			'errorlog' => [],
-			'console'  => [
-				'with' => [
-					'stream' => 'php://stdout',
-				],
-			],
-		],
-	],
+    'catalog' => [
+        'endpoint' => $_ENV['CATALOG_ENDPOINT'] ?? 'https://example.com/catalog',
+    ],
+    'log' => [
+        'level'    => $_ENV['LOG_LEVEL'] ?? 'info',
+        'channel'  => $_ENV['LOG_CHANNEL'] ?? 'errorlog',
+        'channels' => [
+            'console' => [
+                'with' => [
+                    'stream' => 'php://stdout',
+                ],
+            ],
+        ],
+    ],
 ];
 ```
 
-Inside a Provider, we can then access deep variables with dot notation, e.g.
+The `log` settings apply when using
+[Foundation Log](https://github.com/stellarwp/foundation-log).
+
+Inside a provider, read nested values with dot notation:
 
 ```php
-// Get the console log stream type from config.php.
+// Get the console log stream from config.php.
 $stream = $this->config->get('log.channels.console.with.stream');
 
 // Get the log level.
 $level = $this->config->get('log.level');
 ```
 
-> 💡 If using a `config.php` in a WordPress plugin, simply add your configured $_ENV vars in your wp-config.php.
+An optional `.env` file for these settings could contain:
 
-```php
-// Inside wp-config.php
-
-// App configuration.
-$_ENV['SOME_KEY'] = 'abcd-1234'; 
-$_ENV['LOG_LEVEL'] = 'info';
-$_ENV['LOG_CHANNEL'] = 'errorlog';
+```dotenv
+CATALOG_ENDPOINT=https://example.com/catalog
+LOG_LEVEL=info
+LOG_CHANNEL=errorlog
 ```
 
+If using `config.php` in a WordPress plugin, set the environment values in
+`wp-config.php` before WordPress loads the plugins:
+
+```php
+// Inside wp-config.php.
+$_ENV['CATALOG_ENDPOINT'] = 'https://example.com/catalog';
+$_ENV['LOG_LEVEL']        = 'info';
+$_ENV['LOG_CHANNEL']      = 'errorlog';
+```

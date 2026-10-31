@@ -9,8 +9,12 @@ Foundation is a StellarWP Composer monorepo for reusable PHP packages intended f
 - [stellarwp/foundation-container](https://github.com/stellarwp/foundation-container)
 - [stellarwp/foundation-pipeline](https://github.com/stellarwp/foundation-pipeline)
 - [stellarwp/foundation-log](https://github.com/stellarwp/foundation-log)
+- [stellarwp/foundation-shutdown](https://github.com/stellarwp/foundation-shutdown)
+- [stellarwp/foundation-view](https://github.com/stellarwp/foundation-view)
 - [stellarwp/foundation-wpcli](https://github.com/stellarwp/foundation-wpcli)
 - [stellarwp/foundation-cli](https://github.com/stellarwp/foundation-cli)
+
+See [Upgrading to 2.0](UPGRADING-2.0.md) when moving from Foundation 1.x. Package READMEs contain the setup and API guidance for this release.
 
 ## Installation
 
@@ -112,9 +116,11 @@ Before drafting the release, run only the monorepo maintenance commands that pre
 | You are planning a major version release, for example `2.0` to `3.0`. You should run this so any Foundation packages that depend on each other require the new major line, such as `^3.0`. You may also run it for a minor release if one package must require APIs added in that new minor version. | `composer monorepo bump-interdependency <release-constraint>`, then `composer monorepo merge` | Updates package-to-package dependency constraints for the release being published. Use the release's minimum Composer constraint, such as `^3.0` or `^1.2`. |
 | Internal package constraints already match the release line.                                                                                                                                                                                                                                    | No pre-release monorepo maintenance command is needed. | Continue to drafting the release. |
 
+Before publishing, confirm every repository listed above exists with its read-only settings, each package is registered on [Packagist](https://packagist.org/packages/submit), and the release checks pass. The `GH_BOT_TOKEN` organization secret must be available to this repository, with contents and workflow write access to every split repository and permission to push the post-release bump to protected `main` (an allowed bypass actor). Workflow `GITHUB_TOKEN` permissions do not grant access to other repositories.
+
 After any needed command, commit the updated `composer.json` files. Then draft a new release on [GitHub](https://github.com/stellarwp/foundation/releases/new), following [semver](https://semver.org/) closely.
 
-The [monorepo split GitHub workflow](./.github/workflows/monorepo-split.yml) deploys each project's code to its sub-repository on pushes to `main` and when release tags are pushed. Publishing a GitHub release creates the release tag and triggers the tagged split.
+The [monorepo split GitHub workflow](./.github/workflows/monorepo-split.yml) deploys each project's code to its sub-repository on pushes to `main` and when release tags are pushed. Publishing a GitHub release creates the release tag and triggers the tagged split. Wait for the tagged workflow to succeed: it verifies that every published package tree matches the tagged source. Then verify Composer can install the released aggregate and split packages.
 
 After a successful tagged split for a minor or major `.0` release, the workflow automatically moves `dev-main` to the next development line. For example, publishing `1.2.0` causes the workflow to bump internal constraints to `^1.3` and branch aliases to `1.3.x-dev`. Patch releases such as `1.2.1` intentionally skip this step.
 
@@ -137,7 +143,7 @@ composer run foundation -- package:create <Package>
 
 The package argument can be a new package component such as `WPCli`, an existing package directory, short package name, or Composer package name, for example `Log`, `foundation-log`, or `stellarwp/foundation-log`.
 
-If the package does not exist yet, the command asks whether to create the local scaffold in `src/<Package>` and asks for the Composer package name with a default such as `stellarwp/foundation-wpcli`. The scaffold includes the required `composer.json`, `README.md`, `.gitattributes`, `.gitignore`, and `close-pull-request.yml` files. After scaffolding, the command runs `composer monorepo merge` so the root `composer.json` includes the new package.
+If the package does not exist yet, the command asks whether to create the local scaffold in `src/<Package>` and asks for the Composer package name with a default such as `stellarwp/foundation-wpcli`. The scaffold includes the required `composer.json`, `README.md`, `.gitattributes`, and `.gitignore` files. After scaffolding, the command runs `composer monorepo merge` so the root `composer.json` includes the new package.
 
 The command runs as a dry run by default. It validates the required split package files, prints the target repository name and description, and shows the GitHub CLI commands it will run.
 
@@ -151,7 +157,7 @@ The command runs as a dry run by default. It validates the required split packag
 composer run foundation -- package:create <Package> --apply
 ```
 
-The command creates the `stellarwp/foundation-<package>` repository with the standard `[READ ONLY]` description and disables issues, wiki, projects, and pull requests. The package's `close-pull-request.yml` workflow is still included as a fallback guard for read-only split repositories.
+The command creates the `stellarwp/foundation-<package>` repository with the standard `[READ ONLY]` description and disables issues, wiki, projects, and pull requests.
 
 #### Generating WP-CLI Commands
 

@@ -2,7 +2,6 @@
 
 namespace StellarWP\Foundation\Cli;
 
-use lucatume\DI52\Container;
 use StellarWP\Foundation\Cli\Commands\Make\WPCliCommand;
 use StellarWP\Foundation\Cli\Commands\Package\Contracts\PackageRepositoryCreator;
 use StellarWP\Foundation\Cli\Commands\Package\CreateCommand;
@@ -19,6 +18,7 @@ use StellarWP\Foundation\Cli\Generation\WordPressClassNameResolver;
 use StellarWP\Foundation\Cli\Process\Contracts\ProcessRunner;
 use StellarWP\Foundation\Cli\Process\ShellProcessRunner;
 use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
 
 /**
  * Registers the default Foundation CLI application and command dependencies.
@@ -35,27 +35,27 @@ final class CliProvider extends Provider
 
 		$this->container->when(PackageResolver::class)
 			->needs('$rootPath')
-			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+			->give(static fn (C $c): string => $c->get(self::ROOT_PATH));
 
 		$this->container->when(PackageScaffolder::class)
 			->needs('$rootPath')
-			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+			->give(static fn (C $c): string => $c->get(self::ROOT_PATH));
 
 		$this->container->when(ComposerAutoloadResolver::class)
 			->needs('$rootPath')
-			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+			->give(static fn (C $c): string => $c->get(self::ROOT_PATH));
 
 		$this->container->when(StubResolver::class)
 			->needs('$rootPath')
-			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+			->give(static fn (C $c): string => $c->get(self::ROOT_PATH));
 
 		$this->container->when(WPCliCommand::class)
 			->needs('$rootPath')
-			->give(static fn (Container $c): string => $c->get(self::ROOT_PATH));
+			->give(static fn (C $c): string => $c->get(self::ROOT_PATH));
 
 		$this->container->when(Application::class)
 			->needs('$commands')
-			->give(static fn (Container $c): array => [
+			->give(static fn (C $c): array => [
 				$c->get(CreateCommand::class),
 				$c->get(WPCliCommand::class),
 			]);

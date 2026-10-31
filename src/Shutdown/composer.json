@@ -1,0 +1,25 @@
+{
+    "name": "stellarwp/foundation-shutdown",
+    "type": "library",
+    "description": "Run application shutdown tasks once in deterministic priority order.",
+    "license": "GPL-2.0-or-later",
+    "config": {
+        "vendor-dir": "vendor",
+        "preferred-install": "dist"
+    },
+    "require": {
+        "php": ">=8.3",
+        "psr/log": ">=1.0",
+        "stellarwp/foundation-container": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "StellarWP\\Foundation\\Shutdown\\": ""
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "2.0.x-dev"
+        }
+    }
+}

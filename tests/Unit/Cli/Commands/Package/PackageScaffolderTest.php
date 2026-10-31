@@ -43,7 +43,6 @@ final class PackageScaffolderTest extends TestCase
 			'README.md',
 			'.gitattributes',
 			'.gitignore',
-			'.github/workflows/close-pull-request.yml',
 		], $scaffold->createdFiles);
 		$this->assertFileExists($rootPath . '/src/WPCli/composer.json');
 

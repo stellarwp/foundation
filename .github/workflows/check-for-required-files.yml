@@ -6,9 +6,12 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   check-workflows:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
 
     steps:
       - name: Check out repository
@@ -20,7 +23,6 @@ jobs:
           # Find all subdirectories in src/ and look for required files
           for folder in */; do
             file_paths=(
-              "$folder.github/workflows/close-pull-request.yml"
               "$folder/.gitattributes"
               "$folder/.gitignore"
             )
