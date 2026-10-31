@@ -128,7 +128,10 @@ final class LogProvider extends Provider
 			}
 
 			if ($handler instanceof AbstractHandler) {
-				$handler->setLevel($level);
+				// A destination may intentionally reject more than the application's minimum.
+				$handlerLevelName = Logger::getLevelName($handler->getLevel());
+				$handlerLevel     = LogLevel::fromName(strtolower($handlerLevelName));
+				$handler->setLevel(max($level, $handlerLevel));
 			} else {
 				$handler = new MinimumLevelHandler($handler, $level);
 			}
