@@ -5,6 +5,8 @@ namespace StellarWP\Foundation\Tests\Unit\Pipeline;
 use Closure;
 use Error;
 use RuntimeException;
+use StellarWP\Foundation\Container\Contracts\Resolver;
+use StellarWP\Foundation\Container\Exceptions\ContainerException;
 use StellarWP\Foundation\Pipeline\Contracts\Pipeline as PipelineContract;
 use StellarWP\Foundation\Pipeline\Exceptions\PipelineNotStarted;
 use StellarWP\Foundation\Pipeline\Pipeline;
@@ -127,6 +129,43 @@ final class PipelineTest extends TestCase
 			->thenReturn();
 
 		$this->assertSame('A Sample String That Is Passed Through To All Pipes.', $result);
+	}
+
+	public function test_it_resolves_class_pipes_through_the_resolver_contract(): void {
+		$resolver = $this->createMock(Resolver::class);
+		$stage    = new PipelineStageOne();
+
+		$resolver->expects($this->once())
+			->method('get')
+			->with(PipelineStageOne::class)
+			->willReturn($stage);
+
+		$pipeline = new Pipeline($resolver);
+		$pipeline->through(PipelineStageOne::class);
+
+		$result = $pipeline->send('sample value')->thenReturn();
+
+		$this->assertSame('Sample Value', $result);
+	}
+
+	public function test_container_resolution_failures_propagate_unchanged(): void {
+		$resolver = $this->createMock(Resolver::class);
+		$failure  = new ContainerException('Pipe dependency is unavailable.');
+
+		$resolver->expects($this->once())
+			->method('get')
+			->with(PipelineStageOne::class)
+			->willThrowException($failure);
+
+		$pipeline = new Pipeline($resolver);
+		$pipeline->through(PipelineStageOne::class)->send('value');
+
+		try {
+			$pipeline->thenReturn();
+			$this->fail('Expected the pipe resolution failure.');
+		} catch (ContainerException $exception) {
+			$this->assertSame($failure, $exception);
+		}
 	}
 
 	public function test_it_pushes_additional_pipes(): void {

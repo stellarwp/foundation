@@ -19,6 +19,10 @@ final readonly class PhpRedisConnection implements Connection
 
 	/**
 	 * @throws LockUnavailableException When PhpRedis cannot evaluate the script.
+	 *
+	 * Each invocation executes against mutable Redis state.
+	 *
+	 * @phpstan-impure
 	 */
 	public function evaluate(string $script, array $keys, array $arguments): int {
 		$result = $this->command(

@@ -382,7 +382,7 @@ final class Catalog_Provider extends Provider {
 
 If the application used lower-level container APIs, make these additional replacements:
 
-- Replace direct implementations of the removed `Providable` interface with classes that extend `Provider`.
+- Ordinary providers extend `Provider`. Applications with their own registration abstraction may implement `Providable::register()` instead; the application owns that implementation’s constructor.
 - Move provider `boot()`, `provides()`, and deferred-provider behavior into `register()` or an application-owned lifecycle.
 - Replace `ContainerAdapter::getContainer()` and forwarded DI52 methods with operations declared by Foundation's `Container` and `Resolver` contracts.
 - Catch Foundation's `ContainerException` or `NotFoundException` instead of DI52 exceptions.

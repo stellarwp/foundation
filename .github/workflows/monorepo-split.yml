@@ -8,12 +8,20 @@ on:
     tags:
       - '*'
 
+permissions:
+  contents: read
+
+# The action updates the same split branches for main and tags; serialize publication.
+concurrency:
+  group: foundation-package-publication
+  cancel-in-progress: false
+
 env:
   GITHUB_TOKEN: ${{ secrets.GH_BOT_TOKEN }}
 
 jobs:
   list-repos:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
 
@@ -30,7 +38,7 @@ jobs:
 
   split:
     needs: list-repos
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
 
     strategy:
       fail-fast: false
@@ -40,6 +48,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Check split credentials
+        run: test -n "$GITHUB_TOKEN"
 
       # no tag
       - name: Split with no tag
@@ -59,7 +70,7 @@ jobs:
         if: ${{ startsWith(github.ref, 'refs/tags/')}}
         uses: moderntribe/monorepo-split-github-action@4.0.2
         with:
-          tag: "${GITHUB_REF#refs/tags/}"
+          tag: ${{ github.ref_name }}
 
           package_directory: 'src/${{ matrix.package.directory }}'
           repository_organization: 'stellarwp'
@@ -69,10 +80,31 @@ jobs:
           user_name: "StellarWP GitHub Action"
           user_email: "action@github.com"
 
+      # The upstream split action does not consistently fail on unsuccessful git pushes.
+      - name: Verify published package tree
+        env:
+          GH_TOKEN: ${{ secrets.GH_BOT_TOKEN }}
+          PACKAGE_REPOSITORY: ${{ matrix.package.name }}
+          PACKAGE_DIRECTORY: ${{ matrix.package.directory }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          published_ref=main
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            published_ref="$GITHUB_REF_NAME"
+          fi
+          expected_tree=$(git rev-parse "${GITHUB_SHA}:src/${PACKAGE_DIRECTORY}")
+          actual_tree=$(gh api "repos/stellarwp/${PACKAGE_REPOSITORY}/commits/${published_ref}" --jq '.commit.tree.sha')
+          if [[ "$actual_tree" != "$expected_tree" ]]; then
+            echo "Published ${PACKAGE_REPOSITORY}@${published_ref} does not match the release source."
+            exit 1
+          fi
+          echo "Verified ${PACKAGE_REPOSITORY}@${published_ref}."
+
   bump-next-development-line:
     needs: split
     if: ${{ startsWith(github.ref, 'refs/tags/') }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
 
     steps:
       - name: Determine next development line
@@ -109,6 +141,7 @@ jobs:
         with:
           php-version: '8.3'
           coverage: none
+          tools: composer:v2
 
       - name: Install Composer dependencies
         if: ${{ steps.version.outputs.should_bump == 'true' }}

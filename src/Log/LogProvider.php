@@ -16,6 +16,7 @@ use StellarWP\Foundation\Container\Contracts\Provider;
 use StellarWP\Foundation\Container\Contracts\Resolver as C;
 use StellarWP\Foundation\Container\Exceptions\ContainerException;
 use StellarWP\Foundation\Log\Formatters\ColoredLineFormatter;
+use StellarWP\Foundation\Log\Handlers\MinimumLevelHandler;
 use StellarWP\Foundation\Log\Handlers\NullHandler;
 use UnhandledMatchError;
 
@@ -92,6 +93,7 @@ final class LogProvider extends Provider
 
 		$logger = new Logger($channel);
 		$logger->pushProcessor($c->get(PsrLogMessageProcessor::class));
+		$resolvedHandlers = [];
 
 		foreach ($selected['channels'] ?? [$channel] as $name) {
 			$definition = $channels[$name] ?? [];
@@ -112,19 +114,26 @@ final class LogProvider extends Provider
 				? new StreamHandler($definition['with']['stream'] ?? 'php://stdout', $level)
 				: $c->get($definition['handler']);
 
-			if (in_array($handler, $logger->getHandlers(), true)) {
+			if (in_array($handler, $resolvedHandlers, true)) {
 				throw new RuntimeException(sprintf(
 					'Log channel "%s" shares a handler instance with another stack entry. Use separate handler bindings or a single shared channel.',
 					$name
 				));
 			}
 
+			$resolvedHandlers[] = $handler;
+
 			if (isset($definition['formatter']) && $handler instanceof FormattableHandlerInterface) {
 				$handler->setFormatter($c->get($definition['formatter']));
 			}
 
 			if ($handler instanceof AbstractHandler) {
-				$handler->setLevel($level);
+				// A destination may intentionally reject more than the application's minimum.
+				$handlerLevelName = Logger::getLevelName($handler->getLevel());
+				$handlerLevel     = LogLevel::fromName(strtolower($handlerLevelName));
+				$handler->setLevel(max($level, $handlerLevel));
+			} else {
+				$handler = new MinimumLevelHandler($handler, $level);
 			}
 
 			$logger->pushHandler($handler);

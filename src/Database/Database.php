@@ -121,6 +121,10 @@ final readonly class Database implements DatabaseContract
 	 * @throws QueryException    When preparation or execution fails.
 	 *
 	 * @return array<string, mixed>|null
+	 *
+	 * Read current database state on every invocation.
+	 *
+	 * @phpstan-impure
 	 */
 	public function row(string $sql, mixed ...$bindings): ?array {
 		$bindings = array_values($bindings);
@@ -142,6 +146,10 @@ final readonly class Database implements DatabaseContract
 	 * @throws QueryException    When preparation or execution fails.
 	 *
 	 * @return list<array<string, mixed>>
+	 *
+	 * Read current database state on every invocation.
+	 *
+	 * @phpstan-impure
 	 */
 	public function rows(string $sql, mixed ...$bindings): array {
 		$bindings = array_values($bindings);

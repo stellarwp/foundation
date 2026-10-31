@@ -17,8 +17,8 @@ interface Container extends ContainerInterface, Resolver
 	/**
 	 * Register a service provider.
 	 *
-	 * @param class-string<Provider> $serviceProviderClass
-	 * @param string                 ...$alias
+	 * @param class-string<Providable> $serviceProviderClass
+	 * @param string                   ...$alias
 	 *
 	 * @throws ContainerException When the provider cannot be registered.
 	 */

@@ -32,6 +32,10 @@ final readonly class ToolingProviderResolver
 	 * @throws RuntimeException When a configured provider, path, or Composer mapping is invalid.
 	 *
 	 * @return list<class-string<Provider>>
+	 *
+	 * Provider discovery reads the current project files.
+	 *
+	 * @phpstan-impure
 	 */
 	public function providers(): array {
 		$providers = $this->config->get('cli.providers', []);

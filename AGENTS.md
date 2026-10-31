@@ -163,6 +163,12 @@ Migration IDs determine forward execution order. Collect all provider contributi
 
 Foundation Database stores unprefixed table names and applies the active WordPress site's prefix through `DatabaseScope` on every access. The same container and database services may be reused after `switch_to_blog()` between complete `Migrator` calls. Each migration operation must capture its starting scope and reject a context change before lock renewal, ledger writes, or lock release; when the context is uncertain, leave the original lock to expire rather than touching another site's lock table. A migration must never call `switch_to_blog()` itself, even temporarily, because restoring the original site before a boundary check would hide schema writes made in the wrong scope. Keep developer-authored `Migration` and `Schema` contracts independent of site scope so a future network-wide implementation can use `$wpdb->base_prefix` and network-specific state without requiring migration rewrites.
 
+Ordinary providers extend `Provider`, whose final constructor supplies the shared container and configuration snapshot. Applications with their own registration abstraction may implement `Providable`; it requires only `register(): void`. Keep the default examples on `Provider` and document the interface as an integration extension point. Do not restore DI52's deferred provider lifecycle. Register providers once per container in dependency order.
+
+Use Foundation's `Resolver` contract for factory callbacks. Keep raw DI52 access inside the adapter and factory. Bootstrap configuration before registering providers using `ContainerFactory` and `ArrayConfiguration`.
+
+Keep detailed package guidance in the documentation site and link it from split READMEs. Preserve the 2.0 upgrade guide for consumers migrating from the released 1.x contracts.
+
 ## Split Packages
 
 Split packages live in `src/<Package>/` and are split to read-only repositories named `stellarwp/foundation-<package>`.
@@ -293,8 +299,9 @@ After completing a feature, run `composer test:coverage`, review `clover.xml` fo
 - Adding a new split package is usually a minor SemVer release because it introduces new functionality without breaking existing packages. Use a major release only if the change also breaks an existing public API or package contract.
 - Run `composer monorepo bump-interdependency <constraint>` when planning a major version release so Foundation packages that depend on each other require the new major line, for example `^3.0`. It may also be useful for a minor release when one package must require APIs added in that new minor, for example `^1.1`.
 - Before publishing a release, verify the intended release-line package constraints are already committed. For a minor release such as `1.2.0`, internal Foundation package dependencies should already require the released line, for example `^1.2`.
-- Publishing a GitHub release creates the release tag and triggers the tagged monorepo split. Wait for the tagged `Split Monorepo Packages and Release` workflow to succeed before considering the release complete.
-- When a release includes `foundation-docs`, also verify that the tag-triggered `Deploy Documentation` workflow succeeds in the `stellarwp/foundation-docs` split repository before considering the documentation release complete.
+- Verify all target split repositories exist and their packages are registered on Packagist before publication. `GH_BOT_TOKEN` must be available to the workflow, have contents and workflow write access to those repositories, and belong to an actor allowed to push the post-release bump to protected `main`. The workflow token cannot supply cross-repository write access.
+- Publishing a GitHub release creates the release tag and triggers the tagged monorepo split. Wait for the tagged `Split Monorepo Packages and Release` workflow, including package-tree verification, to succeed. Verify Composer installation of the aggregate and split releases afterward.
+- When a release includes `foundation-docs`, also verify the tag-triggered documentation deployment in its split repository.
 - After a successful tagged split for a minor or major `.0` release, the split workflow automatically bumps internal package constraints and branch aliases to the next development line on `main`, for example from `^1.2` and `1.2.x-dev` to `^1.3` and `1.3.x-dev`.
 - The post-release automation intentionally skips patch tags such as `1.2.1`, because patch releases should not move `dev-main` to a new minor development line.
 - If the post-release automation fails, fetch the release tag and manually run `composer monorepo bump-interdependency <next-dev-constraint>`, `composer monorepo package-alias`, and `composer monorepo merge`, then commit and push the updated package `composer.json` files.
