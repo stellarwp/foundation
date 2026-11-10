@@ -229,6 +229,14 @@ jobs:
           set -euo pipefail
           patch="$RUNNER_TEMP/next-development-line/next-development-line.patch"
 
+          if [[ ! "$NEXT_ALIAS" =~ ^([0-9]+)\.([0-9]+)\.x-dev$ ]]; then
+            echo "Unexpected development alias: ${NEXT_ALIAS}"
+            exit 1
+          fi
+          # Regex-escaped expected values, e.g. \^2\.2 and 2\.2\.x-dev.
+          constraint="\\^${BASH_REMATCH[1]}\\.${BASH_REMATCH[2]}"
+          alias="${BASH_REMATCH[1]}\\.${BASH_REMATCH[2]}\\.x-dev"
+
           # Only package manifests may change. A patch git can't parse fails here.
           changed_files=$(git apply --numstat "$patch" | cut -f3)
           unexpected_files=$(grep -vE '^(composer\.json|src/[A-Za-z0-9_-]+/composer\.json)$' <<< "$changed_files" || true)
@@ -238,12 +246,39 @@ jobs:
             exit 1
           fi
 
+          # Only Foundation package constraints and dev-main branch aliases may change. Removed lines may hold any
+          # previous version; added lines must hold exactly the expected constraint or alias.
+          unexpected_lines=$(grep -E '^[+-]' "$patch" | grep -vE '^(\+\+\+|---) ' \
+            | grep -vE '^-[[:space:]]*"stellarwp/foundation(-[a-z0-9]+)*": "\^[0-9]+\.[0-9]+",?$' \
+            | grep -vE '^-[[:space:]]*"dev-main": "[0-9]+\.[0-9]+\.x-dev",?$' \
+            | grep -vE "^\\+[[:space:]]*\"stellarwp/foundation(-[a-z0-9]+)*\": \"${constraint}\",?\$" \
+            | grep -vE "^\\+[[:space:]]*\"dev-main\": \"${alias}\",?\$" || true)
+          if [[ -n "$unexpected_lines" ]]; then
+            echo "Patch contains unexpected changes:"
+            echo "$unexpected_lines"
+            exit 1
+          fi
+
+          # Every change must replace a value in place: the same keys are removed and added, per file.
+          changed_keys() {
+            awk -v sign="$1" '
+              /^diff --git / { file = $3 }
+              /^(\+\+\+|---) / { next }
+              substr($0, 1, 1) == sign { match($0, /"[^"]+":/); print file " " substr($0, RSTART, RLENGTH) }
+            ' "$patch" | sort
+          }
+          if [[ "$(changed_keys -)" != "$(changed_keys +)" ]]; then
+            echo "Patch adds or removes entries instead of updating them in place."
+            diff <(changed_keys -) <(changed_keys +) || true
+            exit 1
+          fi
+
           git apply --index "$patch"
 
-          # Compare the staged manifests with HEAD as JSON rather than parsing diff lines: only Foundation
-          # constraints set to the expected "^X.Y" and dev-main aliases set to NEXT_ALIAS may change.
-          mapfile -t files <<< "$changed_files"
-          python3 -I .github/bin/verify-development-line-bump.py "$NEXT_ALIAS" "${files[@]}"
+          # The line filter skips diff headers, so also make sure every changed manifest is still valid JSON.
+          while IFS= read -r file; do
+            jq empty "$file"
+          done <<< "$changed_files"
 
           git config user.name "StellarWP GitHub Action"
           git config user.email "action@github.com"
