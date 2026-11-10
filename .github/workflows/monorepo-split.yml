@@ -5,8 +5,9 @@ on:
   push:
     branches:
       - main
+    # Release tags only (X.Y.Z), the versions the bump job and the split repositories expect.
     tags:
-      - '*'
+      - '[0-9]+.[0-9]+.[0-9]+'
 
 permissions:
   contents: read
@@ -16,8 +17,8 @@ concurrency:
   group: foundation-package-publication
   cancel-in-progress: false
 
-env:
-  GITHUB_TOKEN: ${{ secrets.GH_BOT_TOKEN }}
+# GH_BOT_TOKEN is scoped to the steps that need it. Never expose it through workflow- or job-level env,
+# which hands it to every step, including third-party actions and Composer scripts.
 
 jobs:
   list-repos:
@@ -27,7 +28,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       # Dynamically build an array of JSON objects that each contain "name" and "directory" properties.
       - name: Set repo matrix
@@ -45,15 +48,23 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # The third-party split action reads the mounted workspace; leave no credentials in it.
+          persist-credentials: false
 
       - name: Check split credentials
-        run: test -n "$GITHUB_TOKEN"
+        env:
+          PAT: ${{ secrets.GH_BOT_TOKEN }}
+        run: test -n "$PAT"
 
       # no tag
       - name: Split with no tag
         if: ${{ ! startsWith(github.ref, 'refs/tags/') }}
-        uses: moderntribe/monorepo-split-github-action@4.0.2
+        # 5.0.0 authenticates with a header instead of a token-bearing clone URL and escapes its inputs.
+        uses: moderntribe/monorepo-split-github-action@dd974a563d54c516fa49c0143632d92ccbe78a3c # 5.0.0
+        env:
+          PAT: ${{ secrets.GH_BOT_TOKEN }}
         with:
           package_directory: 'src/${{ matrix.package.directory }}'
           repository_organization: 'stellarwp'
@@ -66,7 +77,10 @@ jobs:
       # with tag
       - name: With regular tag
         if: ${{ startsWith(github.ref, 'refs/tags/')}}
-        uses: moderntribe/monorepo-split-github-action@4.0.2
+        # 5.0.0 authenticates with a header instead of a token-bearing clone URL and escapes its inputs.
+        uses: moderntribe/monorepo-split-github-action@dd974a563d54c516fa49c0143632d92ccbe78a3c # 5.0.0
+        env:
+          PAT: ${{ secrets.GH_BOT_TOKEN }}
         with:
           tag: ${{ github.ref_name }}
 
@@ -78,10 +92,11 @@ jobs:
           user_name: "StellarWP GitHub Action"
           user_email: "action@github.com"
 
-      # The upstream split action does not consistently fail on unsuccessful git pushes.
+      # Defense in depth: confirm the split repository now matches the source tree.
       - name: Verify published package tree
         env:
-          GH_TOKEN: ${{ secrets.GH_BOT_TOKEN }}
+          # The split repositories are public, so the read-only workflow token is enough.
+          GH_TOKEN: ${{ github.token }}
           PACKAGE_REPOSITORY: ${{ matrix.package.name }}
           PACKAGE_DIRECTORY: ${{ matrix.package.directory }}
         shell: bash
@@ -127,15 +142,18 @@ jobs:
 
       - name: Checkout main
         if: ${{ steps.version.outputs.should_bump == 'true' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: main
-          token: ${{ secrets.GH_BOT_TOKEN }}
           fetch-depth: 0
+          # Don't leave credentials in .git/config while Composer dependencies and scripts run.
+          # Keep this false: the push below sends its own Authorization header, and a persisted
+          # checkout header would be sent alongside it.
+          persist-credentials: false
 
       - name: Set up PHP
         if: ${{ steps.version.outputs.should_bump == 'true' }}
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: '8.3'
           coverage: none
@@ -143,19 +161,26 @@ jobs:
 
       - name: Install Composer dependencies
         if: ${{ steps.version.outputs.should_bump == 'true' }}
-        uses: ramsey/composer-install@v4
+        uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda # 4.0.0
         with:
           dependency-versions: highest
+          # This job pushes to main with the bot token; don't restore a cache other workflows could have written.
+          ignore-cache: true
 
       - name: Bump next development line
         if: ${{ steps.version.outputs.should_bump == 'true' }}
+        env:
+          NEXT_CONSTRAINT: ${{ steps.version.outputs.constraint }}
         run: |
-          composer monorepo bump-interdependency "${{ steps.version.outputs.constraint }}"
+          composer monorepo bump-interdependency "$NEXT_CONSTRAINT"
           composer monorepo package-alias
           composer monorepo merge
 
       - name: Commit next development line
         if: ${{ steps.version.outputs.should_bump == 'true' }}
+        env:
+          GH_BOT_TOKEN: ${{ secrets.GH_BOT_TOKEN }}
+          NEXT_ALIAS: ${{ steps.version.outputs.alias }}
         run: |
           if git diff --quiet -- composer.json src/*/composer.json; then
             echo "No next development line changes to commit."
@@ -165,5 +190,12 @@ jobs:
           git config user.name "StellarWP GitHub Action"
           git config user.email "action@github.com"
           git add composer.json src/*/composer.json
-          git commit -m "Bump Foundation to ${{ steps.version.outputs.alias }}"
-          git push origin HEAD:main
+          # Composer ran third-party code earlier in this job; don't run any git hooks it could have planted.
+          git -c core.hooksPath=/dev/null commit --no-verify -m "Bump Foundation to ${NEXT_ALIAS}"
+
+          # Authenticate with a header passed through env so the token never appears in a URL, argv, or .git/config.
+          auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_BOT_TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
+            GIT_CONFIG_VALUE_0="$auth_header" \
+            git -c core.hooksPath=/dev/null push --no-verify origin HEAD:main
