@@ -3,6 +3,7 @@
 namespace StellarWP\Foundation\Tests\Support\Fixtures\WPCli;
 
 use StellarWP\Foundation\WPCli\Command;
+use StellarWP\Foundation\WPCli\CommandContext;
 
 final class TestCommand extends Command
 {
@@ -37,8 +38,12 @@ final class TestCommand extends Command
 		return self::SUCCESS;
 	}
 
-	public function name(): string {
-		return $this->command();
+	public function name(CommandContext $context): string {
+		return $this->command($context);
+	}
+
+	public function registeredName(): ?string {
+		return $this->registeredCommandName();
 	}
 
 	public function shortDescription(): string {

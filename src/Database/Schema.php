@@ -1,0 +1,104 @@
+<?php declare(strict_types=1);
+
+namespace StellarWP\Foundation\Database;
+
+use InvalidArgumentException;
+use StellarWP\Foundation\Database\Contracts\Database;
+use StellarWP\Foundation\Database\Contracts\Schema as SchemaContract;
+use StellarWP\Foundation\Database\Contracts\Table;
+use StellarWP\Foundation\Database\Exceptions\DatabaseException;
+use StellarWP\Foundation\Database\Schema\Editor;
+use StellarWP\Foundation\Database\Schema\Reconciler;
+use StellarWP\Foundation\Database\Table\Blueprint;
+
+/**
+ * WordPress schema operations backed by wpdb and dbDelta.
+ *
+ * @internal Depend on {@see SchemaContract}; the provider owns this implementation.
+ */
+final readonly class Schema implements SchemaContract
+{
+	/**
+	 * Create the schema API from its database and reconciliation services.
+	 */
+	public function __construct(
+		private Database $database,
+		private Reconciler $reconciler,
+		private Editor $editor
+	) {
+	}
+
+	/**
+	 * Create a missing table or verify an existing table without replaying historical DDL.
+	 *
+	 * @throws DatabaseException        When WordPress cannot create the table or its existing state is incompatible.
+	 * @throws InvalidArgumentException When the table definition is invalid.
+	 */
+	public function create(Blueprint $blueprint): void {
+		$blueprint->assertValidForCreate();
+
+		if ($this->database->tableExists($blueprint->table())) {
+			$this->reconciler->verify($blueprint);
+
+			return;
+		}
+
+		$this->reconciler->reconcile($blueprint);
+	}
+
+	/**
+	 * Apply explicit additions, modifications, and removals to an existing table.
+	 *
+	 * @throws DatabaseException        When the table is missing or a schema change cannot be applied or verified.
+	 * @throws InvalidArgumentException When the alteration blueprint is invalid.
+	 */
+	public function alter(Blueprint $blueprint): void {
+		$this->editor->alter($blueprint);
+	}
+
+	/**
+	 * Execute a complete, trusted schema statement without placeholder binding.
+	 *
+	 * @throws DatabaseException When the statement cannot be executed.
+	 */
+	public function execute(string $sql): void {
+		$this->database->execute($sql);
+	}
+
+	/**
+	 * Determine whether a table exists in the active database scope.
+	 *
+	 * @throws DatabaseException When table inspection fails.
+	 */
+	public function hasTable(Table $table): bool {
+		return $this->database->tableExists($table);
+	}
+
+	/**
+	 * Determine whether a named index exists on a table.
+	 *
+	 * @throws DatabaseException When index inspection fails.
+	 */
+	public function hasIndex(Table $table, string $index): bool {
+		return $this->database->indexExists($table, $index);
+	}
+
+	/**
+	 * Drop a table when it exists.
+	 *
+	 * @throws DatabaseException When the table name is invalid or the statement cannot be executed.
+	 */
+	public function drop(Table $table): void {
+		$this->database->execute(sprintf(
+			'DROP TABLE IF EXISTS %s',
+			$this->database->quoteIdentifier($this->database->tableName($table))
+		));
+	}
+
+	/**
+	 * Quote a trusted schema identifier while escaping embedded backticks.
+	 */
+	public function quoteIdentifier(string $identifier): string {
+		return $this->database->quoteIdentifier($identifier);
+	}
+}

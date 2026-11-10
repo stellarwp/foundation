@@ -1,0 +1,422 @@
+---
+title: Lock
+description: Coordinate bounded work across WordPress requests, workers, and servers with expiring ownership leases.
+sidebar:
+  order: 3
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Foundation Lock lets an application name work that must not overlap, select the shared backend that coordinates it, and run bounded work through `LockOperation`. It returns the callback's result after ownership is confirmed at release, and throws on contention or when work or lock coordination fails. Ownership lasts only for the configured lease duration; multi-stage work can renew it at explicit checkpoints.
+
+## Installation
+
+### Choose a lock implementation
+
+For WordPress applications where every participant can reach the same primary database, `DatabaseLock` is the simplest persistent option. Choose Redis when your application has a Redis service you want to use for lock coordination. Use `InMemoryLock` for tests or work confined to one PHP process.
+
+| Implementation | Package | Coordinates work across |
+| --- | --- | --- |
+| `DatabaseLock` | `stellarwp/foundation-database` | Requests and workers sharing the primary WordPress database |
+| `RedisLock` | `stellarwp/foundation-lock-redis` | Requests and workers sharing a Redis endpoint |
+| `InMemoryLock` | `stellarwp/foundation-lock` | One PHP process |
+
+Install the package for your chosen implementation. The database and Redis packages include `stellarwp/foundation-lock` automatically. Once configured, either backend supports the same [application usage](#usage).
+
+### Prepare the application container
+
+The examples assume the application has a composition root that registers providers in order.
+
+<CardGrid>
+  <LinkCard
+    title="Bootstrap a WordPress Plugin"
+    description="Create the application, shared container, and ordered provider list."
+    href="/start/bootstrap-wordpress-plugin/"
+  />
+  <LinkCard
+    title="Register Service Providers"
+    description="Register feature definitions, configuration, and WordPress hooks."
+    href="/start/register-service-providers/"
+  />
+</CardGrid>
+
+## Configuration
+
+### Use the WordPress database
+
+Install the database package:
+
+```shell
+composer require stellarwp/foundation-database
+```
+
+Follow the database lock guide to register its providers, initialize the lock table, and select `DatabaseLock` as your application's `Lock` implementation. Then continue to [Usage](#usage) below.
+
+<LinkCard
+  title="Configure Database Lock"
+  description="Select DatabaseLock and initialize its WordPress table during deployment."
+  href="/components/database/lock/"
+/>
+
+### Use Redis
+
+Install the Redis implementation and the supported Predis client:
+
+```shell
+composer require stellarwp/foundation-lock-redis "predis/predis:>=3.3 <4.0"
+```
+
+Set a stable application prefix and configure one writable Redis endpoint for locks. Foundation supports TCP, TLS, and Unix-socket connections. The required `lock.redis.parameters` setting accepts a Predis URI or parameter array; `lock.redis.options` accepts optional Predis client settings. Missing parameters raise `InvalidArgumentException` during provider registration; add the setting shown below before registering the provider.
+
+In `config.php`:
+
+```php title="config.php"
+<?php declare(strict_types=1);
+
+$config = [
+	'foundation' => [ 'prefix' => $_ENV['FOUNDATION_PREFIX'] ?? 'your-plugin' ],
+	'lock' => [ 'redis' => [
+		'parameters' => [
+			'host'     => $_ENV['FOUNDATION_LOCK_REDIS_HOST'] ?? '127.0.0.1',
+			'port'     => (int) ( $_ENV['FOUNDATION_LOCK_REDIS_PORT'] ?? 6379 ),
+			'database' => (int) ( $_ENV['FOUNDATION_LOCK_REDIS_DATABASE'] ?? 1 ),
+		],
+	] ],
+];
+
+if ( isset( $_ENV['FOUNDATION_LOCK_REDIS_PREFIX'] ) ) {
+	$config['lock']['redis']['prefix'] = $_ENV['FOUNDATION_LOCK_REDIS_PREFIX'];
+}
+
+return $config;
+```
+
+Invalid Predis configuration raises `ContainerException` when the connection is resolved; correct the configuration before retrying.
+
+Create `src/Lock/Provider.php` to select Redis as this application's default lock implementation:
+
+```php title="Provider.php"
+<?php declare(strict_types=1);
+
+namespace Plugin\Lock;
+
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use StellarWP\Foundation\Lock\Contracts\Lock;
+use StellarWP\Foundation\LockRedis\RedisLock;
+
+/**
+ * Selects Redis for application lock consumers.
+ */
+final class Provider extends Service_Provider {
+
+	/**
+	 * Register the application's default lock implementation.
+	 */
+	public function register(): void {
+		$this->container->singleton(
+			Lock::class,
+			static fn ( C $c ): RedisLock => $c->get( RedisLock::class )
+		);
+	}
+}
+```
+
+Register the connection provider, Redis lock provider, and your application provider in that order:
+
+In `src/App.php`:
+
+```php title="App.php"
+use StellarWP\Foundation\Container\Contracts\Provider;
+use StellarWP\Foundation\LockRedis\LockRedisProvider;
+use StellarWP\Foundation\LockRedis\PredisConnectionProvider;
+use Plugin\Lock;
+
+/** @var list<class-string<Provider>> */
+private const array PROVIDERS = [
+	PredisConnectionProvider::class,
+	LockRedisProvider::class,
+	Lock\Provider::class,
+];
+```
+
+The Redis key prefix defaults to `foundation.prefix . ':lock:'`. Without configuration, Foundation uses `nx:lock:`; this example defaults to `your-plugin:lock:`. A complete application that owns its shared composition root can use `nx`, but a distributable standalone plugin must set a stable unique `foundation.prefix`. The optional `FOUNDATION_LOCK_REDIS_PREFIX` environment variable sets `lock.redis.prefix` explicitly; Foundation preserves its nonempty value exactly. When that variable is absent, the provider derives the prefix from `foundation.prefix`.
+
+:::caution[Protect active lock keys]
+Use a dedicated Redis database or endpoint for locks. A cache flush or eviction that removes an active lock allows another worker to acquire it while the original work is still running. Keep lock keys out of cache-clearing operations.
+:::
+
+## Usage
+
+### Run a protected operation
+
+Inject `LockOperation` into application services to acquire and release the selected lock around their work. The same service works with your chosen database or Redis implementation. In this example, `Catalog_Importer` is an existing application collaborator whose `import(int $site_id): void` method performs the import.
+
+In `src/Catalog/Catalog_Synchronizer.php`:
+
+```php title="Catalog_Synchronizer.php"
+<?php declare(strict_types=1);
+
+namespace Plugin\Catalog;
+
+use StellarWP\Foundation\Lock\Exceptions\LockContendedException;
+use StellarWP\Foundation\Lock\LockOperation;
+use Throwable;
+
+/**
+ * Prevents overlapping catalog imports for one site.
+ */
+final readonly class Catalog_Synchronizer {
+
+	/**
+	 * Use the configured lock lifecycle and catalog importer.
+	 */
+	public function __construct(
+		private LockOperation $lock_operation,
+		private Catalog_Importer $catalog_importer
+	) {
+	}
+
+	/**
+	 * Synchronize a site's catalog, or skip a duplicate attempt.
+	 *
+	 * @throws Throwable When importing or lock coordination fails.
+	 */
+	public function synchronize( int $site_id ): bool {
+		$started = false;
+
+		try {
+			return $this->lock_operation->run(
+				name: sprintf( 'catalog:%d:sync', $site_id ),
+				ttl: 300,
+				operation: function () use ( $site_id, &$started ): bool {
+					$started = true;
+					$this->catalog_importer->import( $site_id );
+
+					return true;
+				}
+			);
+		} catch ( LockContendedException $failure ) {
+			if ( $started ) {
+				throw $failure;
+			}
+
+			return false;
+		}
+	}
+}
+```
+
+`run()` makes one acquisition attempt. Contention during that acquisition throws `LockContendedException` without invoking its callback; it does not wait or retry. Callback exceptions also propagate unchanged, including contention from nested operations. The callback receives a `LockLease`, which this short operation can ignore. After confirmed release, `run()` returns the callback's value unchanged, including objects, `false`, or `null`.
+
+The TTL is in whole seconds and must be at least one. Choose one longer than the import's bounded work.
+
+:::caution[Choose a TTL that covers blocking work]
+If a remote request exceeds the remaining TTL, another owner can acquire the lock before that request returns. Neither `run()` nor renewal interrupts blocking work. Set request timeouts within the lease duration and leave room for processing and cleanup. For work split into bounded stages, use [managed renewal](#renew-between-bounded-stages).
+:::
+
+Here, `synchronize()` preserves an application-level boolean API: it returns `false` only for contention before this invocation's callback starts, and `true` only after the importer finishes and release confirms ownership. Setting `$started` before calling the importer distinguishes a skipped attempt from nested contention after partial work. A callback result of `false` in another service would be a normal result, not a contention signal.
+
+:::note[Pre-2.0 API change]
+`LockOperation::run()` now returns the callback result instead of a boolean execution status, supplies a `LockLease` argument, and throws `LockContendedException` instead of returning `false` on contention. Update callers that interpret the old status; callbacks that do not need renewal may ignore the supplied argument.
+:::
+
+:::caution[Handle contention and completed-work failures differently]
+Treat `LockContendedException` as a skipped attempt only when this invocation's callback has not started. A callback can write data and then encounter contention in a nested operation; exception type alone does not establish that no work occurred. Likewise, `LockUnavailableException` can originate during acquisition, renewal, cleanup, or nested work. Before callback entry, report an acquisition infrastructure failure and retry later; after entry, follow the operation's partial-work and idempotency policy.
+
+After an importer starts, a callback error or a release failure can leave side effects completed or unknown. A successful return means ownership was confirmed at release, not that the work was transactional or its writes can be undone. If release returns `false` after otherwise successful work, `run()` throws `LockOwnershipLostException`; backend failures propagate. Apply the importer's own idempotency policy before retrying.
+:::
+
+### Renew between bounded stages
+
+Keep the whole multi-stage operation inside one `run()` callback. Call the supplied lease's `renew(): void` at checkpoints before starting the next bounded stage. Each renewal extends ownership from the backend's current time by the original TTL; Foundation retains the latest token and owns cleanup. There is no automatic heartbeat.
+
+In this example, the existing `Catalog_Importer::import_batch(int $site_id, int $batch_id): int` imports one bounded batch and returns its imported-record count. Each batch, including remote calls, must fit within the TTL.
+
+In `src/Catalog/Batch_Catalog_Synchronizer.php`:
+
+```php title="Batch_Catalog_Synchronizer.php"
+<?php declare(strict_types=1);
+
+namespace Plugin\Catalog;
+
+use StellarWP\Foundation\Lock\LockLease;
+use StellarWP\Foundation\Lock\LockOperation;
+use Throwable;
+
+/**
+ * Imports catalog batches under one renewable lease.
+ */
+final readonly class Batch_Catalog_Synchronizer {
+
+	/**
+	 * Use the configured lock lifecycle and bounded batch importer.
+	 */
+	public function __construct(
+		private LockOperation $lock_operation,
+		private Catalog_Importer $catalog_importer
+	) {
+	}
+
+	/**
+	 * Return the imported count after all batches and confirmed release.
+	 *
+	 * @param list<int> $batch_ids The batches to import.
+	 *
+	 * @throws Throwable When contention, importing, or lock coordination fails.
+	 */
+	public function synchronize( int $site_id, array $batch_ids ): int {
+		return $this->lock_operation->run(
+			name: sprintf( 'catalog:%d:sync', $site_id ),
+			ttl: 120,
+			operation: function ( LockLease $lease ) use ( $site_id, $batch_ids ): int {
+				$imported = 0;
+
+				foreach ( $batch_ids as $batch_id ) {
+					// Confirm ownership before starting each bounded batch.
+					$lease->renew();
+					$imported += $this->catalog_importer->import_batch( $site_id, $batch_id );
+				}
+
+				return $imported;
+			}
+		);
+	}
+}
+```
+
+The caller receives the total imported count only after release confirms ownership. The lease supports only `renew()` for application use: do not construct it yourself, release it, replace its token, or reacquire through it. Use it only inside its callback; after the callback exits, including during cleanup, `renew()` throws `LogicException`.
+
+:::caution[Stop protected work when renewal fails]
+`renew()` throws `LockOwnershipLostException` if ownership has expired or changed; backend errors propagate. Let the failure escape and stop before the next protected stage. A failed renewal is terminal: later renewals within that callback rethrow the same failure without contacting the backend. Even if the callback catches the failure and returns a value, `run()` throws the recorded failure instead of reporting success. A closed handle always throws `LogicException`, even after an earlier renewal failure.
+
+Keep renewal outside any per-record `catch ( Throwable )` that intentionally skips failed records. The application owns which business failures to suppress and must restore any business state it temporarily changes, using its own `try`/`finally`. A lock cannot undo earlier writes or prevent an already-running request from completing after expiry. Retry only when the operation's idempotency policy makes it safe.
+:::
+
+`run()` attempts owner-safe release with the latest token when the callback exits. If the callback throws, that escaping exception takes precedence over an earlier caught renewal failure and any cleanup failure. If the callback returns after catching a renewal failure, the recorded renewal failure takes precedence over cleanup failures. Only an otherwise successful operation exposes a release failure directly.
+
+## Customization
+
+### Select another default backend
+
+Configure the replacement backend and change the application's `Lock` binding before resolving any consumer that receives `LockOperation`; `Catalog_Synchronizer` remains unchanged. During deployment, quiesce workers using the old backend or prefix before starting workers using the replacement, because different backends and prefixes do not coordinate with each other.
+
+### Use PhpRedis or a custom connection
+
+Predis is the supplied setup path. For PhpRedis, install and enable the extension, omit `PredisConnectionProvider` and the Predis dependency, and supply an application-owned connection dedicated to locks. Bind the Redis `Connection` contract before `RedisLock` resolves. An application can also replace a provider-supplied connection after provider registration and before resolution.
+
+In `src/Lock/PhpRedis_Connection_Provider.php`:
+
+```php title="PhpRedis_Connection_Provider.php"
+<?php declare(strict_types=1);
+
+namespace Plugin\Lock;
+
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\LockRedis\Connections\PhpRedisConnection;
+use StellarWP\Foundation\LockRedis\Contracts\Connection;
+
+/**
+ * Adapts the application's configured PhpRedis client for Foundation locks.
+ */
+final class PhpRedis_Connection_Provider extends Service_Provider {
+
+	/**
+	 * Register the Redis lock connection adapter.
+	 */
+	public function register(): void {
+		$this->container->singleton( Connection::class, PhpRedisConnection::class );
+	}
+}
+```
+
+The application must bind its dedicated, connected `Redis` instance before this adapter resolves. A custom adapter can implement `Connection` and use the same replacement point, provided its `evaluate()` and `exists()` methods preserve the lock contract's atomicity and failure behavior.
+
+### Use Redis for one feature while another lock stays default
+
+An application can keep `DatabaseLock` as the global `Lock` while one feature uses Redis. Register both Redis Foundation providers, keep the database `Lock` binding, then configure that feature's `LockOperation` construction with the Redis lock.
+
+In `src/Catalog/Provider.php`:
+
+```php title="Provider.php"
+<?php declare(strict_types=1);
+
+namespace Plugin\Catalog;
+
+use StellarWP\Foundation\Container\Contracts\Provider as Service_Provider;
+use StellarWP\Foundation\Container\Contracts\Resolver as C;
+use StellarWP\Foundation\Lock\LockOperation;
+use StellarWP\Foundation\LockRedis\RedisLock;
+
+/**
+ * Configures catalog synchronization with its Redis lock lifecycle.
+ */
+final class Provider extends Service_Provider {
+
+	/**
+	 * Use Redis only for Catalog_Synchronizer's lock operation.
+	 */
+	public function register(): void {
+		$this->container->when( Catalog_Synchronizer::class )
+			->needs( LockOperation::class )
+			->give(
+				static fn ( C $c ): LockOperation => new LockOperation(
+					$c->get( RedisLock::class )
+				)
+			);
+	}
+}
+```
+
+Register this feature provider in `App` after the Redis providers. Its contextual binding selects Redis for `Catalog_Synchronizer`; other services continue using the application's default lock.
+
+## Test application behavior
+
+Use `InMemoryLock` to test a service's lock behavior without Redis or WordPress. Inject `new LockOperation( $lock )` alongside the service's usual application test doubles. The following standalone test demonstrates successful work and contention with that same lock instance.
+
+Inside a test method in `tests/Unit/Lock/LockOperationTest.php` (with the shown imports at file scope):
+
+```php title="LockOperationTest.php"
+use StellarWP\Foundation\Lock\Exceptions\LockContendedException;
+use StellarWP\Foundation\Lock\InMemoryLock;
+use StellarWP\Foundation\Lock\LockOperation;
+use StellarWP\Foundation\Lock\SystemClock;
+
+$lock      = new InMemoryLock( new SystemClock() );
+$operation = new LockOperation( $lock );
+$imports   = [];
+$import    = static function () use ( &$imports ): int {
+	$imports[] = 42;
+
+	return 1;
+};
+
+$this->assertSame( 1, $operation->run( 'catalog:42:sync', 300, $import ) );
+
+$owner = $lock->acquire( 'catalog:42:sync', 300 );
+
+$this->assertNotNull( $owner );
+
+try {
+	$operation->run( 'catalog:42:sync', 300, $import );
+	$this->fail( 'A competing owner must prevent the callback from running.' );
+} catch ( LockContendedException ) {
+	$this->assertSame( [ 42 ], $imports );
+} finally {
+	$this->assertTrue( $lock->release( $owner ) );
+}
+```
+
+Both attempts use the same `InMemoryLock` instance. Use this implementation for tests and work within one PHP process, and Redis or database locks for work shared across requests.
+
+## Advanced usage
+
+### In-memory locks and direct contracts
+
+Install only the shared contract and in-memory implementation for tests or work confined to one PHP process:
+
+```shell
+composer require stellarwp/foundation-lock
+```
+
+For integrations that own a different lifecycle, the low-level `Lock` contract exposes `acquire()`, owner-safe `release()`, `refresh()`, and advisory `isAcquired()`. `acquire()` returns a token or `null` on contention; `refresh()` returns a replacement token or `null` on lost ownership. Such integrations must retain the latest token, stop on ownership loss, and preserve operation failures during cleanup themselves. Use `acquire()` rather than a check-then-act sequence. Prefer `LockOperation` and its managed lease for ordinary application work.

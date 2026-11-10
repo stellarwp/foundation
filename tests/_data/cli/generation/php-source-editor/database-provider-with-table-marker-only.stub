@@ -1,0 +1,10 @@
+<?php declare(strict_types=1);
+
+namespace Acme\Plugin\Database;
+
+final class Provider
+{
+	public function register(): void {
+		// foundation:database-tables
+	}
+}
