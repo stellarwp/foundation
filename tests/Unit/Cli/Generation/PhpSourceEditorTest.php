@@ -16,12 +16,12 @@ final class PhpSourceEditorTest extends TestCase
 		$this->assertNull($editor->addImport('<?php final class Broken {', 'Acme\\Generated'));
 		$this->assertFalse($editor->canInsertIntoMergeArrayVar(
 			'<?php final class Broken {',
-			'StellarWP\\Foundation\\Database\\DatabaseProvider',
+			'StellarWP\\Foundation\\Migrations\\MigrationsProvider',
 			'MIGRATIONS'
 		));
 		$this->assertNull($editor->insertIntoMergeArrayVar(
 			'<?php final class Broken {',
-			'StellarWP\\Foundation\\Database\\DatabaseProvider',
+			'StellarWP\\Foundation\\Migrations\\MigrationsProvider',
 			'MIGRATIONS',
 			'$c->get(Generated::class),'
 		));
@@ -85,7 +85,7 @@ PHP;
 
 	public function test_it_rejects_merge_array_var_calls_that_are_not_foundation_database_migration_lists(): void {
 		$editor = $this->editor();
-		$class  = 'StellarWP\\Foundation\\Database\\DatabaseProvider';
+		$class  = 'StellarWP\\Foundation\\Migrations\\MigrationsProvider';
 
 		$this->assertFalse($editor->canInsertIntoMergeArrayVar($this->fixture('not-container-merge-array-var'), $class, 'MIGRATIONS'));
 		$this->assertFalse($editor->canInsertIntoMergeArrayVar($this->fixture('wrong-first-argument-merge-array-var'), $class, 'MIGRATIONS'));
@@ -95,7 +95,7 @@ PHP;
 	public function test_it_matches_fully_qualified_strauss_prefixed_database_provider_references(): void {
 		$updated = $this->editor()->insertIntoMergeArrayVar(
 			$this->fixture('strauss-prefixed-database-provider'),
-			'StellarWP\\Foundation\\Database\\DatabaseProvider',
+			'StellarWP\\Foundation\\Migrations\\MigrationsProvider',
 			'MIGRATIONS',
 			'$this->container->get(Generated::class),'
 		);
@@ -106,14 +106,14 @@ PHP;
 	public function test_it_rejects_merge_array_var_callbacks_that_do_not_expose_a_registration_list(): void {
 		$this->assertFalse($this->editor()->canInsertIntoMergeArrayVar(
 			$this->fixture('arrow-callback-without-registration-list'),
-			'StellarWP\\Foundation\\Database\\DatabaseProvider',
+			'StellarWP\\Foundation\\Migrations\\MigrationsProvider',
 			'MIGRATIONS'
 		));
 	}
 
 	public function test_it_rejects_merge_array_var_closures_without_container_parameters_or_array_returns(): void {
 		$editor = $this->editor();
-		$class  = 'StellarWP\\Foundation\\Database\\DatabaseProvider';
+		$class  = 'StellarWP\\Foundation\\Migrations\\MigrationsProvider';
 
 		$this->assertFalse($editor->canInsertIntoMergeArrayVar($this->fixture('closure-without-container-parameter'), $class, 'MIGRATIONS'));
 		$this->assertFalse($editor->canInsertIntoMergeArrayVar($this->fixture('closure-without-array-return'), $class, 'MIGRATIONS'));
@@ -122,7 +122,7 @@ PHP;
 	public function test_it_uses_space_indentation_when_inserting_into_space_indented_arrays(): void {
 		$updated = $this->editor()->insertIntoMergeArrayVar(
 			$this->fixture('space-indented-registration-list'),
-			'StellarWP\\Foundation\\Database\\DatabaseProvider',
+			'StellarWP\\Foundation\\Migrations\\MigrationsProvider',
 			'MIGRATIONS',
 			'$this->container->get(Generated::class),'
 		);
@@ -135,7 +135,7 @@ PHP;
 
 	public function test_it_does_not_treat_an_unresolved_class_name_as_a_merge_array_registration(): void {
 		$editor = $this->editor();
-		$class  = 'StellarWP\\Foundation\\Database\\DatabaseProvider';
+		$class  = 'StellarWP\\Foundation\\Migrations\\MigrationsProvider';
 		$target = 'Acme\\Plugin\\Database\\Migrations\\Create_Reports_Table';
 
 		$this->assertFalse($editor->mergeArrayVarContainsClass(
@@ -161,7 +161,7 @@ PHP;
 		));
 		$this->assertTrue($this->editor()->mergeArrayVarContainsClass(
 			$contents,
-			'StellarWP\\Foundation\\Database\\DatabaseProvider',
+			'StellarWP\\Foundation\\Migrations\\MigrationsProvider',
 			'MIGRATIONS',
 			'Acme\\Plugin\\Database\\Migrations\\Create_Reports_Table'
 		));
@@ -176,7 +176,7 @@ PHP;
 		));
 		$this->assertTrue($this->editor()->mergeArrayVarContainsClass(
 			$contents,
-			'StellarWP\Foundation\Database\DatabaseProvider',
+			'StellarWP\Foundation\Migrations\MigrationsProvider',
 			'MIGRATIONS',
 			'Acme\Plugin\Database\Migrations\Create_Reports_Table'
 		));
@@ -191,7 +191,7 @@ PHP;
 		));
 		$this->assertFalse($this->editor()->mergeArrayVarContainsClass(
 			$contents,
-			'StellarWP\Foundation\Database\DatabaseProvider',
+			'StellarWP\Foundation\Migrations\MigrationsProvider',
 			'MIGRATIONS',
 			'Acme\Plugin\Database\Migrations\Create_Reports_Table'
 		));
@@ -203,12 +203,12 @@ PHP;
 
 		$this->assertTrue($editor->canInsertIntoMergeArrayVar(
 			$contents,
-			'StellarWP\Foundation\Database\DatabaseProvider',
+			'StellarWP\Foundation\Migrations\MigrationsProvider',
 			'MIGRATIONS'
 		));
 		$this->assertTrue($editor->mergeArrayVarContainsClass(
 			$contents,
-			'StellarWP\Foundation\Database\DatabaseProvider',
+			'StellarWP\Foundation\Migrations\MigrationsProvider',
 			'MIGRATIONS',
 			'Acme\Plugin\Database\Migrations\Create_Reports_Table'
 		));
@@ -216,7 +216,7 @@ PHP;
 			'$c->get(Generated::class),',
 			(string) $editor->insertIntoMergeArrayVar(
 				$contents,
-				'StellarWP\Foundation\Database\DatabaseProvider',
+				'StellarWP\Foundation\Migrations\MigrationsProvider',
 				'MIGRATIONS',
 				'$c->get(Generated::class),'
 			)

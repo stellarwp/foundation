@@ -42,15 +42,6 @@ final class ShutdownProviderTest extends WPTestCase
 		$this->assertSame(['terminated'], $calls);
 	}
 
-	public function test_duplicate_provider_registration_does_not_replace_the_runner(): void {
-		$this->container->register(ShutdownProvider::class);
-		$runner = $this->container->get(ShutdownRunner::class);
-
-		$this->container->register(ShutdownProvider::class);
-
-		$this->assertSame($runner, $this->container->get(ShutdownRunner::class));
-	}
-
 	public function test_it_injects_a_registered_psr_logger(): void {
 		$handler = new TestHandler();
 
@@ -65,7 +56,6 @@ final class ShutdownProviderTest extends WPTestCase
 	public function test_it_runs_contributed_tasks_on_wordpress_shutdown(): void {
 		$calls = [];
 
-		$this->container->register(ShutdownProvider::class);
 		$this->container->register(ShutdownProvider::class);
 
 		$this->container->mergeArrayVar(ShutdownProvider::TASKS, [

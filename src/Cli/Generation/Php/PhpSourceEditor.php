@@ -182,7 +182,7 @@ final readonly class PhpSourceEditor
 	 * Determine whether a matching `mergeArrayVar()` registration list can be edited safely.
 	 *
 	 * For example, this locates the array returned from
-	 * `mergeArrayVar(DatabaseProvider::MIGRATIONS, static fn (C $c) => [...])`.
+	 * `mergeArrayVar(MigrationsProvider::MIGRATIONS, static fn (C $c) => [...])`.
 	 * Inline arrays are rejected because inserting a formatted line would be unsafe.
 	 */
 	public function canInsertIntoMergeArrayVar(string $contents, string $class, string $constant, ?string $beforeComment = null): bool {
@@ -231,7 +231,7 @@ final readonly class PhpSourceEditor
 	 * Determine whether any matching `mergeArrayVar()` contribution resolves a class from its container.
 	 *
 	 * For example, this recognizes `$c->get(CreateReportsTable::class)` inside
-	 * every contribution to `DatabaseProvider::MIGRATIONS`.
+	 * every contribution to `MigrationsProvider::MIGRATIONS`.
 	 */
 	public function mergeArrayVarContainsClass(string $contents, string $class, string $constant, string $fullyQualifiedClass): bool {
 		foreach ($this->mergeArrayVarTargets($contents, $class, $constant) as $target) {
@@ -484,7 +484,7 @@ final readonly class PhpSourceEditor
 	 * Collect every recognized `mergeArrayVar()` contribution for a class constant.
 	 *
 	 * For example, separate feature providers may each contribute to
-	 * `DatabaseProvider::MIGRATIONS`; all contributions must be searched for duplicates.
+	 * `MigrationsProvider::MIGRATIONS`; all contributions must be searched for duplicates.
 	 *
 	 * @return list<MergeArrayVarTarget>
 	 */

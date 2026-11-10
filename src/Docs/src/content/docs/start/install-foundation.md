@@ -1,14 +1,14 @@
 ---
 title: Install Foundation
-description: Install the aggregate Foundation package or select individual runtime components.
+description: Install split runtime packages and keep developer tooling out of production archives.
 sidebar:
   order: 2
 ---
 
-Foundation requires PHP 8.3 or newer. Composer resolves the dependencies required by the aggregate package or selected components.
+Foundation requires PHP 8.3 or newer. Projects should generally install the split packages they use, with runtime components in `require` and developer tooling in `require-dev`.
 
 :::caution[Building a production WordPress plugin?]
-Do not install `stellarwp/foundation` only to get the Foundation CLI. The aggregate package includes the developer CLI as a normal dependency, so `composer install --no-dev` will not remove it.
+Use split packages for distributable WordPress plugins. The aggregate `stellarwp/foundation` package physically includes Foundation CLI and its binary, so `composer install --no-dev` will not remove that tooling from an aggregate installation.
 
 Require only the split runtime packages the plugin ships, then install `stellarwp/foundation-cli` separately with `--dev`.
 :::
@@ -28,23 +28,37 @@ Add other components as the application needs them rather than installing integr
 
 ## Install developer tooling separately
 
-The CLI package generates project code and normally does not belong in a production WordPress plugin archive:
+The CLI package generates project code. Install it for development and exclude it from production WordPress plugin ZIPs:
 
 ```shell
 composer require --dev stellarwp/foundation-cli
 ```
 
-Production builds can then exclude developer dependencies:
+:::caution[CLI dependencies can hide missing runtime requirements]
+Installing CLI also installs Database, Migrations, and WP-CLI integration for its generators. Their availability in your development environment does not make them production dependencies. If your application uses a package installed only through the development CLI, `composer install --no-dev` excludes it and the application can fail with missing classes.
+
+Explicitly require the runtime packages your application uses, even when Composer has already installed them through CLI. For example, a project shipping migrations needs:
+
+```shell
+composer require stellarwp/foundation-migrations
+```
+
+Composer keeps one shared installation and retains that package for production. Installing CLI before or after the runtime package makes no difference.
+:::
+
+Build production archives from a clean staging directory with development dependencies excluded:
 
 ```shell
 composer install --no-dev --classmap-authoritative
 ```
 
-If generated code extends a runtime Foundation class, install that runtime package normally. For example, generated WP-CLI commands require `stellarwp/foundation-wpcli` in `require`.
+Check the resulting plugin ZIP contains neither the `stellarwp/foundation-cli` package nor its `vendor/bin/foundation` binary. Shared dependencies remain when required by runtime packages. Shipped WP-CLI commands are operational functionality: require `stellarwp/foundation-wpcli` normally when your plugin uses them.
 
-## Install every component
+## Deliberately choose the aggregate package
 
-Install the aggregate package when one application intentionally owns the complete Foundation installation and expects to use most components:
+The aggregate includes CLI in production, even with `--no-dev`. Use split packages for distributable plugin ZIPs.
+
+For an environment that intentionally keeps every component and developer tooling, install the aggregate:
 
 ```shell
 composer require stellarwp/foundation

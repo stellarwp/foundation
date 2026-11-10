@@ -2,9 +2,11 @@
 
 namespace StellarWP\Foundation\WPCli;
 
+use Exception;
 use StellarWP\Foundation\WPCli\Contracts\RegistrableCommand;
 use StellarWP\Foundation\WPCli\Exceptions\CommandAlreadyRegistered;
 use WP_CLI;
+use WP_CLI\ExitException;
 use WP_CLI_Command;
 
 /**
@@ -68,7 +70,16 @@ abstract class Command extends WP_CLI_Command implements RegistrableCommand
 		$deferredBefore = WP_CLI::get_deferred_additions();
 
 		$registered = WP_CLI::add_command($name, function (array $args, array $assocArgs): void {
-			$status = $this->runCommand(array_values($args), $assocArgs);
+			try {
+				$status = $this->runCommand(array_values($args), $assocArgs);
+			} catch (ExitException $exit) {
+				throw $exit;
+			} catch (Exception $failure) {
+				WP_CLI::debug((string) $failure);
+				WP_CLI::error($failure->getMessage());
+
+				return;
+			}
 
 			if ($status !== self::SUCCESS) {
 				WP_CLI::halt($status);
@@ -99,6 +110,27 @@ abstract class Command extends WP_CLI_Command implements RegistrableCommand
 	 */
 	final protected function registeredCommandName(): ?string {
 		return $this->context === null ? null : $this->command($this->context);
+	}
+
+	/**
+	 * Release saved queries and supported runtime object caches between completed batches.
+	 *
+	 * Requires WordPress to be loaded. Cache backends without runtime-flush support are
+	 * left intact; persistent cache entries and WordPress hook state are preserved.
+	 *
+	 * @throws \Throwable When the cache backend throws during runtime cleanup.
+	 */
+	protected function clearRuntimeCache(): void {
+		global $wpdb;
+
+		// Reset queries.
+		$wpdb->queries = [];
+
+		if (! wp_cache_supports('flush_runtime')) {
+			return;
+		}
+
+		wp_cache_flush_runtime();
 	}
 
 	/**

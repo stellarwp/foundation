@@ -245,11 +245,13 @@ final class RedisLockIntegrationTest extends TestCase
 		$call       = $recording->evaluateCalls[0];
 		$connection = new PhpRedisConnection($this->phpRedis);
 
-		$this->assertSame(1, $connection->evaluate($call['script'], $call['keys'], $call['arguments']));
+		$result = $connection->evaluate($call['script'], $call['keys'], $call['arguments']);
+		$this->assertSame(1, $result);
 
 		sleep(2);
 
-		$this->assertSame(1, $connection->evaluate($call['script'], $call['keys'], $call['arguments']));
+		$result = $connection->evaluate($call['script'], $call['keys'], $call['arguments']);
+		$this->assertSame(1, $result);
 		$this->assertLessThan(10, $this->phpRedis->ttl($call['keys'][0]));
 		$this->assertTrue($this->phpRedisLock->release($token));
 	}

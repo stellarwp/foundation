@@ -2,9 +2,9 @@
 
 namespace StellarWP\Foundation\Cli\Commands\Make\Database;
 
+use InvalidArgumentException;
 use RuntimeException;
 use StellarWP\Foundation\Cli\Commands\Make\Database\Factories\MigrationFileFactory;
-use StellarWP\Foundation\Cli\Commands\Make\Database\ValueObjects\GeneratedMigration;
 use StellarWP\Foundation\Cli\Commands\Make\Database\ValueObjects\ProviderRegistrationResult;
 use StellarWP\Foundation\Cli\Composer\ComposerAutoloadResolver;
 use StellarWP\Foundation\Cli\Generation\GeneratedFileWriter;
@@ -22,15 +22,15 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
- * Generates a WordPress-style table class for Foundation Database migrations.
+ * Generate a WordPress-style application table class for Foundation Database.
  *
  * Use this from a consuming WordPress project when a feature needs a stable
- * table identity for migrations and table-scoped database operations.
+ * table identity and table-scoped database operations.
  */
 final class TableCommand extends Command
 {
 	public const string CONFIG_KEY        = 'database-table';
-	public const string NAME              = 'make:' . self::CONFIG_KEY;
+	public const string NAME              = 'make:database:table';
 	public const string DEFAULT_NAMESPACE = 'Database\\Tables';
 
 	/**
@@ -61,8 +61,7 @@ final class TableCommand extends Command
 			->addOption('path', null, InputOption::VALUE_REQUIRED, 'Output directory for the generated table, e.g. src/Database/Tables.')
 			->addOption('provider', null, InputOption::VALUE_REQUIRED, 'Database provider file to update, e.g. src/Database/Provider.php.')
 			->addOption('table-name', null, InputOption::VALUE_REQUIRED, 'Unprefixed WordPress table name using letters, numbers, and underscores, e.g. report_entries.')
-			->addOption('migration', 'm', InputOption::VALUE_NONE, 'Also create the table\'s initial migration. Rolling it back drops the complete table and its data.')
-			->addOption('migration-id', null, InputOption::VALUE_REQUIRED, 'Stable identifier that determines execution order, e.g. 2026_09_04_143200_create_reports_table. Requires --migration.');
+			->addOption('migration', 'm', InputOption::VALUE_NONE, 'Also create the table\'s initial migration. Rolling it back drops the complete table and its data.');
 	}
 
 	/**
@@ -72,26 +71,19 @@ final class TableCommand extends Command
 		$writtenFiles = [];
 
 		try {
-			$this->validateMigrationOptions($input);
 			$table     = $this->generatedFile($input);
 			$migration = $input->getOption('migration') === true
 				? $this->initialMigration($input)
 				: null;
 
-			$this->validateGeneratedFiles($table, $migration);
-			$this->validateExplicitProviderUpdate($input, $migration);
+			$files = $migration === null ? [$table] : [$table, $migration];
 
-			if ($migration === null) {
-				$this->fileWriter->write($table);
-				$writtenFiles[] = $table;
-			} else {
-				$this->fileWriter->writeAll($table, $migration->file);
-				$writtenFiles[] = $table;
-				$writtenFiles[] = $migration->file;
-			}
+			$this->validateExplicitProviderUpdate($input);
+			$this->fileWriter->writeAll(...$files);
+			$writtenFiles = $files;
 
-			$providerPath = $this->updateProvider($input, $output, $migration);
-		} catch (RuntimeException $exception) {
+			$providerPath = $this->updateProvider($input, $output);
+		} catch (RuntimeException|InvalidArgumentException $exception) {
 			$output->writeln('<error>' . $this->failureMessage($exception, $writtenFiles) . '</error>');
 
 			return Command::FAILURE;
@@ -100,18 +92,17 @@ final class TableCommand extends Command
 		$output->writeln(sprintf('<info>Created:</info> %s', $table->relativePath));
 
 		if ($migration !== null) {
-			$output->writeln(sprintf('<info>Created:</info> %s', $migration->file->relativePath));
+			$output->writeln(sprintf('<info>Created:</info> %s', $migration->relativePath));
 		}
 
 		$output->writeln('');
 
 		if ($migration === null) {
-			$output->writeln('<comment>Create a migration that defines this table with Blueprint and Schema::create().</comment>');
+			$output->writeln('<comment>Create a migration that defines this table with Blueprint::create().</comment>');
 		} elseif ($providerPath === null && ! $this->providerExists($input)) {
 			$output->writeln(sprintf(
-				'<comment>Register %s and %s with your database provider.</comment>',
+				'<comment>Register %s with your database provider when it needs shared or custom wiring.</comment>',
 				$this->classNameResolver->tableClass((string) $input->getArgument('name')),
-				$migration->class
 			));
 		}
 
@@ -119,7 +110,7 @@ final class TableCommand extends Command
 			$output->writeln(sprintf('<info>Updated:</info> %s', $this->projectDirectory->relativePath($providerPath)));
 		}
 
-		$runtimeDependencyWarning = $this->runtimeDependencyWarning();
+		$runtimeDependencyWarning = $this->runtimeDependencyWarning($migration !== null);
 
 		if ($runtimeDependencyWarning !== null) {
 			$output->writeln('');
@@ -134,55 +125,13 @@ final class TableCommand extends Command
 	 *
 	 * @throws RuntimeException When migration input or project metadata is invalid.
 	 */
-	private function initialMigration(InputInterface $input): GeneratedMigration {
-		$project        = $this->autoloadResolver->project();
-		$tableClass     = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
-		$tableNamespace = $this->locations->namespaceFor(self::CONFIG_KEY, self::DEFAULT_NAMESPACE, $project, (string) $input->getOption('namespace'));
+	private function initialMigration(InputInterface $input): GeneratedFile {
+		$tableClass = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
 
 		return $this->migrationFactory->createTable(
-			name: 'Create_' . $tableClass,
-			tableClass: $tableNamespace . '\\' . $tableClass,
-			id: $this->nullableOption($input, 'migration-id')
+			name: 'create_' . $tableClass,
+			table: $this->tableName($input, $tableClass),
 		);
-	}
-
-	/**
-	 * Reject migration-only options unless initial migration generation is enabled.
-	 *
-	 * @throws RuntimeException When --migration-id is used without --migration.
-	 */
-	private function validateMigrationOptions(InputInterface $input): void {
-		if ($input->getOption('migration') === true || $input->getOption('migration-id') === null) {
-			return;
-		}
-
-		throw new RuntimeException('The --migration-id option requires --migration.');
-	}
-
-	/**
-	 * Validate every artifact and reject existing destinations before writing either file.
-	 *
-	 * @throws RuntimeException When source is invalid or a destination already exists.
-	 */
-	private function validateGeneratedFiles(GeneratedFile $table, ?GeneratedMigration $migration): void {
-		$this->fileWriter->validate($table);
-
-		if (file_exists($table->path)) {
-			throw new RuntimeException(sprintf('File already exists: %s.', $table->relativePath));
-		}
-
-		if ($migration === null) {
-			return;
-		}
-
-		$this->fileWriter->validate($migration->file);
-
-		if (file_exists($migration->file->path)) {
-			throw new RuntimeException(sprintf(
-				'Migration already exists: %s. Edit it directly or create a new migration.',
-				$migration->file->relativePath
-			));
-		}
 	}
 
 	/**
@@ -216,7 +165,7 @@ final class TableCommand extends Command
 	 *
 	 * @throws RuntimeException When the provider cannot accept the generated registrations.
 	 */
-	private function validateExplicitProviderUpdate(InputInterface $input, ?GeneratedMigration $migration): void {
+	private function validateExplicitProviderUpdate(InputInterface $input): void {
 		$project      = $this->autoloadResolver->project();
 		$className    = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
 		$namespace    = $this->locations->namespaceFor(self::CONFIG_KEY, self::DEFAULT_NAMESPACE, $project, (string) $input->getOption('namespace'));
@@ -230,15 +179,7 @@ final class TableCommand extends Command
 			throw new RuntimeException(sprintf('Could not update database provider "%s": file does not exist.', $this->projectDirectory->relativePath($providerPath)));
 		}
 
-		$result = $migration === null
-			? $this->providerUpdater->checkTable($providerPath, $className, $namespace)
-			: $this->providerUpdater->checkTableAndMigration(
-				$providerPath,
-				$className,
-				$namespace,
-				$migration->class,
-				$migration->namespace
-			);
+		$result = $this->providerUpdater->checkTable($providerPath, $className, $namespace);
 
 		if (! $result->succeeded()) {
 			throw new RuntimeException(sprintf(
@@ -254,7 +195,7 @@ final class TableCommand extends Command
 	 *
 	 * @throws RuntimeException When an explicitly selected provider cannot be updated.
 	 */
-	private function updateProvider(InputInterface $input, OutputInterface $output, ?GeneratedMigration $migration): ?string {
+	private function updateProvider(InputInterface $input, OutputInterface $output): ?string {
 		$project      = $this->autoloadResolver->project();
 		$className    = $this->classNameResolver->tableClass((string) $input->getArgument('name'));
 		$namespace    = $this->locations->namespaceFor(self::CONFIG_KEY, self::DEFAULT_NAMESPACE, $project, (string) $input->getOption('namespace'));
@@ -269,15 +210,7 @@ final class TableCommand extends Command
 			return null;
 		}
 
-		$result = $migration === null
-			? $this->providerUpdater->addTable($providerPath, $className, $namespace)
-			: $this->providerUpdater->addTableAndMigration(
-				$providerPath,
-				$className,
-				$namespace,
-				$migration->class,
-				$migration->namespace
-			);
+		$result = $this->providerUpdater->addTable($providerPath, $className, $namespace);
 
 		if (! $result->succeeded() && $explicit) {
 			throw new RuntimeException(sprintf(
@@ -288,11 +221,7 @@ final class TableCommand extends Command
 		}
 
 		if (! $result->succeeded()) {
-			$classes = $migration === null
-				? $className
-				: $className . ' and ' . $migration->class;
-
-			$this->writeProviderWarning($output, $providerPath, $result, $classes);
+			$this->writeProviderWarning($output, $providerPath, $result, $className);
 		}
 
 		return $result->wasUpdated() ? $providerPath : null;
@@ -303,7 +232,7 @@ final class TableCommand extends Command
 	 *
 	 * @param list<GeneratedFile> $writtenFiles
 	 */
-	private function failureMessage(RuntimeException $exception, array $writtenFiles): string {
+	private function failureMessage(RuntimeException|InvalidArgumentException $exception, array $writtenFiles): string {
 		try {
 			$this->fileWriter->remove(...$writtenFiles);
 		} catch (RuntimeException $cleanupException) {
@@ -376,7 +305,8 @@ final class TableCommand extends Command
 	/**
 	 * Explain when generated runtime code lacks a production Foundation dependency.
 	 */
-	private function runtimeDependencyWarning(): ?string {
+	private function runtimeDependencyWarning(bool $withMigration): ?string {
+		$package      = $withMigration ? 'stellarwp/foundation-migrations' : 'stellarwp/foundation-database';
 		$composerPath = $this->projectDirectory->absolutePath('composer.json');
 
 		if (! is_readable($composerPath)) {
@@ -392,15 +322,15 @@ final class TableCommand extends Command
 		$require    = is_array($composer['require'] ?? null) ? $composer['require'] : [];
 		$requireDev = is_array($composer['require-dev'] ?? null) ? $composer['require-dev'] : [];
 
-		if ($this->hasFoundationRuntimeDependency($require)) {
+		if ($this->hasFoundationRuntimeDependency($require, $package)) {
 			return null;
 		}
 
-		if ($this->hasFoundationRuntimeDependency($requireDev)) {
-			return 'this table uses Foundation Database classes, but the Foundation runtime package is only in require-dev. Move stellarwp/foundation-database or stellarwp/foundation to require before shipping this table.';
+		if ($this->hasFoundationRuntimeDependency($requireDev, $package)) {
+			return "the generated files require {$package}, but it is only in require-dev. Move {$package} or stellarwp/foundation to require before shipping them.";
 		}
 
-		return 'this table uses Foundation Database classes. Run composer require stellarwp/foundation-database, or require stellarwp/foundation, before shipping this table.';
+		return "the generated files require {$package}. Run composer require {$package}, or require stellarwp/foundation, before shipping them.";
 	}
 
 	/**
@@ -408,8 +338,16 @@ final class TableCommand extends Command
 	 *
 	 * @param array<string,mixed> $dependencies
 	 */
-	private function hasFoundationRuntimeDependency(array $dependencies): bool {
-		return array_key_exists('stellarwp/foundation-database', $dependencies)
-			|| array_key_exists('stellarwp/foundation', $dependencies);
+	private function hasFoundationRuntimeDependency(array $dependencies, string $package): bool {
+		if (array_key_exists($package, $dependencies) || array_key_exists('stellarwp/foundation', $dependencies)) {
+			return true;
+		}
+
+		if ($package !== 'stellarwp/foundation-database') {
+			return false;
+		}
+
+		return array_key_exists('stellarwp/foundation-migrations', $dependencies)
+			|| array_key_exists('stellarwp/foundation-lock-database', $dependencies);
 	}
 }

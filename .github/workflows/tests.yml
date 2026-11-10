@@ -27,7 +27,7 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
           coverage: none
-          extensions: redis
+          extensions: redis, mysqli
           tools: composer:v2
 
       - name: Install Composer dependencies
@@ -58,7 +58,7 @@ jobs:
         with:
           php-version: '8.3'
           coverage: none
-          extensions: redis
+          extensions: redis, mysqli
           tools: composer:v2
 
       - name: Install Composer dependencies
@@ -79,9 +79,27 @@ jobs:
 
   slic:
     runs-on: blacksmith-2vcpu-ubuntu-2404
-    name: SLIC Tests
+    name: SLIC Tests (${{ matrix.database.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        database:
+          - name: MariaDB
+            image: mariadb:11.8.3
+            healthcheck: healthcheck.sh --connect --innodb_initialized
+          - name: MariaDB-10.4
+            image: mariadb:10.4
+            healthcheck: mysqladmin ping --host=127.0.0.1 --silent
+          - name: MySQL-5.7
+            image: mysql:5.7
+            healthcheck: mysqladmin ping --host=127.0.0.1 --silent
+          - name: MySQL
+            image: mysql:8.0
+            healthcheck: mysqladmin ping --host=127.0.0.1 --silent
 
     env:
+      SLIC_DB_IMAGE: ${{ matrix.database.image }}
+      SLIC_DB_HEALTHCHECK: ${{ matrix.database.healthcheck }}
       COMPOSER_AUTH: '{"github-oauth": {"github.com": "${{ github.token }}"}}'
 
     steps:
@@ -213,10 +231,21 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-report
+          name: coverage-report-${{ matrix.database.name }}
           path: clover.xml
           if-no-files-found: error
           retention-days: 1
+
+  slic-complete:
+    if: always()
+    needs: slic
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    name: SLIC Tests
+    steps:
+      - name: Require every database test job to pass
+        env:
+          SLIC_RESULT: ${{ needs.slic.result }}
+        run: test "$SLIC_RESULT" = success
 
   coverage:
     if: github.event_name == 'pull_request'
@@ -233,7 +262,7 @@ jobs:
       - name: Download coverage report
         uses: actions/download-artifact@v8
         with:
-          name: coverage-report
+          name: coverage-report-MariaDB
 
       - name: Monitor coverage
         uses: slavcodev/coverage-monitor-action@v1

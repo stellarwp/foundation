@@ -13,6 +13,12 @@ Install this package as a development dependency in consuming projects:
 composer require --dev stellarwp/foundation-cli
 ```
 
+Require the runtime packages used by generated code separately in your project's
+`require`. CLI's dependencies can make missing runtime requirements go unnoticed
+locally; a production `composer install --no-dev` excludes packages needed only by
+CLI. See the [installation guide](https://foundation.nexcess.dev/start/install-foundation/#install-developer-tooling-separately)
+for dependency setup and keeping CLI out of plugin ZIPs.
+
 ## Documentation
 
 See the [Foundation CLI documentation](https://foundation.nexcess.dev/tooling/foundation-cli/)

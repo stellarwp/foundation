@@ -5,7 +5,7 @@ namespace Acme;
 final class Provider
 {
 	public function register(): void {
-		$this->container->mergeArrayVar( \Acme\Product\StellarWP\Foundation\Database\DatabaseProvider::MIGRATIONS, [
+		$this->container->mergeArrayVar( \Acme\Product\StellarWP\Foundation\Migrations\MigrationsProvider::MIGRATIONS, [
 		] );
 	}
 }
